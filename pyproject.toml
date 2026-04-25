@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mneme-agent"
+version = "0.1.0"
+description = "A graph-based memory layer for AI agents that turns Markdown notes into visual thought paths."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Mneme contributors"}]
+keywords = ["agents", "memory", "graph", "markdown", "second-brain", "sqlite"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+mneme = "mneme.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
