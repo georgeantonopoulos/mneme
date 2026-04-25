@@ -1,5 +1,7 @@
 # Mneme
 
+![Mneme — graph memory for AI agents](assets/mneme-header.png)
+
 **Mneme** is a small graph-based memory layer for AI agents.
 
 It turns a folder of Markdown notes into a local SQLite graph, walks that graph, and renders compact visual **thought path** cards that an agent can surface proactively.
