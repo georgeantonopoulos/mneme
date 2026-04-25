@@ -85,18 +85,40 @@ def observation_score(text: str, hints: list[str]):
     return kind, score
 
 
-def iter_markdown(vault: Path, exclude_parts: Iterable[str] = ()): 
-    excludes=set(exclude_parts)
+def is_relative_to(child: Path, parent: Path) -> bool:
+    """Return True when *child* resolves inside *parent*."""
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def iter_markdown(vault: Path, exclude_parts: Iterable[str] = (), follow_symlinks: bool = False):
+    excludes = set(exclude_parts)
+    vault_root = vault.resolve()
     for path in sorted(vault.rglob("*.md")):
-        if not any(part in excludes for part in path.parts):
-            yield path
+        if any(part in excludes for part in path.parts):
+            continue
+        if path.is_symlink() and not follow_symlinks:
+            continue
+        resolved = path.resolve()
+        if not is_relative_to(resolved, vault_root):
+            continue
+        yield path
 
 
-def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None) -> dict:
+def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, rebuild: bool = True, follow_symlinks: bool = False) -> dict:
     hints = hints or DEFAULT_HINTS; db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path); init_db(conn); conn.execute("DELETE FROM observations")
+    conn = sqlite3.connect(db_path); init_db(conn)
+    if rebuild:
+        # Privacy-first default: avoid stale private content when a DB is reused
+        # with a different or sanitized vault.
+        conn.executescript("DELETE FROM thoughts; DELETE FROM observations; DELETE FROM edges; DELETE FROM nodes;")
+    else:
+        conn.execute("DELETE FROM observations")
     notes=edges=observations=0
-    for index, path in enumerate(iter_markdown(vault, {".git", "node_modules"})):
+    for index, path in enumerate(iter_markdown(vault, {".git", "node_modules"}, follow_symlinks=follow_symlinks)):
         if max_notes is not None and index >= max_notes: break
         text = path.read_text(encoding="utf-8", errors="replace")
         if not text.strip(): continue
@@ -113,6 +135,8 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
             done=m.group(1).lower()=="x"; evidence.append(("done" if done else "blocked",m.group(2).strip(),3.0 if not done else 1.5))
         for m in BULLET_RE.finditer(text):
             body=re.sub(r"\s+"," ",m.group(1).strip())
+            if re.match(r"^\[[ xX]\]\s+", body):
+                continue
             if 8 <= len(body) <= 350:
                 k,s=observation_score(body,hints)
                 if s >= 3 or k in {"blocked","risk"}: evidence.append((k,body,s))

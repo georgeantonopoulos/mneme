@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import re
 import shutil
 import subprocess
 import textwrap
@@ -39,9 +40,20 @@ def render_svg(thought: dict, svg_path: Path) -> None:
     parts.append('</svg>'); svg_path.parent.mkdir(parents=True, exist_ok=True); svg_path.write_text("\n".join(parts), encoding="utf-8")
 
 
+def safe_basename(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
+    return cleaned or dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
 def render_card(thought: dict, out_dir: Path, basename: str | None = None) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True); stamp=basename or dt.datetime.now().strftime("%Y%m%d_%H%M%S"); svg_path=out_dir/f"thought_{stamp}.svg"; png_path=out_dir/f"thought_{stamp}.png"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = safe_basename(basename) if basename else dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    svg_path=out_dir/f"thought_{stamp}.svg"; png_path=out_dir/f"thought_{stamp}.png"
     render_svg(thought, svg_path); convert=shutil.which("convert") or shutil.which("magick")
     if convert:
-        subprocess.run([convert,str(svg_path),str(png_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30); return png_path
+        try:
+            subprocess.run([convert,str(svg_path),str(png_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            return png_path
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return svg_path
     return svg_path
