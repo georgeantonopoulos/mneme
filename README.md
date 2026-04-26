@@ -16,6 +16,7 @@ It turns a folder of Markdown notes into a SQLite graph, walks that graph, and r
 - Performs biased graph walks over unresolved, risky, recent, or connected items
 - Renders thought cards as SVG, with optional PNG conversion via ImageMagick
 - Provides a CLI suitable for cron jobs or agent runtimes
+- Can back an optional local graph workbench UI; users should choose where that UI is served and where generated DB/assets live
 
 ## Privacy model
 
@@ -98,6 +99,28 @@ Useful flags:
 - `--max-notes 100` — limit ingestion for a quick smoke test
 - `--append` — keep existing nodes/edges instead of rebuilding; use carefully because stale data can remain
 - `--follow-symlinks` — follow symlinked Markdown files that resolve inside the vault
+
+### Graph workbench / UI target
+
+Mneme's graph-building layer is intentionally location-agnostic: callers pass `--vault`, `--db`, and `--out`. A UI/workbench should preserve that model rather than hard-coding a deployment path.
+
+Recommended public packaging shape:
+
+```bash
+mneme ingest --vault /path/to/markdown --db /private/path/mneme.sqlite
+mneme serve --db /private/path/mneme.sqlite --host 127.0.0.1 --port 8002 --mount /mneme
+```
+
+The served workbench should be optional, read-only by default, and configurable for:
+
+- graph DB path
+- host/port
+- URL mount path
+- auth/reverse-proxy layer
+- output/static asset directory
+- node/link limits
+
+A private deployment can mount the workbench behind an existing authenticated personal tools route. Other users should choose their own local/private route and storage locations.
 
 ## How it works
 
