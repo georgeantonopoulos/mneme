@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import base64
 import hashlib
 import json
 import random
@@ -15,6 +16,7 @@ TASK_RE = re.compile(r"^\s*[-*]\s+\[([ xX])]\s+(.+)$", re.M)
 BULLET_RE = re.compile(r"^\s*[-*]\s+(.+)$", re.M)
 DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+20\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2})\b", re.I)
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+RESEARCH_RESOLUTION_RE = re.compile(r"<!--\s*mneme-research-resolution-b64:\s*([A-Za-z0-9_-]+)\s*-->", re.S)
 STATUS_WORDS = {
     "blocked": ["blocked", "stuck", "waiting", "awaiting", "needs", "need to", "todo", "to do", "follow up", "unresolved"],
     "done": ["paid", "resolved", "closed", "completed", "done", "accepted", "confirmed"],
@@ -203,6 +205,30 @@ DEFAULT_RELATIONSHIP_TYPES = [
         "symmetric": False,
         "transitive": True,
     },
+    {
+        "id": "attends_activity",
+        "label": "attends activity",
+        "inverse_id": "activity_attended_by",
+        "category": "semantic",
+        "domain_type": "person",
+        "range_type": "activity",
+        "description": "Confirmed participation in an activity. Should only be active when evidence is close to certain.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "requested_activity",
+        "label": "requested activity",
+        "inverse_id": "activity_requested_by",
+        "category": "semantic_pending",
+        "domain_type": "person",
+        "range_type": "activity",
+        "description": "Requested or pending participation in an activity; not resolved attendance.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    },
 ]
 
 
@@ -325,7 +351,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,source_path TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,confidence REAL DEFAULT 1.0,metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS relationship_types(id TEXT PRIMARY KEY,label TEXT NOT NULL,inverse_id TEXT,category TEXT NOT NULL,domain_type TEXT DEFAULT 'any',range_type TEXT DEFAULT 'any',description TEXT DEFAULT '',requires_validation INTEGER DEFAULT 1,symmetric INTEGER DEFAULT 0,transitive INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,status TEXT DEFAULT 'active',strength REAL DEFAULT 1.0,source_type TEXT DEFAULT 'vault',metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
@@ -334,7 +360,19 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
     CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
     """)
+    for ddl in [
+        "ALTER TABLE edges ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE edges ADD COLUMN strength REAL DEFAULT 1.0",
+        "ALTER TABLE edges ADD COLUMN source_type TEXT DEFAULT 'vault'",
+        "ALTER TABLE edges ADD COLUMN metadata_json TEXT DEFAULT '{}'",
+    ]:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
     seed_relationship_types(conn)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_status ON edges(status)")
 
 
 def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=None):
@@ -377,12 +415,14 @@ def log_edge_event(conn, edge_id: str, event: str, actor: str, thinking: dict) -
     return event_id
 
 
-def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0):
+def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0, status="active", strength=None, source_type="vault", metadata=None):
     eid = hashlib.sha1(f"{src}:{relation}:{dst}:{source_path}:{evidence[:80]}".encode()).hexdigest()[:20]; ts = now_iso()
     inserted = conn.execute("SELECT 1 FROM edges WHERE id=?", (eid,)).fetchone() is None
-    conn.execute("""INSERT INTO edges(id,src_id,dst_id,relation,source_path,confidence,evidence_text,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, confidence=max(edges.confidence, excluded.confidence)""",
-    (eid, src, dst, relation, source_path, confidence, evidence[:500], ts, ts))
+    if strength is None:
+        strength = confidence
+    conn.execute("""INSERT INTO edges(id,src_id,dst_id,relation,source_path,confidence,evidence_text,created_at,updated_at,status,strength,source_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, confidence=max(edges.confidence, excluded.confidence), strength=max(edges.strength, excluded.strength), status=excluded.status, source_type=excluded.source_type, metadata_json=excluded.metadata_json""",
+    (eid, src, dst, relation, source_path, confidence, evidence[:500], ts, ts, status, strength, source_type, json.dumps(metadata or {}, ensure_ascii=False)))
     if inserted:
         log_edge_event(conn, eid, "created", "ingest", edge_creation_thinking(relation, source_path, evidence, confidence))
     return eid
@@ -467,6 +507,122 @@ def write_note(vault: Path, note_path: str | Path, content: str, mode: str = "cr
     return {"path": rel, "mode": mode, "bytes": target.stat().st_size}
 
 
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return slug[:80] or "research-resolution"
+
+
+def research_note_content(payload: dict) -> str:
+    title = payload.get("title") or "Research resolution"
+    date = payload.get("date") or dt.datetime.now(dt.timezone.utc).date().isoformat()
+    lines = [f"# {title}", "", "Source type: user-initiated research resolution  ", f"Date resolved: {date}  "]
+    if payload.get("canonical_project"):
+        lines.append(f"Canonical project: [[{payload['canonical_project']}]]  ")
+    if payload.get("links"):
+        lines.append("Links: " + ", ".join(f"[[{link}]]" for link in payload["links"]) + "  ")
+    lines.extend(["", "## Sources checked"])
+    for source in payload.get("sources_checked") or []:
+        lines.append(f"- {source}")
+    lines.extend(["", "## Resolved claims"])
+    for claim in payload.get("claims") or []:
+        confidence = float(claim.get("confidence") or 0.0)
+        strength = float(claim.get("strength") if claim.get("strength") is not None else confidence)
+        certainty = claim.get("certainty") or ("confirmed" if confidence >= 0.9 else "candidate")
+        lines.append(f"- **{claim.get('subject','?')}** --`{claim.get('predicate') or claim.get('relation') or 'related_to'}`--> **{claim.get('object','?')}**")
+        lines.append(f"  - Status: {certainty}; confidence {confidence:.2f}; strength {strength:.2f}")
+        if claim.get("evidence"):
+            lines.append(f"  - Evidence: {claim['evidence']}")
+    if payload.get("unresolved"):
+        lines.extend(["", "## Unresolved / needs confirmation"])
+        for item in payload["unresolved"]:
+            lines.append(f"- {item}")
+    lines.extend(["", "## Writeback rule", "Near-certain sourced claims can become active graph edges. Pending, unsupported, or lower-confidence claims stay candidate and must not drive resolved thoughts."])
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).decode("ascii").rstrip("=")
+    lines.extend(["", f"<!-- mneme-research-resolution-b64: {encoded} -->"])
+    return "\n".join(lines).strip() + "\n"
+
+
+def claim_status(claim: dict, active_threshold: float = 0.9) -> str:
+    if claim.get("status") in {"candidate", "killed"}:
+        return claim["status"]
+    evidence = str(claim.get("evidence") or claim.get("evidence_text") or "").strip()
+    if not evidence:
+        return "candidate"
+    certainty = str(claim.get("certainty") or "").lower()
+    confidence = float(claim.get("confidence") or 0.0)
+    if certainty in {"confirmed", "certain", "user_confirmed", "absolutely_certain"} and confidence >= active_threshold:
+        return "active"
+    return "candidate"
+
+
+def research_payload_from_note(text: str) -> dict | None:
+    match = RESEARCH_RESOLUTION_RE.search(text)
+    if not match:
+        return None
+    try:
+        encoded = match.group(1)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def write_research_edges(conn: sqlite3.Connection, note_path: str, payload: dict, active_threshold: float = 0.9, actor: str = "mneme") -> list[dict]:
+    created = []
+    for claim in payload.get("claims") or []:
+        subject = claim["subject"]
+        obj = claim["object"]
+        relation = claim.get("predicate") or claim.get("relation") or "related_to"
+        confidence = float(claim.get("confidence") or 0.0)
+        strength = float(claim.get("strength") if claim.get("strength") is not None else confidence)
+        status = claim_status(claim, active_threshold)
+        evidence = claim.get("evidence") or claim.get("evidence_text") or ""
+        src = upsert_node(conn, claim.get("subject_type", "entity"), subject, note_path, confidence, claim.get("subject_metadata") or {})
+        dst = upsert_node(conn, claim.get("object_type", "entity"), obj, note_path, confidence, claim.get("object_metadata") or {})
+        edge_id = upsert_edge(
+            conn,
+            src,
+            dst,
+            relation,
+            note_path,
+            evidence,
+            confidence,
+            status=status,
+            strength=strength,
+            source_type=claim.get("source_type") or "research",
+            metadata={"research_resolution": True, "certainty": claim.get("certainty"), "sources_checked": payload.get("sources_checked") or []},
+        )
+        log_edge_event(conn, edge_id, "research_writeback", actor, {
+            "status": status,
+            "strength": strength,
+            "confidence": confidence,
+            "source_type": claim.get("source_type") or "research",
+            "evidence_text": evidence,
+            "source_path": note_path,
+            "rationale": "User-initiated research created this weighted graph edge; active only if sourced, confirmed, and above threshold.",
+            "active_threshold": active_threshold,
+        })
+        created.append({"id": edge_id, "src": subject, "predicate": relation, "dst": obj, "status": status, "strength": strength, "confidence": confidence})
+    return created
+
+
+def write_research_resolution(vault: Path, db_path: Path, payload: dict | str, active_threshold: float = 0.9) -> dict:
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    date = payload.get("date") or dt.datetime.now(dt.timezone.utc).date().isoformat()
+    note_path = payload.get("note_path") or f"Sources/{date}_{slugify(payload.get('slug') or payload.get('title'))}-resolution.md"
+    content = research_note_content(payload)
+    written = write_note(vault, note_path, content, mode="overwrite")
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    created = write_research_edges(conn, note_path, payload, active_threshold, actor="mneme")
+    conn.commit()
+    conn.close()
+    return {"note_path": written["path"], "claims_written": len(created), "edges": created, "written": True}
+
+
 def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, rebuild: bool = True, follow_symlinks: bool = False) -> dict:
     hints = hints or DEFAULT_HINTS; db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path); init_db(conn)
@@ -482,6 +638,9 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
         text = path.read_text(encoding="utf-8", errors="replace")
         if not text.strip(): continue
         rel = str(path.relative_to(vault)); nid = upsert_node(conn, note_type(path), title_from_text(path, text), rel, metadata={"path":rel,"chars":len(text)}); notes += 1
+        research_payload = research_payload_from_note(text)
+        if research_payload:
+            edges += len(write_research_edges(conn, rel, research_payload, actor="ingest"))
         for target in sorted(set(WIKILINK_RE.findall(text))):
             tid=upsert_node(conn,"wikilink",target.strip(),None,0.8); upsert_edge(conn,nid,tid,"links_to",rel,f"[[{target.strip()}]]",0.9); edges += 1
         for _, heading in HEADING_RE.findall(text):
@@ -532,7 +691,7 @@ def get_node(conn, node_id):
 
 
 def neighbors(conn, node_id):
-    rows=conn.execute("""SELECT e.relation,n.id,n.name FROM edges e JOIN nodes n ON n.id=e.dst_id WHERE e.src_id=? UNION ALL SELECT 'reverse_'||e.relation,n.id,n.name FROM edges e JOIN nodes n ON n.id=e.src_id WHERE e.dst_id=?""",(node_id,node_id)).fetchall()
+    rows=conn.execute("""SELECT e.relation,n.id,n.name FROM edges e JOIN nodes n ON n.id=e.dst_id WHERE e.src_id=? AND COALESCE(e.status,'active')='active' UNION ALL SELECT 'reverse_'||e.relation,n.id,n.name FROM edges e JOIN nodes n ON n.id=e.src_id WHERE e.dst_id=? AND COALESCE(e.status,'active')='active'""",(node_id,node_id)).fetchall()
     return [(r,i,n) for r,i,n in rows]
 
 
@@ -619,15 +778,101 @@ def observations_for_seed(db_path: Path, seed_id: str, limit: int = 4):
     conn=sqlite3.connect(db_path); rows=conn.execute("SELECT text FROM observations WHERE note_id=? ORDER BY score DESC LIMIT ?",(seed_id,limit)).fetchall(); conn.close(); return [r[0] for r in rows]
 
 
-def generate_thought(db_path: Path, path):
-    seed=path[0]; names=[n.get("name","?") for n in path]; obs=observations_for_seed(db_path, seed["id"], 4); low=" ".join(names+obs).lower()
-    if any(w in low for w in ["blocked","needs","awaiting","unresolved","todo"]):
-        title="Open loop hiding in the graph"; insight=f"{names[0]} is connected to an unresolved thread. The useful move is to compress it into one concrete next action."; action=obs[0] if obs else "Pick the smallest next action and attach it to the source note."
+def _node_by_id(conn: sqlite3.Connection, node_id: str) -> dict:
+    node = get_node(conn, node_id)
+    return node or {"id": node_id, "type": "unknown", "name": node_id, "source_path": None, "metadata": {}}
+
+
+def _candidate_reasons(kind: str, text: str, score: float, hints: list[str]) -> tuple[float, list[str]]:
+    low = text.lower(); reasons=[]; total = float(score)
+    if kind == "blocked":
+        total += 5; reasons.append("open loop / unresolved task")
+    if kind == "risk":
+        total += 4; reasons.append("risk or deadline language")
+    if any(word in low for word in ["due", "deadline", "expires", "overdue", "urgent"]):
+        total += 4; reasons.append("deadline pressure")
+    if any(word in low for word in ["waiting", "awaiting", "follow up", "needs", "todo"]):
+        total += 3; reasons.append("follow-up needed")
+    matched = [hint for hint in hints if hint.lower() in low]
+    if matched:
+        total += 2 * len(matched); reasons.append("matches hints: " + ", ".join(matched[:4]))
+    return total, reasons or ["high-signal observation"]
+
+
+def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_text: str, hops: int) -> list[dict]:
+    path=[_node_by_id(conn, note_id)]
+    obs_node = conn.execute(
+        """SELECT n.id FROM nodes n JOIN edges e ON e.dst_id=n.id
+           WHERE e.src_id=? AND COALESCE(e.status,'active')='active' AND n.type='observation' AND n.name=? ORDER BY e.confidence DESC LIMIT 1""",
+        (note_id, observation_text[:90]),
+    ).fetchone()
+    if obs_node:
+        node = _node_by_id(conn, obs_node[0]); node["via"] = "has_observation"; path.append(node)
+        date_row = conn.execute(
+            "SELECT n.id,e.relation FROM edges e JOIN nodes n ON n.id=e.dst_id WHERE e.src_id=? AND COALESCE(e.status,'active')='active' AND n.type='date' ORDER BY n.name LIMIT 1",
+            (obs_node[0],),
+        ).fetchone()
+        if date_row and len(path) < hops + 1:
+            node = _node_by_id(conn, date_row[0]); node["via"] = date_row[1]; path.append(node)
+    if len(path) < hops + 1:
+        for nid, rel in conn.execute(
+            """SELECT n.id,e.relation FROM edges e JOIN nodes n ON n.id=e.dst_id
+               WHERE e.src_id=? AND COALESCE(e.status,'active')='active' AND n.type IN ('wikilink','project','person','event','finance','note')
+               ORDER BY CASE n.type WHEN 'wikilink' THEN 0 ELSE 1 END, n.name LIMIT ?""",
+            (note_id, hops + 1 - len(path)),
+        ).fetchall():
+            if nid not in {n.get("id") for n in path}:
+                node = _node_by_id(conn, nid); node["via"] = rel; path.append(node)
+    return path
+
+
+def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints: list[str] | None = None) -> list[dict]:
+    hints = hints or DEFAULT_HINTS
+    conn = sqlite3.connect(db_path)
+    recent = {r[0] for r in conn.execute("SELECT seed_id FROM thoughts ORDER BY created_at DESC LIMIT 20").fetchall() if r[0]}
+    rows = conn.execute(
+        """SELECT o.note_id,o.kind,o.text,o.source_path,o.score,n.name,n.type,n.updated_at
+           FROM observations o JOIN nodes n ON n.id=o.note_id
+           ORDER BY o.score DESC,o.created_at DESC LIMIT 200"""
+    ).fetchall()
+    candidates=[]
+    for note_id, kind, text, source_path, base_score, name, ntype, updated_at in rows:
+        score, reasons = _candidate_reasons(kind, text, base_score, hints)
+        if note_id in recent:
+            score -= 3; reasons.append("recently surfaced penalty")
+        if ntype in {"project", "finance", "event", "person"}:
+            score += 1.5; reasons.append(f"important {ntype} note")
+        path = _path_from_observation(conn, note_id, text, hops)
+        candidates.append({
+            "score": round(score, 2),
+            "seed": {"id": note_id, "name": name, "type": ntype, "source_path": source_path},
+            "observation": {"kind": kind, "text": text, "source_path": source_path, "score": base_score},
+            "evidence": [text],
+            "reasons": reasons,
+            "path": path,
+        })
+    conn.close()
+    candidates.sort(key=lambda c: (-c["score"], c["seed"]["name"].lower()))
+    return candidates[:limit]
+
+
+def generate_thought(db_path: Path, path, candidate: dict | None = None):
+    seed=path[0]; names=[n.get("name","?") for n in path]; obs=(candidate.get("evidence", []) if candidate else observations_for_seed(db_path, seed["id"], 4)); low=" ".join(names+obs).lower()
+    why_now = "; ".join(candidate.get("reasons", [])[:3]) if candidate else "graph traversal surfaced nearby high-signal text"
+    if any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
+        title="Open loop hiding in the graph"; insight=f"{names[0]} is connected to an unresolved thread: {obs[0] if obs else names[-1]}. This is worth surfacing before it fades into background notes."; action=obs[0] if obs else "Pick the smallest next action and attach it to the source note."
     elif any(w in low for w in ["due","deadline","expires","urgent","overdue"]):
-        title="Deadline path worth checking"; insight=f"This path links {names[0]} to time-sensitive language. Verify the status before it becomes background noise."; action=obs[0] if obs else "Check whether the deadline/status is still current."
+        title="Deadline path worth checking"; insight=f"This path links {names[0]} to time-sensitive language: {obs[0] if obs else names[-1]}. Verify the status before it becomes background noise."; action=obs[0] if obs else "Check whether the deadline/status is still current."
     else:
         title="Graph thought"; joined=" → ".join(names[:5]); insight=f"The notes currently associate: {joined}. This may be worth revisiting because nearby nodes keep connecting."; action=obs[0] if obs else "If this still matters, promote it to an explicit next action."
-    return {"title":title,"insight":insight,"action":action,"path":path,"observations":obs}
+    return {"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
+
+
+def generate_proactive_thought(db_path: Path, hints: list[str] | None = None, hops: int = 5) -> dict:
+    candidates = list_thought_candidates(db_path, limit=1, hops=hops, hints=hints)
+    if candidates:
+        return generate_thought(db_path, candidates[0]["path"], candidates[0])
+    return generate_thought(db_path, walk_graph(db_path, hops=hops, hints=hints))
 
 
 def save_thought(db_path: Path, thought: dict, image_path: str | None = None):

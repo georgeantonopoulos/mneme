@@ -35,8 +35,11 @@ def render_svg(thought: dict, svg_path: Path) -> None:
     parts.append('<rect x="90" y="650" width="1020" height="105" rx="22" fill="#1f1b10" stroke="#5b4315"/>')
     parts.append('<text x="120" y="692" fill="#fbbf24" font-family="Inter,Arial" font-size="24" font-weight="700">Possible next move</text>')
     for j,line in enumerate(wrap_text(thought["action"],88,2)): parts.append(f'<text x="120" y="{728+j*28}" fill="#fef3c7" font-family="Inter,Arial" font-size="23">{esc(line)}</text>')
+    why = thought.get("why_now")
+    if why:
+        parts.append(f'<text x="90" y="775" fill="#94a3b8" font-family="Inter,Arial" font-size="18">Why now: {esc("; ".join(wrap_text(why, 105, 1)))}</text>')
     generated=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    parts.append(f'<text x="90" y="790" fill="#475569" font-family="Inter,Arial" font-size="18">Generated {esc(generated)} from a local Markdown-derived SQLite graph.</text>')
+    parts.append(f'<text x="90" y="805" fill="#475569" font-family="Inter,Arial" font-size="18">Generated {esc(generated)} from a local Markdown-derived SQLite graph.</text>')
     parts.append('</svg>'); svg_path.parent.mkdir(parents=True, exist_ok=True); svg_path.write_text("\n".join(parts), encoding="utf-8")
 
 

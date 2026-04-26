@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse, json, sys
 from pathlib import Path
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, create_config, doctor, explain_edge, generate_thought, ingest_vault, load_config, save_thought, update_vault, walk_graph, write_note
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, create_config, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, save_thought, update_vault, write_note, write_research_resolution
 from .render import render_card
 
 
@@ -40,6 +40,8 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("ingest"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
     p=sub.add_parser("update", help="Synchronize graph tables from the current vault while preserving thought history"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
     p=sub.add_parser("write", help="Safely create, append, or overwrite a Markdown note inside a vault"); p.add_argument("--vault",type=Path); p.add_argument("--path",required=True,help="Relative .md path inside the vault"); p.add_argument("--mode",choices=["create","append","overwrite"],default="create"); p.add_argument("--content",help="Markdown content; omit to read from stdin")
+    p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
+    p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
     p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
@@ -57,12 +59,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "write":
         content = args.content if args.content is not None else sys.stdin.read()
         print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False)); return
+    if args.cmd == "resolve":
+        payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
+        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
     if args.cmd == "explain-edge":
         print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
+    if args.cmd == "candidates":
+        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
-    path=walk_graph(db_path,hops=args.hops,hints=hints_from_args(args)); generated=generate_thought(db_path,path); image=render_card(generated,out_path); thought_id=save_thought(db_path,generated,str(image))
-    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
+    generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops); image=render_card(generated,out_path); thought_id=save_thought(db_path,generated,str(image))
+    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__": main()

@@ -19,7 +19,7 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - thought-path generation
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for ingestion, thought generation, and edge explanation
+- CLI commands for ingestion, thought generation, research resolution writeback, and edge explanation
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
@@ -109,7 +109,14 @@ Configure Mneme once, validate it, then use short commands:
 mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 mneme doctor
 mneme update
+mneme candidates
 mneme thought
+```
+
+Research results can be written back as evidence packs plus weighted graph edges:
+
+```bash
+mneme resolve --file research-resolution.json
 ```
 
 You can keep multiple configs if needed:
@@ -166,7 +173,55 @@ printf -- '- Follow up\n' | mneme write --vault ./examples/vault --path Projects
 
 `mneme write` only accepts relative `.md` paths that resolve inside the vault. Modes are `create`, `append`, and `overwrite`.
 
+### Write resolved research back to the graph
+
+When an agent finishes source-backed research, pass a JSON resolution payload to `mneme resolve`. Mneme writes a durable Markdown evidence pack under `Sources/` and creates weighted graph edges.
+
+```bash
+mneme resolve --vault ./examples/vault --db /tmp/mneme.sqlite --file research-resolution.json
+```
+
+Minimal payload:
+
+```json
+{
+  "slug": "school-clubs",
+  "title": "School clubs resolved",
+  "date": "2026-04-26",
+  "sources_checked": ["email", "payment", "calendar", "vault"],
+  "claims": [
+    {
+      "subject": "Example Child",
+      "subject_type": "person",
+      "predicate": "attends_activity",
+      "object": "Handwriting Club",
+      "object_type": "activity",
+      "confidence": 0.94,
+      "strength": 0.93,
+      "certainty": "confirmed",
+      "source_type": "payment",
+      "evidence": "Payment receipt and school brochure confirm the club timing."
+    }
+  ],
+  "unresolved": ["Morning club paid but child assignment is unclear."]
+}
+```
+
+Safety rule: only sourced, confirmed/certain claims at or above `--active-threshold` (`0.90` by default) become `active` edges. Pending, unsupported, or lower-confidence claims become `candidate` edges. Candidate edges are stored for audit and follow-up, but graph walks/thoughts ignore them so unresolved claims do not become proactive “truth.”
+
+The command accepts JSON via `--file` or stdin, which keeps the interface simple for future Node/npm wrappers.
+
 ### Generate one thought from an existing DB
+
+`mneme thought` now uses the proactive scorer by default: it ranks high-signal observations, open loops, deadlines, hint matches, important note types, and recently-surfaced penalties before rendering a card.
+
+Inspect candidates before generating:
+
+```bash
+mneme candidates --db /tmp/mneme.sqlite --limit 5
+```
+
+Generate the top thought card:
 
 ```bash
 mneme thought --db /tmp/mneme.sqlite --out /tmp/mneme_out
@@ -212,7 +267,8 @@ Mneme seeds a small relationship ontology in SQLite. Current categories include:
 | `structure` | `has_heading` | Document structure extracted from Markdown. |
 | `extraction` | `mentions_date`, `mentions_email` | Pattern-extracted facts from text. |
 | `observation` | `has_fact`, `has_risk`, `has_blocked`, `has_done` | Scored bullets/tasks that may be useful to an agent. |
-| `semantic` | `belongs_to`, `located_in`, `part_of`, `father_of` | Real-world claims; should be validated before being treated as facts. |
+| `semantic` | `belongs_to`, `located_in`, `part_of`, `father_of`, `attends_activity` | Real-world claims; should be validated before being treated as facts. |
+| `semantic_pending` | `requested_activity` | Pending/requested real-world claims; useful for follow-up, not resolved truth. |
 
 Unknown relationship types default to validation-required.
 

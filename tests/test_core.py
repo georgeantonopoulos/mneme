@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import create_config, doctor, explain_edge, generate_thought, ingest_vault, load_config, log_edge_event, relationship_type, update_vault, walk_graph, write_note
+from mneme.core import create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -249,6 +249,250 @@ def test_doctor_reports_missing_vault(tmp_path: Path):
     assert report["ok"] is False
     assert report["checks"]["vault"]["ok"] is False
     assert "does not exist" in report["checks"]["vault"]["message"]
+
+
+def test_proactive_candidates_rank_open_loops_with_evidence(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "Projects").mkdir(parents=True)
+    (vault / "Journal").mkdir()
+    (vault / "Journal" / "casual.md").write_text("# Casual\n\n- Nice idea for later\n", encoding="utf-8")
+    (vault / "Projects" / "launch.md").write_text(
+        "# Launch\n\n- [ ] Follow up with supplier by Apr 15\n- Risk: contract deadline due May 1\nRelated: [[Supplier]]\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["deadline", "supplier"])
+
+    candidates = list_thought_candidates(db, limit=3, hints=["deadline", "supplier"])
+
+    assert candidates
+    top = candidates[0]
+    assert top["seed"]["name"] == "Launch"
+    assert top["score"] > 0
+    assert any("deadline" in reason.lower() or "open loop" in reason.lower() for reason in top["reasons"])
+    assert top["evidence"]
+    assert top["path"][0]["name"] == "Launch"
+
+
+def test_generate_proactive_thought_uses_candidate_why_now(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "Projects").mkdir(parents=True)
+    (vault / "Projects" / "renewal.md").write_text(
+        "# Renewal\n\n- [ ] Decide renewal owner\n- Deadline due Jun 3\nRelated: [[Budget]]\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["deadline", "renewal"])
+
+    thought = generate_proactive_thought(db, hints=["deadline", "renewal"])
+
+    assert thought["title"] in {"Open loop hiding in the graph", "Deadline path worth checking"}
+    assert thought["why_now"]
+    assert "Renewal" in thought["insight"]
+    assert thought["score"] > 0
+    assert thought["evidence"]
+
+
+def test_init_db_migrates_old_edge_schema(tmp_path: Path):
+    db = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript("""
+    CREATE TABLE edges(id TEXT PRIMARY KEY,src_id TEXT,dst_id TEXT,relation TEXT,source_path TEXT,confidence REAL,evidence_text TEXT,created_at TEXT,updated_at TEXT);
+    """)
+    conn.close()
+
+    conn = sqlite3.connect(db)
+    from mneme.core import init_db
+    init_db(conn)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(edges)")}
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list(edges)")}
+    conn.close()
+
+    assert {"status", "strength", "source_type", "metadata_json"}.issubset(columns)
+    assert "idx_edges_status" in indexes
+
+
+def test_research_resolution_writes_note_and_weighted_edges(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "slug": "school-clubs",
+        "title": "School clubs resolved",
+        "date": "2026-04-26",
+        "links": ["People/example-child"],
+        "sources_checked": ["email", "payment", "calendar", "vault"],
+        "claims": [
+            {
+                "subject": "Example Child",
+                "subject_type": "person",
+                "predicate": "attends_activity",
+                "object": "Handwriting Club",
+                "object_type": "activity",
+                "confidence": 0.94,
+                "strength": 0.93,
+                "certainty": "confirmed",
+                "source_type": "payment",
+                "evidence": "Payment receipt and school brochure confirm the club timing.",
+            },
+            {
+                "subject": "Example Child",
+                "subject_type": "person",
+                "predicate": "requested_activity",
+                "object": "Art Club",
+                "object_type": "activity",
+                "confidence": 0.76,
+                "strength": 0.72,
+                "certainty": "pending",
+                "source_type": "email",
+                "evidence": "Email asked school to add the club if a place is still available.",
+            },
+        ],
+        "unresolved": ["Morning club paid but child assignment is unclear."],
+    }
+
+    result = write_research_resolution(vault, db, payload)
+
+    assert result["note_path"] == "Sources/2026-04-26_school-clubs-resolution.md"
+    note = (vault / result["note_path"]).read_text(encoding="utf-8")
+    assert "Payment receipt and school brochure" in note
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        """
+        SELECT a.name,e.relation,b.name,e.status,e.strength,e.confidence,e.source_type,e.evidence_text,e.source_path
+        FROM edges e JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+        ORDER BY e.relation
+        """
+    ).fetchall()
+    debug_count = conn.execute("SELECT count(*) FROM edge_debug_log WHERE event='research_writeback'").fetchone()[0]
+    conn.close()
+    assert ("Example Child", "attends_activity", "Handwriting Club", "active", 0.93, 0.94, "payment", "Payment receipt and school brochure confirm the club timing.", result["note_path"]) in rows
+    assert ("Example Child", "requested_activity", "Art Club", "candidate", 0.72, 0.76, "email", "Email asked school to add the club if a place is still available.", result["note_path"]) in rows
+    assert debug_count == 2
+
+
+def test_research_resolution_missing_evidence_stays_candidate_and_candidates_do_not_drive_walk(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "slug": "unsupported",
+        "title": "Unsupported claim",
+        "date": "2026-04-26",
+        "sources_checked": ["vault"],
+        "claims": [
+            {
+                "subject": "Example Child",
+                "subject_type": "person",
+                "predicate": "attends_activity",
+                "object": "Unsupported Club",
+                "object_type": "activity",
+                "confidence": 0.98,
+                "strength": 0.98,
+                "certainty": "confirmed",
+                "source_type": "user_confirmed",
+                "evidence": "",
+            }
+        ],
+    }
+
+    write_research_resolution(vault, db, payload)
+
+    conn = sqlite3.connect(db)
+    status = conn.execute("SELECT status FROM edges").fetchone()[0]
+    child_id = stable_id("person", "Example Child")
+    conn.close()
+    path = walk_graph(db, seed_id=child_id, hops=2)
+    assert status == "candidate"
+    assert [node["name"] for node in path] == ["Example Child"]
+
+
+def test_research_resolution_explicit_active_without_evidence_is_candidate(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "slug": "explicit-active-unsupported",
+        "title": "Explicit active unsupported",
+        "date": "2026-04-26",
+        "claims": [
+            {
+                "subject": "Example Child",
+                "predicate": "attends_activity",
+                "object": "Unsupported Club",
+                "confidence": 0.99,
+                "certainty": "confirmed",
+                "status": "active",
+                "evidence": "",
+            }
+        ],
+    }
+
+    write_research_resolution(vault, db, payload)
+
+    conn = sqlite3.connect(db)
+    status = conn.execute("SELECT status FROM edges WHERE relation='attends_activity'").fetchone()[0]
+    conn.close()
+    assert status == "candidate"
+
+
+def test_research_resolution_edges_survive_update_rebuild(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "slug": "durable-resolution",
+        "title": "Durable resolution",
+        "date": "2026-04-26",
+        "sources_checked": ["receipt"],
+        "claims": [
+            {
+                "subject": "Example Child",
+                "subject_type": "person",
+                "predicate": "attends_activity",
+                "object": "Handwriting Club",
+                "object_type": "activity",
+                "confidence": 0.95,
+                "strength": 0.91,
+                "certainty": "confirmed",
+                "source_type": "receipt",
+                "evidence": "A receipt confirms Example Child for Handwriting Club, including literal --> and } --> marker text.",
+            }
+        ],
+    }
+
+    write_research_resolution(vault, db, payload)
+    update_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        """
+        SELECT a.name,e.relation,b.name,e.status,e.strength,e.confidence,e.source_type
+        FROM edges e JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+        WHERE e.relation='attends_activity'
+        """
+    ).fetchone()
+    debug_count = conn.execute("SELECT count(*) FROM edge_debug_log WHERE event='research_writeback'").fetchone()[0]
+    conn.close()
+    assert row == ("Example Child", "attends_activity", "Handwriting Club", "active", 0.91, 0.95, "receipt")
+    assert debug_count == 1
+
+
+def test_candidate_observation_edges_are_not_used_in_thought_paths(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Project.md").write_text("# Project\n\n- [ ] Waiting for confirmation by 2026-05-01\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE edges SET status='candidate' WHERE relation='has_blocked'")
+    conn.commit()
+    conn.close()
+
+    candidates = list_thought_candidates(db, limit=1)
+    names = [node["name"] for node in candidates[0]["path"]]
+    assert names == ["Project"]
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):
