@@ -73,6 +73,22 @@ Privacy-focused defaults:
 - Generated cards named `thought_*.svg` / `thought_*.png` and SQLite files are blocked by the included privacy scan.
 - Public examples are intentionally small and fictional.
 
+## Backup and restore policy
+
+Mneme stores meaningful memory state in SQLite, so backup is part of the workflow, not an afterthought.
+
+Public Mneme remains local-first and does not make cloud calls by default. For any private deployment that runs scheduled thought cards, validation, migrations, or rebuilds:
+
+1. Take a SQLite-consistent snapshot before risky work. Use SQLite's backup API or `.backup`; do not rely on copying a live SQLite file as the only backup.
+2. Include a manifest with integrity data: creation time, source DB path, checksums, and counts such as edges/synapses by status.
+3. Compress and encrypt the backup before it leaves the machine.
+4. Verify decryptability and `PRAGMA integrity_check` before considering the backup valid.
+5. Keep local encrypted backups and a restore script that makes a safety copy before replacing the live DB.
+6. If the user wants Google Drive backup, use Google Workspace/Drive tooling such as `gws drive +upload` first. Use rclone or other remotes only as fallback.
+7. Never print, commit, or send the backup passphrase. If the encrypted backup is stored off-box, the passphrase must be stored separately somewhere safe or cloud restore will be impossible after machine loss.
+
+A private deployment can schedule this as: snapshot -> manifest/checksum -> encrypt -> verify -> upload to Drive -> periodically test restore verification.
+
 ## Install
 
 One-command install/update on Linux/macOS:
