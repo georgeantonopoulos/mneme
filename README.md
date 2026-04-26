@@ -1,6 +1,6 @@
 # Mneme
 
-![Mneme — graph memory for AI agents](assets/mneme-header.png)
+![Mneme — graph memory for AI agents](assets/mneme-header_v002.png)
 
 **Mneme** is a local-first graph memory layer for AI agents.
 
