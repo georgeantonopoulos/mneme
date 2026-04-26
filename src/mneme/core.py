@@ -21,6 +21,188 @@ STATUS_WORDS = {
     "risk": ["deadline", "expires", "due", "appeal", "fine", "penalty", "urgent", "overdue", "risk"],
 }
 DEFAULT_HINTS = ["deadline", "project", "invoice", "lease", "tax", "school", "move", "certification", "payment"]
+DEFAULT_RELATIONSHIP_TYPES = [
+    {
+        "id": "links_to",
+        "label": "links to",
+        "inverse_id": "linked_from",
+        "category": "reference",
+        "domain_type": "note",
+        "range_type": "any",
+        "description": "Explicit Markdown wikilink/reference; useful for navigation but not necessarily a semantic real-world relationship.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "linked_from",
+        "label": "linked from",
+        "inverse_id": "links_to",
+        "category": "reference",
+        "domain_type": "any",
+        "range_type": "note",
+        "description": "Inverse of links_to for traversal.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_heading",
+        "label": "has heading",
+        "inverse_id": "heading_of",
+        "category": "structure",
+        "domain_type": "note",
+        "range_type": "heading",
+        "description": "Markdown heading contained in a source note.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "mentions_email",
+        "label": "mentions email",
+        "inverse_id": "email_mentioned_by",
+        "category": "extraction",
+        "domain_type": "note",
+        "range_type": "email",
+        "description": "Email address extracted from source text.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "mentions_date",
+        "label": "mentions date",
+        "inverse_id": "date_mentioned_by",
+        "category": "extraction",
+        "domain_type": "observation",
+        "range_type": "date",
+        "description": "Date-like phrase extracted from an observation.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_fact",
+        "label": "has fact",
+        "inverse_id": "fact_of",
+        "category": "observation",
+        "domain_type": "note",
+        "range_type": "observation",
+        "description": "Scored factual observation extracted from a task or bullet.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_blocked",
+        "label": "has blocked item",
+        "inverse_id": "blocked_item_of",
+        "category": "observation",
+        "domain_type": "note",
+        "range_type": "observation",
+        "description": "Open loop or blocked task extracted from a task or bullet.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_risk",
+        "label": "has risk",
+        "inverse_id": "risk_of",
+        "category": "observation",
+        "domain_type": "note",
+        "range_type": "observation",
+        "description": "Risk/deadline-like observation extracted from a task or bullet.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_done",
+        "label": "has done item",
+        "inverse_id": "done_item_of",
+        "category": "observation",
+        "domain_type": "note",
+        "range_type": "observation",
+        "description": "Completed/done observation extracted from a task or bullet.",
+        "requires_validation": False,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "belongs_to",
+        "label": "belongs to",
+        "inverse_id": "has_part",
+        "category": "semantic",
+        "domain_type": "any",
+        "range_type": "project",
+        "description": "Semantic membership/context relationship, e.g. an item belongs to a project or higher-level context. Requires evidence validation.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "has_part",
+        "label": "has part",
+        "inverse_id": "belongs_to",
+        "category": "semantic",
+        "domain_type": "project",
+        "range_type": "any",
+        "description": "Inverse of belongs_to.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "located_in",
+        "label": "located in",
+        "inverse_id": "contains_location",
+        "category": "semantic",
+        "domain_type": "place",
+        "range_type": "place",
+        "description": "Semantic location relationship. Requires evidence validation.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": True,
+    },
+    {
+        "id": "contains_location",
+        "label": "contains location",
+        "inverse_id": "located_in",
+        "category": "semantic",
+        "domain_type": "place",
+        "range_type": "place",
+        "description": "Inverse of located_in.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": True,
+    },
+    {
+        "id": "father_of",
+        "label": "father of",
+        "inverse_id": "child_of",
+        "category": "semantic",
+        "domain_type": "person",
+        "range_type": "person",
+        "description": "Semantic family relationship. Requires explicit evidence or user confirmation.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    },
+    {
+        "id": "part_of",
+        "label": "part of",
+        "inverse_id": "has_part",
+        "category": "semantic",
+        "domain_type": "any",
+        "range_type": "any",
+        "description": "Semantic part-whole relationship. Requires evidence validation.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": True,
+    },
+]
 
 
 def now_iso() -> str:
@@ -31,10 +213,57 @@ def stable_id(kind: str, name: str) -> str:
     return hashlib.sha1(f"{kind}:{name.lower()}".encode()).hexdigest()[:16]
 
 
+def relationship_type(relation_id: str) -> dict:
+    for rel in DEFAULT_RELATIONSHIP_TYPES:
+        if rel["id"] == relation_id:
+            return dict(rel)
+    return {
+        "id": relation_id,
+        "label": relation_id.replace("_", " "),
+        "inverse_id": None,
+        "category": "unknown",
+        "domain_type": "any",
+        "range_type": "any",
+        "description": "Unknown relationship type. Treat as requiring validation before semantic use.",
+        "requires_validation": True,
+        "symmetric": False,
+        "transitive": False,
+    }
+
+
+def seed_relationship_types(conn: sqlite3.Connection) -> None:
+    conn.executemany(
+        """
+        INSERT INTO relationship_types(id,label,inverse_id,category,domain_type,range_type,description,requires_validation,symmetric,transitive)
+        VALUES(:id,:label,:inverse_id,:category,:domain_type,:range_type,:description,:requires_validation,:symmetric,:transitive)
+        ON CONFLICT(id) DO UPDATE SET
+          label=excluded.label,
+          inverse_id=excluded.inverse_id,
+          category=excluded.category,
+          domain_type=excluded.domain_type,
+          range_type=excluded.range_type,
+          description=excluded.description,
+          requires_validation=excluded.requires_validation,
+          symmetric=excluded.symmetric,
+          transitive=excluded.transitive
+        """,
+        [
+            {
+                **rel,
+                "requires_validation": int(rel["requires_validation"]),
+                "symmetric": int(rel["symmetric"]),
+                "transitive": int(rel["transitive"]),
+            }
+            for rel in DEFAULT_RELATIONSHIP_TYPES
+        ],
+    )
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,source_path TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,confidence REAL DEFAULT 1.0,metadata_json TEXT DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS relationship_types(id TEXT PRIMARY KEY,label TEXT NOT NULL,inverse_id TEXT,category TEXT NOT NULL,domain_type TEXT DEFAULT 'any',range_type TEXT DEFAULT 'any',description TEXT DEFAULT '',requires_validation INTEGER DEFAULT 1,symmetric INTEGER DEFAULT 0,transitive INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL);
@@ -44,6 +273,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
     CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
     """)
+    seed_relationship_types(conn)
 
 
 def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=None):
@@ -67,6 +297,7 @@ def edge_creation_thinking(relation: str, source_path: str, evidence: str, confi
         rationale = rationale_by_relation.get(relation, "Extracted by Mneme ingestion using deterministic source parsing.")
     return {
         "relation": relation,
+        "relationship_type": relationship_type(relation),
         "source_path": source_path,
         "evidence_text": evidence[:500] if evidence else "",
         "confidence": confidence,
@@ -258,6 +489,7 @@ def explain_edge(db_path: Path, edge_id: str) -> dict:
         "edge": {
             "id": edge_row[0],
             "relation": edge_row[1],
+            "relationship_type": relationship_type(edge_row[1]),
             "source_path": edge_row[2],
             "confidence": edge_row[3],
             "evidence_text": edge_row[4],

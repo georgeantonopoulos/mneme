@@ -106,7 +106,9 @@ Useful flags:
 mneme explain-edge <edge-id> --db /tmp/mneme.sqlite
 ```
 
-This prints the edge, source/destination nodes, evidence text, and debug timeline. Ingest-created edges include creation rationale such as “explicit Markdown wikilink” versus “scored task/bullet observation,” so graph workbench UIs can show why two nodes are connected instead of only drawing a line.
+This prints the edge, source/destination nodes, evidence text, relationship type metadata, and debug timeline. Ingest-created edges include creation rationale such as “explicit Markdown wikilink” versus “scored task/bullet observation,” so graph workbench UIs can show why two nodes are connected instead of only drawing a line.
+
+Mneme seeds a small relationship ontology in SQLite. Structural/reference relations such as `links_to` are safe navigational edges; semantic relations such as `belongs_to`, `located_in`, `part_of`, and `father_of` are marked as requiring validation before agents treat them as real-world claims.
 
 ### Graph workbench / UI target
 
@@ -134,10 +136,11 @@ A private deployment can mount the workbench behind an existing authenticated pe
 
 1. Markdown notes become graph nodes.
 2. Wikilinks, headings, tasks, dates, and emails become connected nodes/edges.
-3. Each edge gets a debug-log entry with source path, evidence text, confidence, and creation rationale.
-4. High-signal bullets and tasks become observations.
-5. Mneme chooses a biased seed node, walks nearby relationships, and creates a short thought.
-6. The renderer writes a card to the output directory.
+3. Each edge is classified through a seeded relationship ontology: reference/structural/extraction edges are navigational, while semantic predicates such as `belongs_to` and `located_in` require validation before use as claims.
+4. Each edge gets a debug-log entry with source path, evidence text, confidence, and creation rationale.
+5. High-signal bullets and tasks become observations.
+6. Mneme chooses a biased seed node, walks nearby relationships, and creates a short thought.
+7. The renderer writes a card to the output directory.
 
 This prototype is intentionally simple: it does not claim a relationship is true just because two things co-occur. Treat cards as prompts for review, not facts.
 

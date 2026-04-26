@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import explain_edge, generate_thought, ingest_vault, log_edge_event, walk_graph
+from mneme.core import explain_edge, generate_thought, ingest_vault, log_edge_event, relationship_type, walk_graph
 from mneme.render import render_card, safe_basename
 
 
@@ -126,6 +126,40 @@ def test_explain_edge_returns_debug_timeline(tmp_path: Path):
     assert explanation["edge"]["dst"]["name"] == "Beta"
     assert [event["event"] for event in explanation["debug_log"]] == ["created", "validated"]
     assert explanation["debug_log"][1]["thinking"]["rationale"] == "Example validation rationale"
+
+
+def test_relationship_ontology_is_seeded_and_explained(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\nRelated: [[Beta]]\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    ontology = {
+        row[0]: {"category": row[1], "requires_validation": row[2], "inverse": row[3]}
+        for row in conn.execute(
+            "SELECT id, category, requires_validation, inverse_id FROM relationship_types"
+        )
+    }
+    edge_id = conn.execute("SELECT id FROM edges WHERE relation='links_to'").fetchone()[0]
+    conn.close()
+
+    assert ontology["links_to"] == {"category": "reference", "requires_validation": 0, "inverse": "linked_from"}
+    assert ontology["belongs_to"] == {"category": "semantic", "requires_validation": 1, "inverse": "has_part"}
+    assert ontology["located_in"] == {"category": "semantic", "requires_validation": 1, "inverse": "contains_location"}
+
+    explanation = explain_edge(db, edge_id)
+    assert explanation["edge"]["relationship_type"]["id"] == "links_to"
+    assert explanation["edge"]["relationship_type"]["category"] == "reference"
+    assert "not necessarily a semantic" in explanation["edge"]["relationship_type"]["description"]
+
+
+def test_relationship_type_helper_returns_default_unknown():
+    rel = relationship_type("made_up_relation")
+    assert rel["id"] == "made_up_relation"
+    assert rel["category"] == "unknown"
+    assert rel["requires_validation"] is True
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):
