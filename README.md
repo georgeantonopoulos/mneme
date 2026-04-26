@@ -4,37 +4,74 @@
 
 **Mneme** is a local-first graph memory layer for AI agents.
 
-It turns a folder of Markdown notes into a SQLite graph, walks that graph, and renders compact visual **thought path** cards that an agent can surface proactively.
+It turns Markdown notes into an inspectable SQLite memory graph: notes become nodes, links/tasks/bullets become evidence-backed edges and observations, and agents can use the graph to generate thought paths, audit why relationships exist, or build prompt-time context packs.
 
 > Mneme (Μνήμη) means memory.
 
+## Current status
+
+Mneme is an **alpha** public package. The public repository contains the sanitized, reusable core:
+
+- Markdown vault ingestion
+- SQLite graph storage
+- relationship ontology seeding
+- edge evidence + debug/audit logs
+- thought-path generation
+- SVG/PNG thought-card rendering
+- privacy-first rebuild defaults and scans
+- CLI commands for ingestion, thought generation, and edge explanation
+
+The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
+
 ## What it does
 
-- Ingests Markdown notes from a vault/folder
-- Extracts notes, wikilinks, headings, tasks, dates, emails, and high-signal observations
-- Stores nodes, edges, observations, generated thoughts, and edge debug logs in SQLite
-- Performs biased graph walks over unresolved, risky, recent, or connected items
-- Renders thought cards as SVG, with optional PNG conversion via ImageMagick
-- Provides a CLI suitable for cron jobs or agent runtimes
-- Can back an optional local graph workbench UI; users should choose where that UI is served and where generated DB/assets live
+- Ingests Markdown notes from a vault/folder.
+- Extracts notes, wikilinks, headings, tasks, dates, email-like strings, and high-signal observations.
+- Stores nodes, edges, observations, generated thoughts, relationship types, and edge debug logs in SQLite.
+- Distinguishes **reference/structural edges** from **semantic claims** through a seeded relationship ontology.
+- Records why an edge exists: source path, evidence text, confidence, extraction rule, and later validation/audit events.
+- Performs biased graph walks over unresolved, risky, recent, or connected items.
+- Renders compact thought cards as SVG, with optional PNG conversion via ImageMagick.
+- Provides a CLI suitable for cron jobs, local agent runtimes, and private graph workbenches.
+
+## Mental model
+
+Mneme treats memory as an auditable graph:
+
+```text
+Markdown notes
+  -> nodes / observations / evidence-backed edges
+  -> SQLite graph + audit log
+  -> graph walks, explanations, workbench APIs, or prompt context
+```
+
+A line between two nodes is not automatically a fact. Mneme separates:
+
+- **Reference edges** — e.g. `links_to`, created from explicit Markdown wikilinks. Useful for navigation, but not proof of a real-world relationship.
+- **Extraction edges** — e.g. `mentions_date`, `mentions_email`, created from text patterns.
+- **Observation edges** — e.g. `has_fact`, `has_risk`, `has_blocked`, created from scored bullets/tasks.
+- **Semantic relationships** — e.g. `belongs_to`, `located_in`, `part_of`, `father_of`. These are marked as requiring validation before an agent treats them as real-world claims.
+
+This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
 
 ## Privacy model
 
 Mneme is local-first:
 
-- No network calls
+- No network calls in the public core
 - No telemetry
-- No LLM dependency
+- No required LLM dependency
 - No cloud database
 - SQLite stays wherever you put it
 
-Important: generated SQLite databases, JSON output, SVG/PNG cards, and logs can contain snippets from your notes. Do **not** commit generated databases, private cards, or real vault content to public repositories.
+Important: generated SQLite databases, JSON output, SVG/PNG cards, and logs can contain snippets from your notes. Do **not** commit generated databases, private cards, logs, or real vault content to public repositories.
 
 Privacy-focused defaults:
 
-- `ingest` and `run-once` rebuild the graph by default, so stale private nodes/edges are removed when a DB is reused.
+- `ingest` and `run-once` rebuild graph tables by default, so stale private nodes/edges are removed when a DB is reused.
 - Symlinked Markdown files are skipped by default to avoid reading files outside the vault.
 - Generated cards named `thought_*.svg` / `thought_*.png` and SQLite files are blocked by the included privacy scan.
+- Public examples are intentionally small and fictional.
 
 ## Install
 
@@ -64,7 +101,7 @@ Use `/tmp` or another scratch location for generated outputs:
 mneme run-once --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 ```
 
-The command prints JSON with the generated title, path, and image path. Agent runtimes can use that image as a proactive visual memory nudge.
+The command prints JSON with the generated title, thought path, and image path. Agent runtimes can use that image as a proactive visual memory nudge.
 
 ## CLI
 
@@ -106,13 +143,46 @@ Useful flags:
 mneme explain-edge <edge-id> --db /tmp/mneme.sqlite
 ```
 
-This prints the edge, source/destination nodes, evidence text, relationship type metadata, and debug timeline. Ingest-created edges include creation rationale such as “explicit Markdown wikilink” versus “scored task/bullet observation,” so graph workbench UIs can show why two nodes are connected instead of only drawing a line.
+This prints:
 
-Mneme seeds a small relationship ontology in SQLite. Structural/reference relations such as `links_to` are safe navigational edges; semantic relations such as `belongs_to`, `located_in`, `part_of`, and `father_of` are marked as requiring validation before agents treat them as real-world claims.
+- the edge and its source/destination nodes
+- evidence text and source path
+- relationship type metadata
+- whether the relationship type requires validation
+- debug/audit timeline entries
 
-### Graph workbench / UI target
+Example use case: a graph workbench can show why two nodes are connected instead of merely drawing a line.
 
-Mneme's graph-building layer is intentionally location-agnostic: callers pass `--vault`, `--db`, and `--out`. A UI/workbench should preserve that model rather than hard-coding a deployment path.
+## Relationship ontology
+
+Mneme seeds a small relationship ontology in SQLite. Current categories include:
+
+| Category | Examples | Meaning |
+|---|---|---|
+| `reference` | `links_to`, `linked_from` | Navigational Markdown references. Useful, but not proof of a semantic claim. |
+| `structure` | `has_heading` | Document structure extracted from Markdown. |
+| `extraction` | `mentions_date`, `mentions_email` | Pattern-extracted facts from text. |
+| `observation` | `has_fact`, `has_risk`, `has_blocked`, `has_done` | Scored bullets/tasks that may be useful to an agent. |
+| `semantic` | `belongs_to`, `located_in`, `part_of`, `father_of` | Real-world claims; should be validated before being treated as facts. |
+
+Unknown relationship types default to validation-required.
+
+## Edge audit log
+
+Every created edge can carry a debug entry explaining its origin. For example, an edge generated from `[[Beta]]` stores that it came from an explicit Markdown wikilink, not from semantic reasoning.
+
+Agents and UIs should use this audit trail to answer:
+
+- Why does this edge exist?
+- Which source text created it?
+- Is it a navigational reference or a semantic claim?
+- Was it later validated, rejected, or superseded?
+
+The public package currently logs creation events. Private deployments can extend the same table with validation, rejection, or lifecycle events.
+
+## Graph workbench / UI design
+
+Mneme's graph-building layer is intentionally location-agnostic: callers pass `--vault`, `--db`, and `--out`. A workbench should preserve that model rather than hard-coding deployment paths.
 
 Recommended public packaging shape:
 
@@ -121,7 +191,7 @@ mneme ingest --vault /path/to/markdown --db /private/path/mneme.sqlite
 mneme serve --db /private/path/mneme.sqlite --host 127.0.0.1 --port 8002 --mount /mneme
 ```
 
-The served workbench should be optional, read-only by default, and configurable for:
+`mneme serve` is a design target, not yet part of the public CLI. A served workbench should be optional, read-only by default, and configurable for:
 
 - graph DB path
 - host/port
@@ -130,19 +200,52 @@ The served workbench should be optional, read-only by default, and configurable 
 - output/static asset directory
 - node/link limits
 
-A private deployment can mount the workbench behind an existing authenticated personal tools route. Other users should choose their own local/private route and storage locations.
+For large graphs, workbench implementations should:
 
-## How it works
+- auto-frame from actual node bounds
+- support pointer events: drag, pan, pinch-zoom, and double-tap/frame on mobile
+- merge aliases/path entities/display-title notes into canonical nodes before rendering
+- cull offscreen nodes/links
+- cap physics simulation work
+- display relationship type, evidence, source path, and audit status in the details panel
+
+## Agent / prompt-time retrieval direction
+
+Mneme's long-term role is not just thought cards. It should also act as a fast context selector for agents:
+
+```text
+user prompt
+  -> local Mneme retrieval over active/high-confidence graph context
+  -> compact evidence pack
+  -> model response grounded in source-backed memory
+```
+
+Recommended retrieval scoring direction:
+
+1. active semantic relationships
+2. strong active provenance/reference relationships
+3. high `strength × confidence`
+4. trusted source type
+5. freshness / cooldown / reinforcement age
+6. exact entity and lexical match
+7. observation fallback
+8. candidate or weak co-occurrence edges last
+
+Killed/rejected edges should be excluded, and stale/low-strength/noisy observations should be demoted even when they lexically match the prompt.
+
+This prompt-time retrieval layer is under private dogfood and is not yet included as a public CLI command.
+
+## How it works today
 
 1. Markdown notes become graph nodes.
-2. Wikilinks, headings, tasks, dates, and emails become connected nodes/edges.
-3. Each edge is classified through a seeded relationship ontology: reference/structural/extraction edges are navigational, while semantic predicates such as `belongs_to` and `located_in` require validation before use as claims.
+2. Wikilinks, headings, tasks, dates, and email-like strings become connected nodes/edges.
+3. Each edge is classified through the seeded relationship ontology.
 4. Each edge gets a debug-log entry with source path, evidence text, confidence, and creation rationale.
 5. High-signal bullets and tasks become observations.
 6. Mneme chooses a biased seed node, walks nearby relationships, and creates a short thought.
 7. The renderer writes a card to the output directory.
 
-This prototype is intentionally simple: it does not claim a relationship is true just because two things co-occur. Treat cards as prompts for review, not facts.
+This prototype is intentionally conservative: it does not claim a relationship is true just because two things co-occur. Treat thought cards as prompts for review unless the edge audit trail and relationship type support stronger claims.
 
 ## Safety checks before publishing changes
 
@@ -158,6 +261,26 @@ The privacy scan fails on common generated artifacts, private paths, emails, sec
 MNEME_FORBIDDEN_TERMS="private-project-name,internal-domain" python scripts/privacy_scan.py
 ```
 
-## Status
+Before committing, also check for generated/private files:
 
-Phase 1 prototype. Next improvements: configurable ontologies, contradiction detection, stale open-loop detection, semantic traversal, richer render themes, and agent framework adapters.
+```bash
+find . -path ./.git -prune -o -name '*.sqlite*' -o -name 'thought_*.svg' -o -name 'thought_*.png' -o -name '*.pyc' -o -name '__pycache__' -print
+```
+
+## Roadmap
+
+Near-term:
+
+- configurable ontology files
+- graph workbench API/server
+- active/candidate/killed edge lifecycle helpers
+- canonical entity/alias resolution
+- prompt-time retrieval CLI/API
+- contradiction and stale open-loop detection
+
+Longer-term:
+
+- richer render themes
+- agent framework adapters
+- optional vector search for fuzzy recall
+- optional graph-native projection while keeping SQLite as the local audit ledger
