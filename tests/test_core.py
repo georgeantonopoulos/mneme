@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import explain_edge, generate_thought, ingest_vault, log_edge_event, relationship_type, walk_graph
+from mneme.core import create_config, doctor, explain_edge, generate_thought, ingest_vault, load_config, log_edge_event, relationship_type, update_vault, walk_graph, write_note
 from mneme.render import render_card, safe_basename
 
 
@@ -160,6 +160,95 @@ def test_relationship_type_helper_returns_default_unknown():
     assert rel["id"] == "made_up_relation"
     assert rel["category"] == "unknown"
     assert rel["requires_validation"] is True
+
+
+def test_update_vault_removes_deleted_note_without_deleting_thoughts(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    alpha = vault / "alpha.md"
+    beta = vault / "beta.md"
+    alpha.write_text("# Alpha\n\nRelated: [[Beta]]\n", encoding="utf-8")
+    beta.write_text("# Beta\n\n- Waiting for reply\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO thoughts(id, seed_id, path_json, title, insight, action, image_path, created_at) VALUES('t1', NULL, '[]', 'Old', 'Keep', '', NULL, 'now')"
+    )
+    conn.commit()
+    conn.close()
+
+    beta.unlink()
+    stats = update_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    observations = {row[0] for row in conn.execute("SELECT text FROM observations")}
+    thought_count = conn.execute("SELECT count(*) FROM thoughts").fetchone()[0]
+    conn.close()
+    assert stats["notes_read"] == 1
+    assert "Waiting for reply" not in observations
+    assert thought_count == 1
+
+
+def test_write_note_create_append_and_reject_path_escape(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    created = write_note(vault, "Projects/alpha.md", "# Alpha\n", mode="create")
+    assert created["path"] == "Projects/alpha.md"
+    assert (vault / "Projects" / "alpha.md").read_text(encoding="utf-8") == "# Alpha\n"
+
+    appended = write_note(vault, "Projects/alpha.md", "- Next action\n", mode="append")
+    assert appended["mode"] == "append"
+    assert (vault / "Projects" / "alpha.md").read_text(encoding="utf-8").endswith("\n- Next action\n")
+
+    try:
+        write_note(vault, "../escape.md", "bad", mode="create")
+    except ValueError as exc:
+        assert "inside the vault" in str(exc)
+    else:
+        raise AssertionError("path escape was accepted")
+
+
+def test_installer_script_exists_and_mentions_pipx_or_pip():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "install.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "mneme" in text.lower()
+    assert "pipx" in text or "pip install" in text
+
+
+def test_create_config_and_doctor_reports_ready(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "note.md").write_text("# Note\n\n- Due May 1\n", encoding="utf-8")
+    config_path = tmp_path / "mneme.json"
+
+    created = create_config(config_path, vault=vault, db=tmp_path / "mneme.sqlite", out=tmp_path / "out", hints=["due", "project"])
+    loaded = load_config(config_path)
+
+    assert created["config"] == str(config_path)
+    assert loaded["vault"] == str(vault)
+    assert loaded["db"].endswith("mneme.sqlite")
+    assert loaded["out"].endswith("out")
+    assert loaded["hints"] == ["due", "project"]
+
+    report = doctor(config_path=config_path)
+    assert report["ok"] is True
+    assert report["checks"]["vault"]["ok"] is True
+    assert report["checks"]["markdown_notes"]["count"] == 1
+    assert "next" in report
+
+
+def test_doctor_reports_missing_vault(tmp_path: Path):
+    config_path = tmp_path / "mneme.json"
+    create_config(config_path, vault=tmp_path / "missing", db=tmp_path / "mneme.sqlite", out=tmp_path / "out")
+
+    report = doctor(config_path=config_path)
+
+    assert report["ok"] is False
+    assert report["checks"]["vault"]["ok"] is False
+    assert "does not exist" in report["checks"]["vault"]["message"]
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):

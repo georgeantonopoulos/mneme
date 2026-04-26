@@ -75,6 +75,14 @@ Privacy-focused defaults:
 
 ## Install
 
+One-command install/update on Linux/macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash
+```
+
+Manual install from a checkout:
+
 ```bash
 git clone <this-repository-url>
 cd mneme
@@ -95,7 +103,23 @@ python -m pytest -q
 
 ## Quick start
 
-Use `/tmp` or another scratch location for generated outputs:
+Configure Mneme once, validate it, then use short commands:
+
+```bash
+mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
+mneme doctor
+mneme update
+mneme thought
+```
+
+You can keep multiple configs if needed:
+
+```bash
+mneme --config /tmp/project-mneme.json init --vault ./examples/vault --db /tmp/project.sqlite --out /tmp/project_out
+mneme --config /tmp/project-mneme.json run-once
+```
+
+Or run one-off commands with explicit paths:
 
 ```bash
 mneme run-once --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
@@ -105,17 +129,42 @@ The command prints JSON with the generated title, thought path, and image path. 
 
 ## CLI
 
+### Create and validate config
+
+```bash
+mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
+mneme doctor
+```
+
+Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config. Once configured, `ingest`, `update`, `thought`, `run-once`, and `write` can read missing `--vault`, `--db`, or `--out` values from config.
+
 ### Ingest a Markdown vault
 
 ```bash
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite
 ```
 
-By default this rebuilds graph tables to avoid stale data. If you explicitly want append/update behaviour:
+By default this rebuilds graph tables to avoid stale data. If you want to refresh the graph while preserving generated thought history, use `update`:
+
+```bash
+mneme update --vault ./examples/vault --db /tmp/mneme.sqlite
+```
+
+If you explicitly want append-only behaviour:
 
 ```bash
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite --append
 ```
+
+### Safely write a Markdown note
+
+```bash
+mneme write --vault ./examples/vault --path Projects/new-note.md --mode create --content '# New note
+'
+printf -- '- Follow up\n' | mneme write --vault ./examples/vault --path Projects/new-note.md --mode append
+```
+
+`mneme write` only accepts relative `.md` paths that resolve inside the vault. Modes are `create`, `append`, and `overwrite`.
 
 ### Generate one thought from an existing DB
 

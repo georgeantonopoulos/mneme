@@ -21,6 +21,7 @@ STATUS_WORDS = {
     "risk": ["deadline", "expires", "due", "appeal", "fine", "penalty", "urgent", "overdue", "risk"],
 }
 DEFAULT_HINTS = ["deadline", "project", "invoice", "lease", "tax", "school", "move", "certification", "payment"]
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "mneme" / "config.json"
 DEFAULT_RELATIONSHIP_TYPES = [
     {
         "id": "links_to",
@@ -209,6 +210,66 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
+def create_config(config_path: Path | None = None, vault: Path | None = None, db: Path | None = None, out: Path | None = None, hints: list[str] | None = None) -> dict:
+    path = config_path or DEFAULT_CONFIG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "vault": str((vault or Path.cwd()).expanduser()),
+        "db": str((db or (Path.home() / ".local" / "share" / "mneme" / "mneme.sqlite")).expanduser()),
+        "out": str((out or (Path.home() / ".local" / "share" / "mneme" / "out")).expanduser()),
+        "hints": hints or DEFAULT_HINTS,
+        "follow_symlinks": False,
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"config": str(path), **payload}
+
+
+def load_config(config_path: Path | None = None) -> dict:
+    path = config_path or DEFAULT_CONFIG_PATH
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def doctor(config_path: Path | None = None) -> dict:
+    path = config_path or DEFAULT_CONFIG_PATH
+    checks: dict[str, dict] = {}
+    if not path.exists():
+        return {
+            "ok": False,
+            "config": str(path),
+            "checks": {"config": {"ok": False, "message": "config file does not exist; run `mneme init`"}},
+            "next": "Run `mneme init --vault /path/to/vault`.",
+        }
+    checks["config"] = {"ok": True, "message": "config file found"}
+    try:
+        cfg = load_config(path)
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "config": str(path), "checks": {"config": {"ok": False, "message": f"invalid JSON: {exc}"}}, "next": "Fix or recreate the config with `mneme init --force`."}
+
+    vault = Path(cfg.get("vault", "")).expanduser()
+    db = Path(cfg.get("db", "")).expanduser()
+    out = Path(cfg.get("out", "")).expanduser()
+    if not vault.exists():
+        checks["vault"] = {"ok": False, "path": str(vault), "message": "vault does not exist"}
+        note_count = 0
+    elif not vault.is_dir():
+        checks["vault"] = {"ok": False, "path": str(vault), "message": "vault is not a directory"}
+        note_count = 0
+    else:
+        note_count = sum(1 for _ in iter_markdown(vault, {".git", "node_modules"}, follow_symlinks=bool(cfg.get("follow_symlinks", False))))
+        checks["vault"] = {"ok": True, "path": str(vault), "message": "vault found"}
+    checks["markdown_notes"] = {"ok": note_count > 0, "count": note_count, "message": f"{note_count} markdown notes found"}
+    checks["db_parent"] = {"ok": db.parent.exists() or db.parent.parent.exists(), "path": str(db.parent), "message": "database parent is creatable" if db.parent.exists() or db.parent.parent.exists() else "database parent is not creatable"}
+    checks["out_parent"] = {"ok": out.parent.exists() or out.parent.parent.exists(), "path": str(out.parent), "message": "output parent is creatable" if out.parent.exists() or out.parent.parent.exists() else "output parent is not creatable"}
+    ok = all(check.get("ok", False) for check in checks.values())
+    return {
+        "ok": ok,
+        "config": str(path),
+        "settings": {"vault": str(vault), "db": str(db), "out": str(out), "hints": cfg.get("hints", DEFAULT_HINTS)},
+        "checks": checks,
+        "next": "Run `mneme update` then `mneme thought`." if ok else "Fix failed checks, or rerun `mneme init --force` with correct paths.",
+    }
+
+
 def stable_id(kind: str, name: str) -> str:
     return hashlib.sha1(f"{kind}:{name.lower()}".encode()).hexdigest()[:16]
 
@@ -375,6 +436,37 @@ def iter_markdown(vault: Path, exclude_parts: Iterable[str] = (), follow_symlink
         yield path
 
 
+def resolve_vault_write_path(vault: Path, note_path: str | Path) -> tuple[Path, str]:
+    vault_root = vault.resolve()
+    raw = Path(note_path)
+    if raw.is_absolute():
+        raise ValueError("note path must be relative and stay inside the vault")
+    target = (vault_root / raw).resolve()
+    if not is_relative_to(target, vault_root):
+        raise ValueError("note path must stay inside the vault")
+    if target.suffix.lower() != ".md":
+        raise ValueError("note path must end with .md")
+    return target, target.relative_to(vault_root).as_posix()
+
+
+def write_note(vault: Path, note_path: str | Path, content: str, mode: str = "create") -> dict:
+    target, rel = resolve_vault_write_path(vault, note_path)
+    if mode not in {"create", "append", "overwrite"}:
+        raise ValueError("mode must be one of: create, append, overwrite")
+    if mode == "create" and target.exists():
+        raise FileExistsError(f"note already exists: {rel}")
+    if mode == "append" and not target.exists():
+        raise FileNotFoundError(f"note does not exist: {rel}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "append":
+        existing = target.read_text(encoding="utf-8", errors="replace")
+        separator = "" if existing.endswith("\n") else "\n"
+        target.write_text(existing + separator + content, encoding="utf-8")
+    else:
+        target.write_text(content, encoding="utf-8")
+    return {"path": rel, "mode": mode, "bytes": target.stat().st_size}
+
+
 def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, rebuild: bool = True, follow_symlinks: bool = False) -> dict:
     hints = hints or DEFAULT_HINTS; db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path); init_db(conn)
@@ -414,6 +506,24 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
                 did=upsert_node(conn,"date",date_text,rel,0.75); upsert_edge(conn,oid,did,"mentions_date",rel,body,0.75); edges += 1
     conn.commit(); counts=dict(conn.execute("SELECT 'nodes', count(*) FROM nodes UNION ALL SELECT 'edges', count(*) FROM edges UNION ALL SELECT 'observations', count(*) FROM observations").fetchall()); conn.close()
     return {"notes_read":notes,"edges_added":edges,"observations_added":observations,**counts,"db":str(db_path)}
+
+
+def update_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, follow_symlinks: bool = False) -> dict:
+    """Synchronize graph tables from the current vault while preserving generated thoughts.
+
+    This is safer than ``--append`` for day-to-day updates because deleted or renamed
+    notes do not leave stale nodes/edges behind, but the thought history remains.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    conn.executescript("DELETE FROM observations; DELETE FROM edge_debug_log; DELETE FROM edges; DELETE FROM nodes;")
+    conn.commit()
+    conn.close()
+    stats = ingest_vault(vault, db_path, hints, max_notes, rebuild=False, follow_symlinks=follow_symlinks)
+    stats["mode"] = "update"
+    stats["preserved"] = ["thoughts"]
+    return stats
 
 
 def get_node(conn, node_id):
