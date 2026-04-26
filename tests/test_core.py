@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import generate_thought, ingest_vault, walk_graph
+from mneme.core import explain_edge, generate_thought, ingest_vault, log_edge_event, walk_graph
 from mneme.render import render_card, safe_basename
 
 
@@ -73,6 +73,59 @@ def test_symlink_escape_is_skipped(tmp_path: Path):
     conn.close()
     assert "Outside" not in names
     assert "PRIVATE_MARKER" not in names
+
+
+def test_edge_debug_log_records_creation_thinking(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\nRelated: [[Beta]]\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT id FROM edges WHERE relation='links_to'").fetchone()
+    assert row is not None
+    debug = conn.execute(
+        "SELECT event, actor, thinking_json FROM edge_debug_log WHERE edge_id=?",
+        (row[0],),
+    ).fetchone()
+    conn.close()
+
+    assert debug is not None
+    assert debug[0] == "created"
+    assert debug[1] == "ingest"
+    thinking = __import__("json").loads(debug[2])
+    assert thinking["relation"] == "links_to"
+    assert thinking["source_path"] == "alpha.md"
+    assert thinking["evidence_text"] == "[[Beta]]"
+    assert "Extracted from an explicit Markdown wikilink" in thinking["rationale"]
+
+
+def test_explain_edge_returns_debug_timeline(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\n- Waiting for [[Beta]]\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    edge_id = conn.execute("SELECT id FROM edges WHERE relation='links_to'").fetchone()[0]
+    log_edge_event(
+        conn,
+        edge_id,
+        "validated",
+        "test",
+        {"rationale": "Example validation rationale", "source_paths": ["alpha.md"]},
+    )
+    conn.commit()
+    conn.close()
+
+    explanation = explain_edge(db, edge_id)
+    assert explanation["edge"]["id"] == edge_id
+    assert explanation["edge"]["src"]["name"] == "Alpha"
+    assert explanation["edge"]["dst"]["name"] == "Beta"
+    assert [event["event"] for event in explanation["debug_log"]] == ["created", "validated"]
+    assert explanation["debug_log"][1]["thinking"]["rationale"] == "Example validation rationale"
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):

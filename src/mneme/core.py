@@ -36,10 +36,12 @@ def init_db(conn: sqlite3.Connection) -> None:
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,source_path TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,confidence REAL DEFAULT 1.0,metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id);
+    CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
     CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
     """)
 
@@ -52,11 +54,45 @@ def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=Non
     return nid
 
 
+def edge_creation_thinking(relation: str, source_path: str, evidence: str, confidence: float) -> dict:
+    rationale_by_relation = {
+        "links_to": "Extracted from an explicit Markdown wikilink. This proves a note-level reference, not necessarily a semantic real-world relationship.",
+        "has_heading": "Extracted from a Markdown heading inside the source note.",
+        "mentions_email": "Extracted from an email address mention inside the source note.",
+        "mentions_date": "Extracted from a date-like phrase inside an observation.",
+    }
+    if relation.startswith("has_") and relation not in rationale_by_relation:
+        rationale = "Extracted from scored note evidence such as a task or salient bullet. The relation type records the observation kind."
+    else:
+        rationale = rationale_by_relation.get(relation, "Extracted by Mneme ingestion using deterministic source parsing.")
+    return {
+        "relation": relation,
+        "source_path": source_path,
+        "evidence_text": evidence[:500] if evidence else "",
+        "confidence": confidence,
+        "rationale": rationale,
+    }
+
+
+def log_edge_event(conn, edge_id: str, event: str, actor: str, thinking: dict) -> str:
+    ts = now_iso()
+    payload = json.dumps(thinking, ensure_ascii=False, sort_keys=True)
+    event_id = hashlib.sha1(f"{edge_id}:{event}:{actor}:{payload}:{ts}".encode()).hexdigest()[:20]
+    conn.execute(
+        "INSERT INTO edge_debug_log(id,edge_id,event,actor,thinking_json,created_at) VALUES(?,?,?,?,?,?)",
+        (event_id, edge_id, event, actor, payload, ts),
+    )
+    return event_id
+
+
 def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0):
     eid = hashlib.sha1(f"{src}:{relation}:{dst}:{source_path}:{evidence[:80]}".encode()).hexdigest()[:20]; ts = now_iso()
+    inserted = conn.execute("SELECT 1 FROM edges WHERE id=?", (eid,)).fetchone() is None
     conn.execute("""INSERT INTO edges(id,src_id,dst_id,relation,source_path,confidence,evidence_text,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, confidence=max(edges.confidence, excluded.confidence)""",
     (eid, src, dst, relation, source_path, confidence, evidence[:500], ts, ts))
+    if inserted:
+        log_edge_event(conn, eid, "created", "ingest", edge_creation_thinking(relation, source_path, evidence, confidence))
     return eid
 
 
@@ -114,7 +150,7 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
     if rebuild:
         # Privacy-first default: avoid stale private content when a DB is reused
         # with a different or sanitized vault.
-        conn.executescript("DELETE FROM thoughts; DELETE FROM observations; DELETE FROM edges; DELETE FROM nodes;")
+        conn.executescript("DELETE FROM thoughts; DELETE FROM observations; DELETE FROM edge_debug_log; DELETE FROM edges; DELETE FROM nodes;")
     else:
         conn.execute("DELETE FROM observations")
     notes=edges=observations=0
@@ -184,6 +220,57 @@ def walk_graph(db_path: Path, seed_id: str | None = None, hops: int = 5, hints: 
         rel,nxt,_=random.choices(opts, weights=[weight(o) for o in opts], k=1)[0]
         node=get_node(conn,nxt); node["via"]=rel; path.append(node); seen.add(nxt); current=nxt
     conn.close(); return path
+
+
+def explain_edge(db_path: Path, edge_id: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    edge_row = conn.execute(
+        """
+        SELECT e.id,e.relation,e.source_path,e.confidence,e.evidence_text,e.created_at,e.updated_at,
+               s.id,s.type,s.name,s.source_path,s.metadata_json,
+               d.id,d.type,d.name,d.source_path,d.metadata_json
+        FROM edges e
+        JOIN nodes s ON s.id=e.src_id
+        JOIN nodes d ON d.id=e.dst_id
+        WHERE e.id=?
+        """,
+        (edge_id,),
+    ).fetchone()
+    if edge_row is None:
+        conn.close()
+        raise KeyError(f"edge not found: {edge_id}")
+    debug_rows = conn.execute(
+        "SELECT event,actor,thinking_json,created_at FROM edge_debug_log WHERE edge_id=? ORDER BY created_at, CASE event WHEN 'created' THEN 0 ELSE 1 END, id",
+        (edge_id,),
+    ).fetchall()
+    conn.close()
+
+    def node(prefix: int) -> dict:
+        return {
+            "id": edge_row[prefix],
+            "type": edge_row[prefix + 1],
+            "name": edge_row[prefix + 2],
+            "source_path": edge_row[prefix + 3],
+            "metadata": json.loads(edge_row[prefix + 4] or "{}"),
+        }
+
+    return {
+        "edge": {
+            "id": edge_row[0],
+            "relation": edge_row[1],
+            "source_path": edge_row[2],
+            "confidence": edge_row[3],
+            "evidence_text": edge_row[4],
+            "created_at": edge_row[5],
+            "updated_at": edge_row[6],
+            "src": node(7),
+            "dst": node(12),
+        },
+        "debug_log": [
+            {"event": r[0], "actor": r[1], "thinking": json.loads(r[2] or "{}"), "created_at": r[3]}
+            for r in debug_rows
+        ],
+    }
 
 
 def observations_for_seed(db_path: Path, seed_id: str, limit: int = 4):

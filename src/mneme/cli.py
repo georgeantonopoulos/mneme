@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse, json
 from pathlib import Path
-from .core import DEFAULT_HINTS, generate_thought, ingest_vault, save_thought, walk_graph
+from .core import DEFAULT_HINTS, explain_edge, generate_thought, ingest_vault, save_thought, walk_graph
 from .render import render_card
 
 
@@ -14,10 +14,13 @@ def main(argv: list[str] | None = None) -> None:
     parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); sub=parser.add_subparsers(dest="cmd", required=True)
     p=sub.add_parser("ingest"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",required=True,type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
     p=sub.add_parser("thought"); p.add_argument("--db",required=True,type=Path); p.add_argument("--out",required=True,type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
+    p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
     p=sub.add_parser("run-once"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",required=True,type=Path); p.add_argument("--out",required=True,type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
     args=parser.parse_args(argv)
     if args.cmd == "ingest":
         print(json.dumps(ingest_vault(args.vault,args.db,parse_hints(args.hints),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False)); return
+    if args.cmd == "explain-edge":
+        print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
     stats = ingest_vault(args.vault,args.db,parse_hints(args.hints),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
     path=walk_graph(args.db,hops=args.hops,hints=parse_hints(args.hints)); generated=generate_thought(args.db,path); image=render_card(generated,args.out); thought_id=save_thought(args.db,generated,str(image))
     print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(args.db)}, indent=2, ensure_ascii=False))

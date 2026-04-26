@@ -12,7 +12,7 @@ It turns a folder of Markdown notes into a SQLite graph, walks that graph, and r
 
 - Ingests Markdown notes from a vault/folder
 - Extracts notes, wikilinks, headings, tasks, dates, emails, and high-signal observations
-- Stores nodes, edges, observations, and generated thoughts in SQLite
+- Stores nodes, edges, observations, generated thoughts, and edge debug logs in SQLite
 - Performs biased graph walks over unresolved, risky, recent, or connected items
 - Renders thought cards as SVG, with optional PNG conversion via ImageMagick
 - Provides a CLI suitable for cron jobs or agent runtimes
@@ -100,6 +100,14 @@ Useful flags:
 - `--append` — keep existing nodes/edges instead of rebuilding; use carefully because stale data can remain
 - `--follow-symlinks` — follow symlinked Markdown files that resolve inside the vault
 
+### Explain why an edge exists
+
+```bash
+mneme explain-edge <edge-id> --db /tmp/mneme.sqlite
+```
+
+This prints the edge, source/destination nodes, evidence text, and debug timeline. Ingest-created edges include creation rationale such as “explicit Markdown wikilink” versus “scored task/bullet observation,” so graph workbench UIs can show why two nodes are connected instead of only drawing a line.
+
 ### Graph workbench / UI target
 
 Mneme's graph-building layer is intentionally location-agnostic: callers pass `--vault`, `--db`, and `--out`. A UI/workbench should preserve that model rather than hard-coding a deployment path.
@@ -126,9 +134,10 @@ A private deployment can mount the workbench behind an existing authenticated pe
 
 1. Markdown notes become graph nodes.
 2. Wikilinks, headings, tasks, dates, and emails become connected nodes/edges.
-3. High-signal bullets and tasks become observations.
-4. Mneme chooses a biased seed node, walks nearby relationships, and creates a short thought.
-5. The renderer writes a card to the output directory.
+3. Each edge gets a debug-log entry with source path, evidence text, confidence, and creation rationale.
+4. High-signal bullets and tasks become observations.
+5. Mneme chooses a biased seed node, walks nearby relationships, and creates a short thought.
+6. The renderer writes a card to the output directory.
 
 This prototype is intentionally simple: it does not claim a relationship is true just because two things co-occur. Treat cards as prompts for review, not facts.
 
