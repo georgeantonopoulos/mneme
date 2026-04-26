@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_PARTS = {".git", "__pycache__", ".pytest_cache", "dist", "build"}
+SKIP_PARTS = {".git", "__pycache__", ".pytest_cache", ".hermes-synced-skills", "dist", "build"}
 SKIP_SUFFIXES = {".pyc"}
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".sqlite", ".db"}
 ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
