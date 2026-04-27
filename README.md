@@ -110,12 +110,15 @@ Requirements:
 - Python 3.10+
 - Optional: ImageMagick (`convert` or `magick`) for PNG output. Without it, Mneme writes SVG cards.
 
-For development:
+### Install / update notes
+
+The installer creates/updates the `mneme` CLI. After installation, check the Markdown editor commands with:
 
 ```bash
-python -m pip install -e '.[dev]'
-python -m pytest -q
+mneme note --help
 ```
+
+The package includes the graph memory engine and a small path-safe Markdown editor; there is no separate editor plugin to install.
 
 ## Quick start
 
@@ -179,7 +182,22 @@ If you explicitly want append-only behaviour:
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite --append
 ```
 
-### Safely write a Markdown note
+### Safely edit Markdown notes
+
+Mneme ships with a small path-safe Markdown editor for agents and scripts. It is part of the installed `mneme` CLI, returns JSON, uses vault-relative `.md` paths only, writes atomically, creates backups for changed existing notes, and supports dry-run diffs.
+
+```bash
+mneme note read Projects/new-note.md --vault ./examples/vault
+mneme note write Projects/new-note.md --vault ./examples/vault --mode create --content '# New note
+'
+mneme note replace Projects/new-note.md --vault ./examples/vault --find 'New note' --replace 'Updated note' --dry-run
+mneme note upsert-section Projects/new-note.md --vault ./examples/vault --heading Status --content 'Ready for review'
+mneme note add-bullet Projects/new-note.md --vault ./examples/vault --heading Tasks --bullet 'Follow up'
+```
+
+Use `mneme note upsert-section` for section-level updates instead of fragile multiline find/replace. Use `mneme note add-bullet` for deduped bullets under a heading. These commands are intentionally small: exact replace, section upsert, bullet insertion, read, and write — not a full Markdown platform.
+
+The older top-level `mneme write` command remains as a simple compatibility shortcut:
 
 ```bash
 mneme write --vault ./examples/vault --path Projects/new-note.md --mode create --content '# New note
@@ -187,7 +205,15 @@ mneme write --vault ./examples/vault --path Projects/new-note.md --mode create -
 printf -- '- Follow up\n' | mneme write --vault ./examples/vault --path Projects/new-note.md --mode append
 ```
 
-`mneme write` only accepts relative `.md` paths that resolve inside the vault. Modes are `create`, `append`, and `overwrite`.
+`mneme note` and `mneme write` only accept relative `.md` paths that resolve inside the vault. Modes are `create`, `append`, and `overwrite`.
+
+For development:
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest -q
+```
+
 
 ### Write resolved research back to the graph
 

@@ -12,6 +12,10 @@ Environment variables:
 
 Usage:
   curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash
+
+After install:
+  mneme --help
+  mneme note --help      # path-safe Markdown note editor
 MSG
   exit 0
 fi

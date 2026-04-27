@@ -490,21 +490,22 @@ def resolve_vault_write_path(vault: Path, note_path: str | Path) -> tuple[Path, 
 
 
 def write_note(vault: Path, note_path: str | Path, content: str, mode: str = "create") -> dict:
-    target, rel = resolve_vault_write_path(vault, note_path)
-    if mode not in {"create", "append", "overwrite"}:
-        raise ValueError("mode must be one of: create, append, overwrite")
-    if mode == "create" and target.exists():
-        raise FileExistsError(f"note already exists: {rel}")
-    if mode == "append" and not target.exists():
-        raise FileNotFoundError(f"note does not exist: {rel}")
-    target.parent.mkdir(parents=True, exist_ok=True)
+    from . import md_edit
+
     if mode == "append":
-        existing = target.read_text(encoding="utf-8", errors="replace")
-        separator = "" if existing.endswith("\n") else "\n"
-        target.write_text(existing + separator + content, encoding="utf-8")
-    else:
-        target.write_text(content, encoding="utf-8")
-    return {"path": rel, "mode": mode, "bytes": target.stat().st_size}
+        target = md_edit.safe_resolve(vault, note_path)
+        if not target.exists():
+            raise FileNotFoundError(f"note does not exist: {md_edit.rel_path(vault, target)}")
+    try:
+        result = md_edit.write_note(vault, note_path, content, mode=mode)
+    except ValueError as exc:
+        message = str(exc)
+        if "already exists" in message:
+            raise FileExistsError(message) from exc
+        if "absolute" in message or ".." in message or "escapes vault" in message:
+            raise ValueError("note path must stay inside the vault") from exc
+        raise
+    return {"path": result["path"], "mode": mode, "bytes": result["bytes"], "changed": result["changed"], "backup": result.get("backup")}
 
 
 def slugify(value: str) -> str:

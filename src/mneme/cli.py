@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse, json, sys
 from pathlib import Path
+from . import md_edit
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, create_config, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, save_thought, update_vault, write_note, write_research_resolution
 from .render import render_card
 
@@ -40,6 +41,12 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("ingest"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
     p=sub.add_parser("update", help="Synchronize graph tables from the current vault while preserving thought history"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
     p=sub.add_parser("write", help="Safely create, append, or overwrite a Markdown note inside a vault"); p.add_argument("--vault",type=Path); p.add_argument("--path",required=True,help="Relative .md path inside the vault"); p.add_argument("--mode",choices=["create","append","overwrite"],default="create"); p.add_argument("--content",help="Markdown content; omit to read from stdin")
+    note=sub.add_parser("note", help="Path-safe Markdown note editor"); note_sub=note.add_subparsers(dest="note_cmd", required=True)
+    p=note_sub.add_parser("read", help="Read a note, optionally limited to one heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading"); p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("write", help="Create, append, or overwrite a note atomically"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--mode",choices=["create","append","overwrite"],default="append"); p.add_argument("--content",help="Markdown content; omit to read from stdin"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("replace", help="Exact string replacement with optional dry-run diff"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--find",required=True); p.add_argument("--replace",required=True); p.add_argument("--all",action="store_true",dest="replace_all"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("upsert-section", help="Replace or append a Markdown heading section"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--content",required=True); p.add_argument("--level",type=int,default=2); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("add-bullet", help="Add a deduped bullet under a heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--bullet",required=True); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
@@ -59,6 +66,26 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "write":
         content = args.content if args.content is not None else sys.stdin.read()
         print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False)); return
+    if args.cmd == "note":
+        try:
+            vault = path_from_config(args,"vault")
+            if args.note_cmd == "read":
+                result = md_edit.read_note(vault,args.path,heading=args.heading,force=args.force)
+            elif args.note_cmd == "write":
+                content = args.content if args.content is not None else sys.stdin.read()
+                result = md_edit.write_note(vault,args.path,content,mode=args.mode,dry_run=args.dry_run,force=args.force)
+            elif args.note_cmd == "replace":
+                result = md_edit.replace_exact(vault,args.path,args.find,args.replace,replace_all=args.replace_all,dry_run=args.dry_run,force=args.force)
+            elif args.note_cmd == "upsert-section":
+                result = md_edit.upsert_section(vault,args.path,args.heading,args.content,level=args.level,dry_run=args.dry_run,force=args.force)
+            elif args.note_cmd == "add-bullet":
+                result = md_edit.add_bullet(vault,args.path,args.heading,args.bullet,dry_run=args.dry_run,force=args.force)
+            else:
+                raise ValueError(f"unknown note command: {args.note_cmd}")
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": str(exc), "command": "note"}, indent=2, ensure_ascii=False), file=sys.stderr)
+            raise SystemExit(1) from None
+        print(json.dumps(result, indent=2, ensure_ascii=False)); return
     if args.cmd == "resolve":
         payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
         print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
