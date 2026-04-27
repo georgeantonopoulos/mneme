@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, walk_graph, write_note, write_research_resolution
+from mneme.core import create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -479,6 +479,55 @@ def test_research_resolution_edges_survive_update_rebuild(tmp_path: Path):
     conn.close()
     assert row == ("Example Child", "attends_activity", "Handwriting Club", "active", 0.91, 0.95, "receipt")
     assert debug_count == 1
+
+
+def test_thought_walk_prefers_semantic_edge_over_date_index_plumbing(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    source = "test.md"
+    seed = upsert_node(conn, "note", "Alpha", source)
+    date = upsert_node(conn, "date", "2026-04-18", source)
+    index = upsert_node(conn, "note", "index", source)
+    useful = upsert_node(conn, "project", "Useful Project", source)
+    upsert_edge(conn, seed, date, "links_to", source, "[[2026-04-18]]", 0.99)
+    upsert_edge(conn, date, index, "links_to", source, "[[index]]", 0.99)
+    upsert_edge(conn, seed, useful, "relates_to", source, "Alpha relates to Useful Project", 0.8)
+    conn.commit()
+    conn.close()
+
+    path = walk_graph(db, seed_id=seed, hops=2)
+
+    names = [node["name"] for node in path]
+    assert "Useful Project" in names
+    assert "2026-04-18" not in names
+    assert "index" not in names
+
+
+def test_candidate_paths_skip_low_value_wikilink_index_when_better_step_exists(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    source = "test.md"
+    note = upsert_node(conn, "note", "Launch", source)
+    obs = upsert_node(conn, "observation", "Waiting for owner by 2026-05-01", source)
+    index = upsert_node(conn, "wikilink", "index", source)
+    project = upsert_node(conn, "project", "Owner Plan", source)
+    upsert_edge(conn, note, obs, "has_blocked", source, "Waiting for owner by 2026-05-01", 0.95)
+    upsert_edge(conn, note, index, "links_to", source, "[[index]]", 0.99)
+    upsert_edge(conn, note, project, "relates_to", source, "Owner Plan", 0.8)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs1", note, "blocked", "Waiting for owner by 2026-05-01", source, 5, "now"),
+    )
+    conn.commit()
+    conn.close()
+
+    candidates = list_thought_candidates(db, limit=1)
+
+    names = [node["name"] for node in candidates[0]["path"]]
+    assert "Owner Plan" in names
+    assert "index" not in names
 
 
 def test_candidate_observation_edges_are_not_used_in_thought_paths(tmp_path: Path):

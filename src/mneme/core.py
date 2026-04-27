@@ -696,6 +696,42 @@ def neighbors(conn, node_id):
     return [(r,i,n) for r,i,n in rows]
 
 
+BORING_THOUGHT_NODE_NAMES = {"index", "home", "readme", "daily notes", "memory"}
+BORING_THOUGHT_RELATIONS = {"links_to", "linked_from", "reference", "wikilink", "mentions"}
+
+
+def _is_dateish_name(name: str | None) -> bool:
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}(\s+[-—].*)?$", (name or "").strip()))
+
+
+def _base_relation(relation: str | None) -> str:
+    rel = (relation or "").strip().lower()
+    return rel.removeprefix("reverse_")
+
+
+def _is_low_value_thought_step(relation: str | None, node: dict | None = None, name: str | None = None) -> bool:
+    """Return True for graph-plumbing edges that make dull proactive cards.
+
+    Date/index/reference edges remain in the graph for provenance and retrieval,
+    but thought cards should prefer semantic or action-bearing bridges whenever
+    possible instead of surfacing navigation like `date -> index`.
+    """
+    node = node or {}
+    node_name = (name or node.get("name") or "").strip()
+    low_name = node_name.lower()
+    node_type = (node.get("type") or "").strip().lower()
+    rel = _base_relation(relation)
+    return rel in BORING_THOUGHT_RELATIONS and (
+        low_name in BORING_THOUGHT_NODE_NAMES or node_type == "date" or _is_dateish_name(node_name)
+    )
+
+
+def _prefer_interesting_thought_steps(options, key):
+    options = list(options)
+    interesting = [item for item in options if not _is_low_value_thought_step(*key(item))]
+    return interesting or options
+
+
 def choose_seed(conn):
     recent={r[0] for r in conn.execute("SELECT seed_id FROM thoughts ORDER BY created_at DESC LIMIT 20").fetchall() if r[0]}
     rows=conn.execute("""SELECT n.id,COALESCE(sum(o.score),0) score FROM nodes n LEFT JOIN observations o ON o.note_id=n.id WHERE n.type IN ('project','finance','event','person','note') GROUP BY n.id ORDER BY score DESC,n.updated_at DESC LIMIT 80""").fetchall()
@@ -709,8 +745,10 @@ def walk_graph(db_path: Path, seed_id: str | None = None, hops: int = 5, hints: 
     for _ in range(hops):
         opts=[(rel,nid,name) for rel,nid,name in neighbors(conn,current) if nid not in seen]
         if not opts: break
+        node_cache={nid:get_node(conn,nid) for _,nid,_ in opts}
+        opts=_prefer_interesting_thought_steps(opts, lambda item: (item[0], node_cache[item[1]], item[2]))
         def weight(item):
-            rel,nid,name=item; node=get_node(conn,nid); ntype=node.get("type",""); low=name.lower(); score=1.0
+            rel,nid,name=item; node=node_cache[nid]; ntype=node.get("type",""); low=name.lower(); score=1.0
             if ntype=="observation": score += 4
             if ntype in {"project","person","finance","event","wikilink"}: score += 2
             if ntype=="heading": score *= 0.25
@@ -814,14 +852,18 @@ def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_t
             (obs_node[0],),
         ).fetchone()
         if date_row and len(path) < hops + 1:
-            node = _node_by_id(conn, date_row[0]); node["via"] = date_row[1]; path.append(node)
+            node = _node_by_id(conn, date_row[0])
+            if not _is_low_value_thought_step(date_row[1], node):
+                node["via"] = date_row[1]; path.append(node)
     if len(path) < hops + 1:
-        for nid, rel in conn.execute(
+        rows = conn.execute(
             """SELECT n.id,e.relation FROM edges e JOIN nodes n ON n.id=e.dst_id
                WHERE e.src_id=? AND COALESCE(e.status,'active')='active' AND n.type IN ('wikilink','project','person','event','finance','note')
                ORDER BY CASE n.type WHEN 'wikilink' THEN 0 ELSE 1 END, n.name LIMIT ?""",
             (note_id, hops + 1 - len(path)),
-        ).fetchall():
+        ).fetchall()
+        rows = _prefer_interesting_thought_steps(rows, lambda item: (item[1], _node_by_id(conn, item[0]), None))
+        for nid, rel in rows:
             if nid not in {n.get("id") for n in path}:
                 node = _node_by_id(conn, nid); node["via"] = rel; path.append(node)
     return path
