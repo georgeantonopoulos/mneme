@@ -856,22 +856,52 @@ def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints:
     return candidates[:limit]
 
 
+def _evidence_seed(obs: list[str]) -> str:
+    return (obs[0] if obs else "").strip()
+
+
+def _path_chain(path: list[dict], limit: int = 5) -> str:
+    return " → ".join(n.get("name", "?") for n in path[:limit])
+
+
+def _reasoned_next(prefix: str, evidence: str, fallback: str) -> str:
+    if evidence:
+        return f"{prefix} Evidence seed: {evidence[:170]}"
+    return fallback
+
+
 def generate_thought(db_path: Path, path, candidate: dict | None = None):
     seed=path[0]; names=[n.get("name","?") for n in path]; obs=(candidate.get("evidence", []) if candidate else observations_for_seed(db_path, seed["id"], 4)); low=" ".join(names+obs).lower()
-    why_now = "; ".join(candidate.get("reasons", [])[:3]) if candidate else "graph traversal surfaced nearby high-signal text"
+    why_now = "; ".join(candidate.get("reasons", [])[:3]) if candidate else "weighted random graph traversal surfaced this path"
+    chain = _path_chain(path)
+    evidence = _evidence_seed(obs)
     if any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
-        title="Open loop hiding in the graph"; insight=f"{names[0]} is connected to an unresolved thread: {obs[0] if obs else names[-1]}. This is worth surfacing before it fades into background notes."; action=obs[0] if obs else "Pick the smallest next action and attach it to the source note."
+        title="Open loop hiding in the graph"
+        insight=f"Why this matters: {names[0]} is connected to unresolved language along {chain}. Mneme is surfacing it as a possible open loop, not as a resolved fact."
+        action=_reasoned_next("Ask whether this is still pending, then choose the smallest next action.", evidence, "Pick the smallest next action and attach it to the source note.")
     elif any(w in low for w in ["due","deadline","expires","urgent","overdue"]):
-        title="Deadline path worth checking"; insight=f"This path links {names[0]} to time-sensitive language: {obs[0] if obs else names[-1]}. Verify the status before it becomes background noise."; action=obs[0] if obs else "Check whether the deadline/status is still current."
+        title="Deadline path worth checking"
+        insight=f"Why this matters: {chain} touches time-sensitive language. Verify freshness before treating it as current urgency."
+        action=_reasoned_next("Check whether the date/status is still current.", evidence, "Check whether the deadline/status is still current.")
     else:
-        title="Graph thought"; joined=" → ".join(names[:5]); insight=f"The notes currently associate: {joined}. This may be worth revisiting because nearby nodes keep connecting."; action=obs[0] if obs else "If this still matters, promote it to an explicit next action."
+        title="Reasoned graph walk"
+        insight=f"Why this matters: Mneme explored {chain}. This may be useful, or it may be true-but-boring; the point is to test whether the bridge deserves promotion."
+        action=_reasoned_next("Ask whether this connection changes what to do next.", evidence, "If this still matters, promote it to an explicit next action; otherwise let future walks drift elsewhere.")
     return {"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
 
 
+def _weighted_candidate_choice(candidates: list[dict]) -> dict | None:
+    if not candidates:
+        return None
+    weights=[max(0.1, float(c.get("score", 0))) for c in candidates]
+    return random.choices(candidates, weights=weights, k=1)[0]
+
+
 def generate_proactive_thought(db_path: Path, hints: list[str] | None = None, hops: int = 5) -> dict:
-    candidates = list_thought_candidates(db_path, limit=1, hops=hops, hints=hints)
-    if candidates:
-        return generate_thought(db_path, candidates[0]["path"], candidates[0])
+    candidates = list_thought_candidates(db_path, limit=12, hops=hops, hints=hints)
+    chosen = _weighted_candidate_choice(candidates)
+    if chosen:
+        return generate_thought(db_path, chosen["path"], chosen)
     return generate_thought(db_path, walk_graph(db_path, hops=hops, hints=hints))
 
 

@@ -286,11 +286,14 @@ def test_generate_proactive_thought_uses_candidate_why_now(tmp_path: Path):
 
     thought = generate_proactive_thought(db, hints=["deadline", "renewal"])
 
-    assert thought["title"] in {"Open loop hiding in the graph", "Deadline path worth checking"}
+    assert thought["title"] in {"Open loop hiding in the graph", "Deadline path worth checking", "Reasoned graph walk"}
     assert thought["why_now"]
     assert "Renewal" in thought["insight"]
     assert thought["score"] > 0
     assert thought["evidence"]
+    assert thought["insight"].startswith("Why this matters:")
+    assert thought["action"] != thought["evidence"][0]
+    assert thought["action"].startswith(("Ask", "Check"))
 
 
 def test_init_db_migrates_old_edge_schema(tmp_path: Path):
@@ -508,3 +511,7 @@ def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypat
     assert image.parent == tmp_path
     assert image.name == "thought_escape.svg"
     assert safe_basename("../../escape") == "escape"
+    svg = image.read_text(encoding="utf-8")
+    assert "Reasoning" in svg
+    assert "Next" in svg
+    assert "Possible next move" not in svg

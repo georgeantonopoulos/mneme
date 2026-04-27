@@ -30,10 +30,10 @@ def render_svg(thought: dict, svg_path: Path) -> None:
         for j,line in enumerate(wrap_text(node.get("name","?"),16,3)): parts.append(f'<text x="{x}" y="{y0+75+j*24}" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="20">{esc(line)}</text>')
         parts.append(f'<text x="{x}" y="{y0+155}" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="17">{esc(node.get("type","node"))}</text>')
     parts.append('<rect x="90" y="500" width="1020" height="120" rx="22" fill="#0f2537" stroke="#1e3a5f"/>')
-    parts.append('<text x="120" y="545" fill="#38bdf8" font-family="Inter,Arial" font-size="24" font-weight="700">Insight</text>')
+    parts.append('<text x="120" y="545" fill="#38bdf8" font-family="Inter,Arial" font-size="24" font-weight="700">Reasoning</text>')
     for j,line in enumerate(wrap_text(thought["insight"],82,3)): parts.append(f'<text x="120" y="{580+j*30}" fill="#e5e7eb" font-family="Inter,Arial" font-size="25">{esc(line)}</text>')
     parts.append('<rect x="90" y="650" width="1020" height="105" rx="22" fill="#1f1b10" stroke="#5b4315"/>')
-    parts.append('<text x="120" y="692" fill="#fbbf24" font-family="Inter,Arial" font-size="24" font-weight="700">Possible next move</text>')
+    parts.append('<text x="120" y="692" fill="#fbbf24" font-family="Inter,Arial" font-size="24" font-weight="700">Next</text>')
     for j,line in enumerate(wrap_text(thought["action"],88,2)): parts.append(f'<text x="120" y="{728+j*28}" fill="#fef3c7" font-family="Inter,Arial" font-size="23">{esc(line)}</text>')
     why = thought.get("why_now")
     if why:
