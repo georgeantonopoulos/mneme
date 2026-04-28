@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -42,6 +42,106 @@ def test_rebuild_removes_stale_private_content(tmp_path: Path):
     ).fetchone()[0]
     conn.close()
     assert leaked == 0
+
+
+def test_deterministic_ingest_keeps_navigation_edges_candidate(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\n## Context\n\nRelated: [[Beta]]\n- Risk due May 1\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    statuses = dict(conn.execute("SELECT relation,status FROM edges").fetchall())
+    conn.close()
+
+    assert statuses["links_to"] == "candidate"
+    assert statuses["has_heading"] == "candidate"
+    assert statuses["has_risk"] == "active"
+    assert statuses["mentions_date"] == "candidate"
+
+
+def test_promote_candidates_is_explicit_and_dry_run_safe(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    src = upsert_node(conn, "note", "Alpha", "alpha.md")
+    dst = upsert_node(conn, "wikilink", "Beta", "alpha.md")
+    edge = upsert_edge(conn, src, dst, "links_to", "alpha.md", "[[Beta]]", 0.9, status="candidate")
+    conn.commit()
+    conn.close()
+
+    dry = activate_candidate_edges(db, mode="all", dry_run=True)
+    conn = sqlite3.connect(db)
+    before = conn.execute("SELECT status FROM edges WHERE id=?", (edge,)).fetchone()[0]
+    conn.close()
+    live = activate_candidate_edges(db, mode="all", dry_run=False)
+    conn = sqlite3.connect(db)
+    after = conn.execute("SELECT status FROM edges WHERE id=?", (edge,)).fetchone()[0]
+    conn.close()
+
+    assert dry["would_activate"] == 1
+    assert dry["activated"] == 0
+    assert before == "candidate"
+    assert live["activated"] == 1
+    assert after == "active"
+
+
+def test_rebuild_preserves_durable_active_edges_and_killed_tombstones(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    durable_src = upsert_node(conn, "person", "Validated Person", "research")
+    durable_dst = upsert_node(conn, "activity", "Validated Activity", "research")
+    stale_src = upsert_node(conn, "note", "Stale Secret", "stale.md")
+    stale_dst = upsert_node(conn, "wikilink", "PRIVATE_MARKER", "stale.md")
+    durable_edge = upsert_edge(
+        conn,
+        durable_src,
+        durable_dst,
+        "attends_activity",
+        "Sources/resolution.md",
+        "Receipt-backed validation",
+        0.95,
+        status="active",
+        strength=0.95,
+        source_type="receipt",
+    )
+    killed_edge = upsert_edge(
+        conn,
+        durable_dst,
+        durable_src,
+        "bad_relation",
+        "Sources/resolution.md",
+        "Rejected claim",
+        0.0,
+        status="killed",
+        strength=0.0,
+        source_type="receipt",
+    )
+    stale_edge = upsert_edge(conn, stale_src, stale_dst, "links_to", "stale.md", "[[PRIVATE_MARKER]]", 0.9)
+    conn.commit()
+    conn.close()
+
+    (vault / "public.md").write_text("# Public\n\nRelated: [[Safe]]\n", encoding="utf-8")
+    stats = ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    statuses = dict(conn.execute("SELECT id,status FROM edges WHERE id IN (?,?,?)", (durable_edge, killed_edge, stale_edge)).fetchall())
+    names = {row[0] for row in conn.execute("SELECT name FROM nodes")}
+    debug_count = conn.execute("SELECT count(*) FROM edge_debug_log WHERE edge_id IN (?,?)", (durable_edge, killed_edge)).fetchone()[0]
+    conn.close()
+
+    assert stats["preserved_active_edges"] == 1
+    assert stats["preserved_killed_edges"] == 1
+    assert statuses[durable_edge] == "active"
+    assert statuses[killed_edge] == "killed"
+    assert stale_edge not in statuses
+    assert "PRIVATE_MARKER" not in names
+    assert "Stale Secret" not in names
+    assert debug_count == 2
 
 
 def test_task_checkbox_not_duplicated_as_generic_bullet(tmp_path: Path):

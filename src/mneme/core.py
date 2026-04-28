@@ -415,6 +415,20 @@ def log_edge_event(conn, edge_id: str, event: str, actor: str, thinking: dict) -
     return event_id
 
 
+def deterministic_ingest_status(relation: str) -> str:
+    """Default status for deterministic vault parsing.
+
+    Keep source-contained observations active because they are provenance edges, but
+    leave navigation/extraction links as candidates until an explicit validation or
+    promotion pass chooses them. This keeps the active graph selective instead of
+    turning every parsed link into a surfaced connection.
+    """
+    rel = relationship_type(relation)
+    if rel.get("category") == "observation":
+        return "active"
+    return "candidate"
+
+
 def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0, status="active", strength=None, source_type="vault", metadata=None):
     eid = hashlib.sha1(f"{src}:{relation}:{dst}:{source_path}:{evidence[:80]}".encode()).hexdigest()[:20]; ts = now_iso()
     inserted = conn.execute("SELECT 1 FROM edges WHERE id=?", (eid,)).fetchone() is None
@@ -593,16 +607,21 @@ def write_research_edges(conn: sqlite3.Connection, note_path: str, payload: dict
             source_type=claim.get("source_type") or "research",
             metadata={"research_resolution": True, "certainty": claim.get("certainty"), "sources_checked": payload.get("sources_checked") or []},
         )
-        log_edge_event(conn, edge_id, "research_writeback", actor, {
-            "status": status,
-            "strength": strength,
-            "confidence": confidence,
-            "source_type": claim.get("source_type") or "research",
-            "evidence_text": evidence,
-            "source_path": note_path,
-            "rationale": "User-initiated research created this weighted graph edge; active only if sourced, confirmed, and above threshold.",
-            "active_threshold": active_threshold,
-        })
+        existing_debug = conn.execute(
+            "SELECT 1 FROM edge_debug_log WHERE edge_id=? AND event='research_writeback' LIMIT 1",
+            (edge_id,),
+        ).fetchone()
+        if existing_debug is None:
+            log_edge_event(conn, edge_id, "research_writeback", actor, {
+                "status": status,
+                "strength": strength,
+                "confidence": confidence,
+                "source_type": claim.get("source_type") or "research",
+                "evidence_text": evidence,
+                "source_path": note_path,
+                "rationale": "User-initiated research created this weighted graph edge; active only if sourced, confirmed, and above threshold.",
+                "active_threshold": active_threshold,
+            })
         created.append({"id": edge_id, "src": subject, "predicate": relation, "dst": obj, "status": status, "strength": strength, "confidence": confidence})
     return created
 
@@ -624,13 +643,54 @@ def write_research_resolution(vault: Path, db_path: Path, payload: dict | str, a
     return {"note_path": written["path"], "claims_written": len(created), "edges": created, "written": True}
 
 
+def clear_graph_for_rebuild(conn: sqlite3.Connection, preserve_thoughts: bool = False) -> dict:
+    """Clear ingest-derived graph state while preserving durable validation state.
+
+    Mneme's rebuild path must satisfy two constraints at once:
+    - privacy: stale vault-ingested content must be removed when notes disappear;
+    - safety: user/agent validated edges must not be silently demoted or deleted.
+
+    Therefore we preserve killed tombstones and active non-ingest edges (for example
+    research writeback edges with source_type='receipt'), but we clear ordinary
+    vault/ingest edges so deleted private note content cannot linger.
+    """
+    init_db(conn)
+    preserved_edge_rows = conn.execute(
+        """
+        SELECT id,src_id,dst_id FROM edges
+        WHERE status='killed'
+           OR (status='active' AND COALESCE(source_type,'vault') NOT IN ('vault','ingest'))
+        """
+    ).fetchall()
+    preserved_edges = {row[0] for row in preserved_edge_rows}
+    preserved_nodes = {node_id for _, src_id, dst_id in preserved_edge_rows for node_id in (src_id, dst_id) if node_id}
+    if not preserve_thoughts:
+        conn.execute("DELETE FROM thoughts")
+    conn.execute("DELETE FROM observations")
+    if preserved_edges:
+        edge_placeholders = ','.join('?' for _ in preserved_edges)
+        conn.execute(f"DELETE FROM edge_debug_log WHERE edge_id NOT IN ({edge_placeholders})", tuple(preserved_edges))
+        conn.execute(f"DELETE FROM edges WHERE id NOT IN ({edge_placeholders})", tuple(preserved_edges))
+    else:
+        conn.execute("DELETE FROM edge_debug_log")
+        conn.execute("DELETE FROM edges")
+    if preserved_nodes:
+        node_placeholders = ','.join('?' for _ in preserved_nodes)
+        conn.execute(f"DELETE FROM nodes WHERE id NOT IN ({node_placeholders})", tuple(preserved_nodes))
+    else:
+        conn.execute("DELETE FROM nodes")
+    return {
+        "preserved_active_edges": conn.execute("SELECT count(*) FROM edges WHERE status='active'").fetchone()[0],
+        "preserved_killed_edges": conn.execute("SELECT count(*) FROM edges WHERE status='killed'").fetchone()[0],
+    }
+
+
 def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, rebuild: bool = True, follow_symlinks: bool = False) -> dict:
     hints = hints or DEFAULT_HINTS; db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path); init_db(conn)
+    preserved = {}
     if rebuild:
-        # Privacy-first default: avoid stale private content when a DB is reused
-        # with a different or sanitized vault.
-        conn.executescript("DELETE FROM thoughts; DELETE FROM observations; DELETE FROM edge_debug_log; DELETE FROM edges; DELETE FROM nodes;")
+        preserved = clear_graph_for_rebuild(conn, preserve_thoughts=False)
     else:
         conn.execute("DELETE FROM observations")
     notes=edges=observations=0
@@ -643,12 +703,12 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
         if research_payload:
             edges += len(write_research_edges(conn, rel, research_payload, actor="ingest"))
         for target in sorted(set(WIKILINK_RE.findall(text))):
-            tid=upsert_node(conn,"wikilink",target.strip(),None,0.8); upsert_edge(conn,nid,tid,"links_to",rel,f"[[{target.strip()}]]",0.9); edges += 1
+            tid=upsert_node(conn,"wikilink",target.strip(),None,0.8); upsert_edge(conn,nid,tid,"links_to",rel,f"[[{target.strip()}]]",0.9,status=deterministic_ingest_status("links_to")); edges += 1
         for _, heading in HEADING_RE.findall(text):
             if 2 < len(heading) < 100:
-                hid=upsert_node(conn,"heading",heading.strip(),rel,0.7); upsert_edge(conn,nid,hid,"has_heading",rel,heading.strip(),0.7); edges += 1
+                hid=upsert_node(conn,"heading",heading.strip(),rel,0.7); upsert_edge(conn,nid,hid,"has_heading",rel,heading.strip(),0.7,status=deterministic_ingest_status("has_heading")); edges += 1
         for email in sorted(set(EMAIL_RE.findall(text))):
-            eid=upsert_node(conn,"email",email,rel,0.9); upsert_edge(conn,nid,eid,"mentions_email",rel,email,0.9); edges += 1
+            eid=upsert_node(conn,"email",email,rel,0.9); upsert_edge(conn,nid,eid,"mentions_email",rel,email,0.9,status=deterministic_ingest_status("mentions_email")); edges += 1
         evidence=[]
         for m in TASK_RE.finditer(text):
             done=m.group(1).lower()=="x"; evidence.append(("done" if done else "blocked",m.group(2).strip(),3.0 if not done else 1.5))
@@ -661,11 +721,36 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
                 if s >= 3 or k in {"blocked","risk"}: evidence.append((k,body,s))
         for kind, body, score in evidence[:40]:
             add_observation(conn,nid,kind,body,rel,score); observations += 1
-            oid=upsert_node(conn,"observation",body[:90],rel,min(1.0,score/6),{"kind":kind}); upsert_edge(conn,nid,oid,f"has_{kind}",rel,body,min(1.0,score/6)); edges += 1
+            oid=upsert_node(conn,"observation",body[:90],rel,min(1.0,score/6),{"kind":kind}); upsert_edge(conn,nid,oid,f"has_{kind}",rel,body,min(1.0,score/6),status=deterministic_ingest_status(f"has_{kind}")); edges += 1
             for date_text in DATE_RE.findall(body):
-                did=upsert_node(conn,"date",date_text,rel,0.75); upsert_edge(conn,oid,did,"mentions_date",rel,body,0.75); edges += 1
+                did=upsert_node(conn,"date",date_text,rel,0.75); upsert_edge(conn,oid,did,"mentions_date",rel,body,0.75,status=deterministic_ingest_status("mentions_date")); edges += 1
     conn.commit(); counts=dict(conn.execute("SELECT 'nodes', count(*) FROM nodes UNION ALL SELECT 'edges', count(*) FROM edges UNION ALL SELECT 'observations', count(*) FROM observations").fetchall()); conn.close()
-    return {"notes_read":notes,"edges_added":edges,"observations_added":observations,**counts,"db":str(db_path)}
+    return {"notes_read":notes,"edges_added":edges,"observations_added":observations,**counts,**preserved,"db":str(db_path)}
+
+
+def activate_candidate_edges(db_path: Path, mode: str = "validated-only", dry_run: bool = False) -> dict:
+    """Explicit opt-in promotion for users who want to process candidates in bulk.
+
+    Default `validated-only` promotes only candidates carrying research-resolution
+    metadata with non-ingest source types. `all` is deliberately explicit because
+    turning every parsed candidate active collapses Mneme's selectivity.
+    """
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    if mode == "validated-only":
+        where = "status='candidate' AND COALESCE(source_type,'vault') NOT IN ('vault','ingest') AND metadata_json LIKE '%research_resolution%'"
+    elif mode == "all":
+        where = "status='candidate'"
+    else:
+        conn.close()
+        raise ValueError("mode must be 'validated-only' or 'all'")
+    total = conn.execute(f"SELECT count(*) FROM edges WHERE {where}").fetchone()[0]
+    if not dry_run:
+        conn.execute(f"UPDATE edges SET status='active', updated_at=? WHERE {where}", (now_iso(),))
+        conn.commit()
+    counts = dict(conn.execute("SELECT status,count(*) FROM edges GROUP BY status").fetchall())
+    conn.close()
+    return {"mode": mode, "dry_run": dry_run, "would_activate": total, "activated": 0 if dry_run else total, "edges_by_status": counts, "db": str(db_path)}
 
 
 def update_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, follow_symlinks: bool = False) -> dict:
@@ -677,12 +762,13 @@ def update_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     init_db(conn)
-    conn.executescript("DELETE FROM observations; DELETE FROM edge_debug_log; DELETE FROM edges; DELETE FROM nodes;")
+    preserved = clear_graph_for_rebuild(conn, preserve_thoughts=True)
     conn.commit()
     conn.close()
     stats = ingest_vault(vault, db_path, hints, max_notes, rebuild=False, follow_symlinks=follow_symlinks)
     stats["mode"] = "update"
-    stats["preserved"] = ["thoughts"]
+    stats["preserved"] = ["thoughts", "active_non_ingest_edges", "killed_edge_tombstones"]
+    stats.update(preserved)
     return stats
 
 

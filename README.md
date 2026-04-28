@@ -23,6 +23,8 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
+The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules.
+
 ## What it does
 
 - Ingests Markdown notes from a vault/folder.
@@ -129,6 +131,7 @@ mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 mneme doctor
 mneme update
 mneme candidates
+mneme promote-candidates --dry-run
 mneme thought
 ```
 
@@ -170,7 +173,9 @@ Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/co
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite
 ```
 
-By default this rebuilds graph tables to avoid stale data. If you want to refresh the graph while preserving generated thought history, use `update`:
+By default this rebuilds graph tables to avoid stale data and keeps deterministic navigation/extraction edges as `candidate` rather than making every parsed link active. Source-contained observation edges can be active; durable validated active edges and killed tombstones are preserved across rebuilds.
+
+If you want to refresh the graph while preserving generated thought history, use `update`:
 
 ```bash
 mneme update --vault ./examples/vault --db /tmp/mneme.sqlite
@@ -180,6 +185,23 @@ If you explicitly want append-only behaviour:
 
 ```bash
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite --append
+```
+
+### Candidate promotion
+
+Mneme is selective by default: parsed links/headings/dates/emails remain candidates until review or validation. To inspect candidate paths:
+
+```bash
+mneme candidates --db /tmp/mneme.sqlite
+```
+
+To opt into bulk activation, run a dry run first. The default mode only promotes validated research candidates; `--mode all` is intentionally explicit because it can make the graph noisy.
+
+```bash
+mneme promote-candidates --db /tmp/mneme.sqlite --dry-run
+mneme promote-candidates --db /tmp/mneme.sqlite --mode validated-only
+# explicit noisy option:
+mneme promote-candidates --db /tmp/mneme.sqlite --mode all
 ```
 
 ### Safely edit Markdown notes
