@@ -56,6 +56,14 @@ A line between two nodes is not automatically a fact. Mneme separates:
 
 This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
 
+Mneme also treats later corrections as **guardrails**. If a newer note says an old
+tracker row was stale, wrong, hallucinated, or must not be used without fresh
+evidence, proactive candidate selection suppresses matching stale open-loop
+observations. In other words, “this TODO once appeared in a daily note” is not the
+same as “this TODO is currently live”. Agents should validate old tasks against a
+fresh source before telling a user that something is still open, overdue, requested,
+or stalled.
+
 ## Privacy model
 
 Mneme is local-first:

@@ -44,3 +44,5 @@ ingest, writeback, validation, retrieval, and thought generation.
 4. `killed` edges/synapses are tombstones. Rebuilds and re-ingests must preserve them or restore them from a verified backup before activation can proceed.
 5. Durable validated `active` edges/synapses (for example research/writeback or user-confirmed claims) must survive rebuilds; deterministic vault/ingest edges may be recalculated to avoid stale private content.
 6. Retrieval and thought generation may show candidates as candidates, but must not phrase them as resolved facts.
+7. Corrective guardrails are stronger than stale observations. If a later source says an old task/claim was stale, wrong, hallucinated, or must not be mentioned without fresh evidence, proactive thought/candidate selection must not resurrect the old item as an open loop.
+8. Open-task discovery must distinguish “source-contained observation exists” from “task is currently live”. Old daily-note rows, imported tracker rows, and candidate edges require fresh confirming evidence before an agent says they are still open, overdue, requested, or stalled.

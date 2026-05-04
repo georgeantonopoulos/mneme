@@ -908,8 +908,54 @@ def _node_by_id(conn: sqlite3.Connection, node_id: str) -> dict:
     return node or {"id": node_id, "type": "unknown", "name": node_id, "source_path": None, "metadata": {}}
 
 
+GUARDRAIL_WORDS = {"hallucinated", "hallucination", "stale", "superseded", "incorrect", "wrong", "tombstone"}
+GUARDRAIL_DIRECTIVES = {"do not", "don't", "must not", "should not", "no longer", "unless fresh", "without fresh"}
+_TOPIC_STOPWORDS = {
+    "about", "active", "after", "again", "already", "before", "candidate", "confirmed", "correction",
+    "could", "current", "daily", "drive", "evidence", "explicitly", "fresh", "from", "guardrail",
+    "hallucinated", "hallucination", "into", "must", "notes", "observation", "only", "open",
+    "overdue", "project", "prompt", "reply", "should", "source", "stale", "status", "still", "task",
+    "that", "the", "this", "treat", "unless", "without", "would",
+}
+
+
+def is_guardrail_text(text: str) -> bool:
+    """Return True when an observation is a correction/tombstone, not an action item."""
+    low = text.lower()
+    return any(word in low for word in GUARDRAIL_WORDS) and any(phrase in low for phrase in GUARDRAIL_DIRECTIVES)
+
+
+def _topic_terms(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z][a-z0-9-]{3,}", text.lower())
+        if token not in _TOPIC_STOPWORDS and not token.isdigit()
+    }
+
+
+def is_suppressed_by_guardrail(text: str, guardrails: Iterable[str]) -> bool:
+    """Return True when a stale/open-loop candidate overlaps a corrective guardrail.
+
+    Mneme may ingest both old TODOs and later corrections. Proactive surfacing must
+    not resurrect the old TODO when a newer note says that topic was stale, wrong,
+    or hallucinated unless fresh evidence reactivates it. This helper is deliberately
+    lexical and conservative: it requires a corrective directive plus topic overlap.
+    """
+    terms = _topic_terms(text)
+    if not terms:
+        return False
+    for guardrail in guardrails:
+        guard_terms = _topic_terms(guardrail)
+        overlap = terms & guard_terms
+        if len(overlap) >= 2 or (len(overlap) == 1 and len(terms) <= 3):
+            return True
+    return False
+
+
 def _candidate_reasons(kind: str, text: str, score: float, hints: list[str]) -> tuple[float, list[str]]:
     low = text.lower(); reasons=[]; total = float(score)
+    if is_guardrail_text(text):
+        return -100.0, ["corrective guardrail, not an open task"]
     if kind == "blocked":
         total += 5; reasons.append("open loop / unresolved task")
     if kind == "risk":
@@ -964,9 +1010,14 @@ def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints:
            FROM observations o JOIN nodes n ON n.id=o.note_id
            ORDER BY o.score DESC,o.created_at DESC LIMIT 200"""
     ).fetchall()
+    guardrails = [row[2] for row in rows if is_guardrail_text(row[2])]
     candidates=[]
     for note_id, kind, text, source_path, base_score, name, ntype, updated_at in rows:
+        if is_suppressed_by_guardrail(text, guardrails):
+            continue
         score, reasons = _candidate_reasons(kind, text, base_score, hints)
+        if score < 0:
+            continue
         if note_id in recent:
             score -= 3; reasons.append("recently surfaced penalty")
         if ntype in {"project", "finance", "event", "person"}:

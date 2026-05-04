@@ -647,6 +647,52 @@ def test_candidate_observation_edges_are_not_used_in_thought_paths(tmp_path: Pat
     assert names == ["Project"]
 
 
+def test_guardrail_observation_suppresses_stale_open_loop(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "old.md").write_text(
+        "# Old Tracker\n\n- Widget records translation still open and overdue\n",
+        encoding="utf-8",
+    )
+    (vault / "correction.md").write_text(
+        "# Correction\n\n- Correction: Widget records translation was hallucinated. Do not treat old tracker rows as active unless fresh source evidence explicitly reactivates it.\n",
+        encoding="utf-8",
+    )
+    (vault / "fresh.md").write_text(
+        "# Fresh Work\n\n- [ ] Follow up with supplier by 2026-05-01\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["translation", "supplier"])
+
+    candidates = list_thought_candidates(db, limit=10, hints=["translation", "supplier"])
+    texts = [candidate["observation"]["text"] for candidate in candidates]
+
+    assert "Widget records translation still open and overdue" not in texts
+    assert all("hallucinated" not in text.lower() for text in texts)
+    assert "Follow up with supplier by 2026-05-01" in texts
+
+
+def test_guardrail_without_topic_overlap_does_not_hide_other_tasks(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "guardrail.md").write_text(
+        "# Guardrail\n\n- Correction: Widget records translation was hallucinated. Do not treat old tracker rows as active unless fresh evidence exists.\n",
+        encoding="utf-8",
+    )
+    (vault / "ops.md").write_text(
+        "# Ops\n\n- [ ] Renew vendor insurance by 2026-06-01\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["insurance", "vendor"])
+
+    candidates = list_thought_candidates(db, limit=5, hints=["insurance", "vendor"])
+    texts = [candidate["observation"]["text"] for candidate in candidates]
+
+    assert "Renew vendor insurance by 2026-06-01" in texts
+
+
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):
     thought = {
         "title": "Safe",
