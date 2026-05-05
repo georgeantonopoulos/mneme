@@ -7,8 +7,31 @@ import json
 import random
 import re
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Iterable
+
+THOUGHT_STATUSES = {"open", "acted", "resolved", "learned", "dismissed"}
+LIFECYCLE_BY_KIND = {
+    "blocked": ("mneme:thought/open_loop", 5.0, "open loop tag"),
+    "risk": ("mneme:thought/time_sensitive", 4.0, "time-sensitive tag"),
+    "done": ("mneme:thought/consolidate", 1.0, "consolidation tag"),
+    "fact": ("mneme:thought/inspect", 0.0, "inspection tag"),
+}
+MISSION_PREFIX_BY_KIND = {
+    "blocked": "Finish this unfinished loop",
+    "risk": "Check and reduce this time-sensitive risk",
+    "done": "Consolidate this completed item",
+    "fact": "Inspect this possible connection",
+}
+FIRST_MOVE_BY_KIND = {
+    "blocked": "Read the newest linked evidence, then choose: draft, schedule, write back, ask, or dismiss.",
+    "risk": "Verify freshness against the source, then choose: act, remind, escalate, or dismiss.",
+    "done": "Write back the durable lesson or archive the loop so it stops resurfacing.",
+    "fact": "Decide whether this connection changes a next action; if not, leave it alone.",
+}
+THOUGHT_DONE_WHEN = "A human-visible next action, note update, scheduled reminder, or explicit dismissal exists."
+ALLOWED_THOUGHT_ACTIONS = ["draft_reply", "write_note", "schedule_reminder", "ask_user", "mark_irrelevant"]
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
@@ -355,6 +378,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS thought_tasks(id TEXT PRIMARY KEY,thought_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',lifecycle_tag TEXT,mission TEXT,done_when TEXT,first_move TEXT,writeback_target TEXT,evidence TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_thought_tasks_status ON thought_tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_thought_tasks_thought ON thought_tasks(thought_id);
     CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id);
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
@@ -1023,14 +1049,21 @@ def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints:
         if ntype in {"project", "finance", "event", "person"}:
             score += 1.5; reasons.append(f"important {ntype} note")
         path = _path_from_observation(conn, note_id, text, hops)
-        candidates.append({
+        candidate = {
+            "base_score": round(score, 2),
             "score": round(score, 2),
             "seed": {"id": note_id, "name": name, "type": ntype, "source_path": source_path},
             "observation": {"kind": kind, "text": text, "source_path": source_path, "score": base_score},
             "evidence": [text],
             "reasons": reasons,
             "path": path,
-        })
+        }
+        actionability_score, internal_tags, actionability_reasons = actionability_from_candidate(candidate)
+        candidate["score"] = round(actionability_score, 2)
+        candidate["actionability_score"] = round(actionability_score, 2)
+        candidate["internal_tags"] = internal_tags
+        candidate["reasons"] = reasons + [r for r in actionability_reasons if r not in reasons]
+        candidates.append(candidate)
     conn.close()
     candidates.sort(key=lambda c: (-c["score"], c["seed"]["name"].lower()))
     return candidates[:limit]
@@ -1050,12 +1083,94 @@ def _reasoned_next(prefix: str, evidence: str, fallback: str) -> str:
     return fallback
 
 
+def _safe_thought_slug(text: str) -> str:
+    return slugify(text)[:64] or "thought"
+
+
+def actionability_from_candidate(candidate: dict) -> tuple[float, list[str], list[str]]:
+    """Return a cheap actionability score using internal tags, not closure words.
+
+    This is intentionally not a generic "pressure" metric and it does not try to
+    decide whether something is resolved by scanning for words like done/closed.
+    Closure should come from explicit writeback/dismissal tags in a later lifecycle
+    layer. Here we only ask: can this surfaced object be turned into a useful next
+    move?
+    """
+    score = float(candidate.get("base_score", candidate.get("score", 0)) or 0)
+    kind = (candidate.get("observation") or {}).get("kind") or "fact"
+    path = candidate.get("path") or []
+    tags: list[str] = []
+    reasons: list[str] = []
+
+    lifecycle_tag, bonus, reason = LIFECYCLE_BY_KIND.get(kind, LIFECYCLE_BY_KIND["fact"])
+    score += bonus
+    tags.append(lifecycle_tag)
+    reasons.append(reason)
+
+    node_types = {str(node.get("type") or "").lower() for node in path}
+    if node_types & {"person", "email"}:
+        score += 2
+        tags.append("mneme:near_human")
+        reasons.append("human context nearby")
+    if node_types & {"project", "event", "finance"}:
+        score += 1.5
+        tags.append("mneme:domain_anchor")
+        reasons.append("anchored to an actionable domain")
+    if any(str(node.get("type") or "").lower() == "date" for node in path):
+        score += 1
+        tags.append("mneme:has_date_anchor")
+        reasons.append("date anchor nearby")
+
+    return score, list(dict.fromkeys(tags)), reasons
+
+
+def contract_from_candidate(candidate: dict) -> dict:
+    observation = candidate.get("observation") or {}
+    kind = observation.get("kind") or "fact"
+    text = str(observation.get("text") or "").strip()
+    path = candidate.get("path") or []
+    score = float(candidate.get("actionability_score", candidate.get("score", 0)) or 0)
+    tags = list(candidate.get("internal_tags") or [])
+    actionability_reasons = []
+    if not tags:
+        score, tags, actionability_reasons = actionability_from_candidate(candidate)
+    lifecycle_tag = tags[0] if tags else "mneme:thought/inspect"
+    mission_prefix = MISSION_PREFIX_BY_KIND.get(kind, "Inspect this surfaced item")
+    first_move = FIRST_MOVE_BY_KIND.get(kind, "Inspect the evidence and decide whether a next action exists.")
+    source = observation.get("source_path") or (candidate.get("seed") or {}).get("source_path") or "unknown"
+    target_seed = text or (candidate.get("seed") or {}).get("name") or "thought"
+    return {
+        "mission": f"{mission_prefix}: {target_seed[:180]}",
+        "why_now": "; ".join((candidate.get("reasons") or actionability_reasons)[:4]),
+        "done_when": THOUGHT_DONE_WHEN,
+        "first_move": first_move,
+        "needed_context": [node.get("name") for node in path if node.get("name")][:6],
+        "evidence": candidate.get("evidence") or ([text] if text else []),
+        "allowed_actions": ALLOWED_THOUGHT_ACTIONS,
+        "writeback_target": f"Thoughts/{dt.datetime.now(dt.timezone.utc).date().isoformat()}_{_safe_thought_slug(target_seed)}.md",
+        "writeback_required": kind in {"blocked", "risk"},
+        "lifecycle_tag": lifecycle_tag,
+        "internal_tags": tags,
+        "actionability_score": round(score, 2),
+        "source_path": source,
+    }
+
+
 def generate_thought(db_path: Path, path, candidate: dict | None = None):
     seed=path[0]; names=[n.get("name","?") for n in path]; obs=(candidate.get("evidence", []) if candidate else observations_for_seed(db_path, seed["id"], 4)); low=" ".join(names+obs).lower()
-    why_now = "; ".join(candidate.get("reasons", [])[:3]) if candidate else "weighted random graph traversal surfaced this path"
+    contract = contract_from_candidate(candidate) if candidate else None
+    why_now = (contract or {}).get("why_now") or ("; ".join(candidate.get("reasons", [])[:3]) if candidate else "weighted random graph traversal surfaced this path")
     chain = _path_chain(path)
     evidence = _evidence_seed(obs)
-    if any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
+    if contract and contract.get("lifecycle_tag") == "mneme:thought/open_loop":
+        title="Unfinished loop with a first move"
+        insight=f"Why this matters: {names[0]} has an actionable open-loop tag along {chain}. Treat this as a small mission, not just context."
+        action=_reasoned_next(f"Finish the contract first move: {contract['first_move']}", evidence, contract["first_move"])
+    elif contract and contract.get("lifecycle_tag") == "mneme:thought/time_sensitive":
+        title="Time-sensitive item to verify"
+        insight=f"Why this matters: {chain} has a time-sensitive internal tag. Verify freshness before acting."
+        action=_reasoned_next(f"Finish the contract first move: {contract['first_move']}", evidence, contract["first_move"])
+    elif any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
         title="Open loop hiding in the graph"
         insight=f"Why this matters: {names[0]} is connected to unresolved language along {chain}. Mneme is surfacing it as a possible open loop, not as a resolved fact."
         action=_reasoned_next("Ask whether this is still pending, then choose the smallest next action.", evidence, "Pick the smallest next action and attach it to the source note.")
@@ -1067,7 +1182,10 @@ def generate_thought(db_path: Path, path, candidate: dict | None = None):
         title="Reasoned graph walk"
         insight=f"Why this matters: Mneme explored {chain}. This may be useful, or it may be true-but-boring; the point is to test whether the bridge deserves promotion."
         action=_reasoned_next("Ask whether this connection changes what to do next.", evidence, "If this still matters, promote it to an explicit next action; otherwise let future walks drift elsewhere.")
-    return {"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
+    result={"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
+    if contract:
+        result["contract"] = contract
+    return result
 
 
 def _weighted_candidate_choice(candidates: list[dict]) -> dict | None:
@@ -1086,6 +1204,58 @@ def generate_proactive_thought(db_path: Path, hints: list[str] | None = None, ho
 
 
 def save_thought(db_path: Path, thought: dict, image_path: str | None = None):
-    conn=sqlite3.connect(db_path); tid=hashlib.sha1((thought["title"]+json.dumps([n["id"] for n in thought["path"]])+now_iso()).encode()).hexdigest()[:16]
-    conn.execute("INSERT INTO thoughts(id,seed_id,path_json,title,insight,action,image_path,created_at) VALUES(?,?,?,?,?,?,?,?)",(tid,thought["path"][0].get("id"),json.dumps(thought["path"],ensure_ascii=False),thought["title"],thought["insight"],thought["action"],image_path,now_iso()))
+    conn=sqlite3.connect(db_path); init_db(conn); tid=uuid.uuid4().hex[:16]
+    created=now_iso()
+    conn.execute("INSERT INTO thoughts(id,seed_id,path_json,title,insight,action,image_path,created_at) VALUES(?,?,?,?,?,?,?,?)",(tid,thought["path"][0].get("id"),json.dumps(thought["path"],ensure_ascii=False),thought["title"],thought["insight"],thought["action"],image_path,created))
+    contract=thought.get("contract") or {}
+    if contract:
+        task_id=hashlib.sha1((tid+contract.get("mission","")).encode()).hexdigest()[:16]
+        conn.execute("""INSERT INTO thought_tasks(id,thought_id,status,lifecycle_tag,mission,done_when,first_move,writeback_target,evidence,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(
+            task_id,tid,"open",contract.get("lifecycle_tag"),contract.get("mission"),contract.get("done_when"),contract.get("first_move"),contract.get("writeback_target"),json.dumps(contract.get("evidence") or [],ensure_ascii=False),created,created))
     conn.commit(); conn.close(); return tid
+
+
+def list_thought_tasks(db_path: Path, status: str | None = None) -> list[dict]:
+    conn=sqlite3.connect(db_path); conn.row_factory=sqlite3.Row; init_db(conn)
+    if status:
+        rows=conn.execute("SELECT * FROM thought_tasks WHERE status=? ORDER BY created_at DESC",(status,)).fetchall()
+    else:
+        rows=conn.execute("SELECT * FROM thought_tasks ORDER BY created_at DESC").fetchall()
+    conn.close(); return [dict(r) for r in rows]
+
+
+def update_thought_task(db_path: Path, task_id: str, status: str, evidence: str = "") -> dict:
+    allowed=THOUGHT_STATUSES
+    if status not in allowed:
+        raise ValueError(f"status must be one of {sorted(allowed)}")
+    conn=sqlite3.connect(db_path); conn.row_factory=sqlite3.Row; init_db(conn)
+    row=conn.execute("SELECT * FROM thought_tasks WHERE id=?",(task_id,)).fetchone()
+    if row is None:
+        conn.close(); raise KeyError(task_id)
+    existing=[]
+    try:
+        existing=json.loads(row["evidence"] or "[]")
+    except Exception:
+        existing=[row["evidence"]] if row["evidence"] else []
+    if evidence:
+        existing.append(evidence)
+    conn.execute("UPDATE thought_tasks SET status=?, evidence=?, updated_at=? WHERE id=?",(status,json.dumps(existing,ensure_ascii=False),now_iso(),task_id))
+    conn.commit(); updated=conn.execute("SELECT * FROM thought_tasks WHERE id=?",(task_id,)).fetchone(); conn.close(); return dict(updated)
+
+
+def record_thought_writeback(db_path: Path, task_id: str, target: str, evidence: str = "") -> dict:
+    """Mark that a thought produced a human-visible note/writeback artifact."""
+    marker = f"writeback:{target}"
+    return update_thought_task(db_path, task_id, "acted", "; ".join(p for p in [marker, evidence] if p))
+
+
+def record_thought_reminder(db_path: Path, task_id: str, reminder_id: str, evidence: str = "") -> dict:
+    """Close a thought loop because a concrete reminder/task/calendar item exists."""
+    marker = f"reminder:{reminder_id}"
+    return update_thought_task(db_path, task_id, "resolved", "; ".join(p for p in [marker, evidence] if p))
+
+
+def dismiss_thought_task(db_path: Path, task_id: str, reason: str) -> dict:
+    """Explicitly dismiss a thought so it is not closed by lexical guessing."""
+    return update_thought_task(db_path, task_id, "dismissed", f"dismissed:{reason}")

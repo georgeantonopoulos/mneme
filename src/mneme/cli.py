@@ -3,7 +3,27 @@ from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
 from . import md_edit
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, save_thought, update_vault, write_note, write_research_resolution
+from .core import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_HINTS,
+    activate_candidate_edges,
+    create_config,
+    dismiss_thought_task,
+    doctor,
+    explain_edge,
+    generate_proactive_thought,
+    ingest_vault,
+    list_thought_candidates,
+    list_thought_tasks,
+    load_config,
+    record_thought_reminder,
+    record_thought_writeback,
+    save_thought,
+    update_thought_task,
+    update_vault,
+    write_note,
+    write_research_resolution,
+)
 from .render import render_card
 
 
@@ -50,6 +70,12 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
+    task=sub.add_parser("task", help="List or explicitly update thought lifecycle tasks"); task_sub=task.add_subparsers(dest="task_cmd", required=True)
+    p=task_sub.add_parser("list", help="List thought lifecycle tasks"); p.add_argument("--db",type=Path); p.add_argument("--status")
+    p=task_sub.add_parser("update", help="Explicitly set a thought task status"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--status",required=True,choices=["open","acted","resolved","learned","dismissed"]); p.add_argument("--evidence",default="")
+    p=task_sub.add_parser("writeback", help="Mark a thought task acted via note/writeback"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--target",required=True); p.add_argument("--evidence",default="")
+    p=task_sub.add_parser("reminder", help="Mark a thought task resolved by a reminder/task/calendar item"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--reminder-id",required=True); p.add_argument("--evidence",default="")
+    p=task_sub.add_parser("dismiss", help="Explicitly dismiss a thought task"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--reason",required=True)
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
     p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
@@ -96,10 +122,29 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+    if args.cmd == "task":
+        db_path = path_from_config(args,"db")
+        try:
+            if args.task_cmd == "list":
+                result = list_thought_tasks(db_path, status=args.status)
+            elif args.task_cmd == "update":
+                result = update_thought_task(db_path, args.task_id, args.status, evidence=args.evidence)
+            elif args.task_cmd == "writeback":
+                result = record_thought_writeback(db_path, args.task_id, target=args.target, evidence=args.evidence)
+            elif args.task_cmd == "reminder":
+                result = record_thought_reminder(db_path, args.task_id, reminder_id=args.reminder_id, evidence=args.evidence)
+            elif args.task_cmd == "dismiss":
+                result = dismiss_thought_task(db_path, args.task_id, reason=args.reason)
+            else:
+                raise ValueError(f"unknown task command: {args.task_cmd}")
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": str(exc), "command": "task"}, indent=2, ensure_ascii=False), file=sys.stderr)
+            raise SystemExit(1) from None
+        print(json.dumps(result, indent=2, ensure_ascii=False)); return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
     generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops); image=render_card(generated,out_path); thought_id=save_thought(db_path,generated,str(image))
-    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
+    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"contract":generated.get("contract"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__": main()

@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import actionability_from_candidate, activate_candidate_edges, contract_from_candidate, create_config, dismiss_thought_task, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, list_thought_tasks, load_config, log_edge_event, record_thought_reminder, record_thought_writeback, relationship_type, save_thought, stable_id, update_thought_task, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -21,6 +21,101 @@ def test_ingest_and_walk(tmp_path: Path):
     assert path
     thought = generate_thought(db, path)
     assert thought["title"] and thought["insight"]
+
+
+def test_thought_candidate_emits_contract_with_internal_lifecycle_tag(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "Projects").mkdir(parents=True)
+    (vault / "Projects" / "alpha.md").write_text(
+        "# Alpha\n\n- [ ] Ask Casey for the signed agreement by Apr 15\nRelated: [[Casey]]\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    candidate = list_thought_candidates(db, limit=1)[0]
+    contract = contract_from_candidate(candidate)
+    thought = generate_proactive_thought(db)
+
+    assert contract["mission"].startswith("Finish this unfinished loop:")
+    assert contract["done_when"] == "A human-visible next action, note update, scheduled reminder, or explicit dismissal exists."
+    assert contract["lifecycle_tag"] == "mneme:thought/open_loop"
+    assert contract["writeback_target"].startswith("Thoughts/")
+    assert "ask_user" in contract["allowed_actions"]
+    assert thought["contract"]["mission"]
+    assert "Finish" in thought["action"] or "first move" in thought["action"].lower()
+
+
+def test_actionability_score_uses_internal_tags_not_resolved_word_matching():
+    candidate = {
+        "base_score": 2.0,
+        "score": 99.0,
+        "observation": {"kind": "blocked", "text": "Casey item is resolved confirmed closed done", "source_path": "Projects/alpha.md"},
+        "path": [
+            {"type": "project", "name": "Alpha"},
+            {"type": "person", "name": "Casey"},
+        ],
+        "reasons": [],
+    }
+
+    score, tags, reasons = actionability_from_candidate(candidate)
+    contract = contract_from_candidate({**candidate, "score": score, "internal_tags": tags})
+
+    assert score == 10.5
+    assert contract["actionability_score"] == score
+    assert "mneme:thought/open_loop" in tags
+    assert "mneme:near_human" in tags
+    assert not any("resolved" in reason.lower() for reason in reasons)
+
+
+def test_saving_contract_creates_explicit_lifecycle_task_not_lexical_closure(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Ask Casey by Apr 15\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+    thought = generate_proactive_thought(db)
+
+    thought_id = save_thought(db, thought, image_path="thought.png")
+    tasks = list_thought_tasks(db)
+
+    assert tasks[0]["thought_id"] == thought_id
+    assert tasks[0]["status"] == "open"
+    assert tasks[0]["lifecycle_tag"] == thought["contract"]["lifecycle_tag"]
+    assert tasks[0]["done_when"] == thought["contract"]["done_when"]
+
+    updated = update_thought_task(db, tasks[0]["id"], status="resolved", evidence="user dismissed explicitly")
+    assert updated["status"] == "resolved"
+    assert list_thought_tasks(db, status="open") == []
+
+
+def test_thought_task_lifecycle_events_close_loops_explicitly(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Ask Casey by Apr 15\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    task_id = list_thought_tasks(db)[0]["id"] if list_thought_tasks(db) else None
+    if task_id is None:
+        save_thought(db, generate_proactive_thought(db), image_path="thought.png")
+        task_id = list_thought_tasks(db)[0]["id"]
+    acted = record_thought_writeback(db, task_id, target="Projects/alpha.md", evidence="Added next action note")
+    assert acted["status"] == "acted"
+    assert "writeback:Projects/alpha.md" in acted["evidence"]
+
+    save_thought(db, generate_proactive_thought(db), image_path="thought2.png")
+    reminder_task = list_thought_tasks(db, status="open")[0]
+    reminded = record_thought_reminder(db, reminder_task["id"], reminder_id="cal-123", evidence="Calendar reminder created")
+    assert reminded["status"] == "resolved"
+    assert "reminder:cal-123" in reminded["evidence"]
+
+    save_thought(db, generate_proactive_thought(db), image_path="thought3.png")
+    dismiss_task = list_thought_tasks(db, status="open")[0]
+    dismissed = dismiss_thought_task(db, dismiss_task["id"], reason="not relevant after review")
+    assert dismissed["status"] == "dismissed"
+    assert "dismissed:not relevant after review" in dismissed["evidence"]
+    assert list_thought_tasks(db, status="open") == []
 
 
 def test_rebuild_removes_stale_private_content(tmp_path: Path):
@@ -386,14 +481,15 @@ def test_generate_proactive_thought_uses_candidate_why_now(tmp_path: Path):
 
     thought = generate_proactive_thought(db, hints=["deadline", "renewal"])
 
-    assert thought["title"] in {"Open loop hiding in the graph", "Deadline path worth checking", "Reasoned graph walk"}
+    assert thought["title"] in {"Unfinished loop with a first move", "Time-sensitive item to verify", "Open loop hiding in the graph", "Deadline path worth checking", "Reasoned graph walk"}
     assert thought["why_now"]
     assert "Renewal" in thought["insight"]
     assert thought["score"] > 0
     assert thought["evidence"]
     assert thought["insight"].startswith("Why this matters:")
     assert thought["action"] != thought["evidence"][0]
-    assert thought["action"].startswith(("Ask", "Check"))
+    assert thought["action"].startswith(("Ask", "Check", "Finish"))
+    assert thought.get("contract", {}).get("mission")
 
 
 def test_init_db_migrates_old_edge_schema(tmp_path: Path):
