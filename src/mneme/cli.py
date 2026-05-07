@@ -21,6 +21,7 @@ from .core import (
     save_thought,
     update_thought_task,
     update_vault,
+    weaken_edge,
     write_note,
     write_research_resolution,
 )
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> None:
     p=task_sub.add_parser("dismiss", help="Explicitly dismiss a thought task"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--reason",required=True)
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
+    p=sub.add_parser("weaken-edge", help="Reduce edge strength after negative feedback without killing"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path); p.add_argument("--reason",default="User dismissed surfaced proposal"); p.add_argument("--factor",type=float,default=0.5); p.add_argument("--floor",type=float,default=0.0)
     p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
     args=parser.parse_args(argv)
     if args.cmd == "init":
@@ -118,6 +120,8 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
     if args.cmd == "explain-edge":
         print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
+    if args.cmd == "weaken-edge":
+        print(json.dumps(weaken_edge(args.db, args.edge_id, reason=args.reason, factor=args.factor, floor=args.floor), indent=2, ensure_ascii=False)); return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":

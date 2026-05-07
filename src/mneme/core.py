@@ -925,6 +925,47 @@ def explain_edge(db_path: Path, edge_id: str) -> dict:
     }
 
 
+def weaken_edge(db_path: Path, edge_id: str, reason: str = "User dismissed this proposal", factor: float = 0.5, floor: float = 0.0) -> dict:
+    """Reduce an edge's strength after explicit negative feedback.
+
+    This is gentler than killing: a dismissal means the surfaced proposal was not
+    useful enough now, not necessarily that the underlying relationship is false.
+    Very weak active edges are demoted back to candidate so they stop driving
+    surfaced thoughts as strongly.
+    """
+    factor = max(0.0, min(1.0, float(factor)))
+    floor = max(0.0, float(floor))
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM edges WHERE id=?", (edge_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"weakened": 0, "id": edge_id, "error": "not_found"}
+    if row["status"] == "killed":
+        conn.close()
+        return {"weakened": 0, "id": edge_id, "error": "already_killed"}
+    previous = float(row["strength"] or 0.0)
+    new_strength = round(max(floor, previous * factor), 6)
+    new_status = row["status"]
+    if row["status"] == "active" and new_strength < 0.10:
+        new_status = "candidate"
+    conn.execute(
+        "UPDATE edges SET strength=?, status=?, updated_at=? WHERE id=? AND status!='killed'",
+        (new_strength, new_status, now_iso(), edge_id),
+    )
+    log_edge_event(conn, edge_id, "weakened", "user_feedback", {
+        "reason": reason,
+        "factor": factor,
+        "previous_strength": previous,
+        "new_strength": new_strength,
+        "previous_status": row["status"],
+        "new_status": new_status,
+    })
+    conn.commit()
+    conn.close()
+    return {"weakened": 1, "id": edge_id, "previous_strength": previous, "strength": new_strength, "status": new_status}
+
+
 def observations_for_seed(db_path: Path, seed_id: str, limit: int = 4):
     conn=sqlite3.connect(db_path); rows=conn.execute("SELECT text FROM observations WHERE note_id=? ORDER BY score DESC LIMIT ?",(seed_id,limit)).fetchall(); conn.close(); return [r[0] for r in rows]
 
