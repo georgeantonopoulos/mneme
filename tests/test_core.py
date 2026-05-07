@@ -1,7 +1,8 @@
+import datetime as dt
 import sqlite3
 from pathlib import Path
 
-from mneme.core import actionability_from_candidate, activate_candidate_edges, contract_from_candidate, create_config, dismiss_thought_task, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, list_thought_tasks, load_config, log_edge_event, record_thought_reminder, record_thought_writeback, relationship_type, save_thought, stable_id, update_thought_task, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import actionability_from_candidate, activate_candidate_edges, contract_from_candidate, create_config, dismiss_thought_task, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, list_thought_tasks, load_config, log_edge_event, record_thought_reminder, record_thought_writeback, relationship_type, save_thought, stable_id, tick, update_thought_task, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -787,6 +788,46 @@ def test_guardrail_without_topic_overlap_does_not_hide_other_tasks(tmp_path: Pat
     texts = [candidate["observation"]["text"] for candidate in candidates]
 
     assert "Renew vendor insurance by 2026-06-01" in texts
+
+
+def test_tick_temporal_decay_uses_source_dates_not_rebuild_timestamps(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    now = dt.datetime.now(dt.timezone.utc)
+    created_at = now.isoformat(timespec="seconds")
+    old_day = (now - dt.timedelta(days=30)).date().isoformat()
+    today = now.date().isoformat()
+    old_source = f"memory/{old_day}.md"
+    current_source = f"memory/{today}.md"
+    old_note = upsert_node(conn, "note", "Old Daily", old_source)
+    current_note = upsert_node(conn, "note", "Current Daily", current_source)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("old-risk", old_note, "risk", "Blueground move-out TOMORROW deadline", old_source, 10, created_at),
+    )
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("current-risk", current_note, "risk", "Renew vendor insurance by today", current_source, 10, created_at),
+    )
+    conn.commit()
+    conn.close()
+
+    tick(db, hints=["deadline", "insurance"], limit=10)
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    rows = {
+        row["seed_observation_id"]: row
+        for row in conn.execute("SELECT seed_observation_id,activation_score,why_now_json FROM thought_candidates")
+    }
+    conn.close()
+    old_why = rows["old-risk"]["why_now_json"]
+
+    assert rows["current-risk"]["activation_score"] > rows["old-risk"]["activation_score"]
+    assert rows["old-risk"]["activation_score"] < 0
+    assert "temporal_age_penalty" in old_why
+    assert "source_path" in old_why
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):

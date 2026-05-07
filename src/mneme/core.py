@@ -38,6 +38,14 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
 TASK_RE = re.compile(r"^\s*[-*]\s+\[([ xX])]\s+(.+)$", re.M)
 BULLET_RE = re.compile(r"^\s*[-*]\s+(.+)$", re.M)
 DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+20\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2})\b", re.I)
+TEXT_DATE_RE = re.compile(
+    r"\b(?:(?P<month_first>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?P<month_first_day>\d{1,2}),?\s+(?P<month_first_year>20\d{2})|(?P<day_first_day>\d{1,2})\s+(?P<day_first_month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?),?\s+(?P<day_first_year>20\d{2}))\b",
+    re.I,
+)
+MONTH_DAY_RE = re.compile(
+    r"\b(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?P<day>\d{1,2})\b",
+    re.I,
+)
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 RESEARCH_RESOLUTION_RE = re.compile(r"<!--\s*mneme-research-resolution-b64:\s*([A-Za-z0-9_-]+)\s*-->", re.S)
 STATUS_WORDS = {
@@ -47,6 +55,32 @@ STATUS_WORDS = {
 }
 DEFAULT_HINTS = ["deadline", "project", "invoice", "lease", "tax", "school", "move", "certification", "payment"]
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "mneme" / "config.json"
+MONTH_NUMBER = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
 DEFAULT_RELATIONSHIP_TYPES = [
     {
         "id": "links_to",
@@ -257,6 +291,87 @@ DEFAULT_RELATIONSHIP_TYPES = [
 
 def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
+
+
+def _age_days_from_datetime(value: dt.datetime | None) -> float | None:
+    if not value:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    return max(0.0, (dt.datetime.now(dt.timezone.utc) - value).total_seconds() / 86400.0)
+
+
+def _extract_date_from_source_path(source_path: str | None) -> dt.datetime | None:
+    """Extract the source note date from paths such as memory/2026-04-16.md."""
+    if not source_path:
+        return None
+    match = re.search(r"(20\d{2}-\d{2}-\d{2})", str(source_path))
+    if not match:
+        return None
+    return _parse_iso_datetime(match.group(1))
+
+
+def _extract_date_from_text(text: str | None) -> dt.datetime | None:
+    """Extract explicit dates from observation text without trusting ingest time."""
+    if not text:
+        return None
+    iso_match = re.search(r"(20\d{2}-\d{2}-\d{2})", str(text))
+    if iso_match:
+        parsed = _parse_iso_datetime(iso_match.group(1))
+        if parsed:
+            return parsed
+    match = TEXT_DATE_RE.search(str(text))
+    try:
+        if match:
+            if match.group("month_first"):
+                month = MONTH_NUMBER[match.group("month_first").lower()]
+                day = int(match.group("month_first_day"))
+                year = int(match.group("month_first_year"))
+            else:
+                month = MONTH_NUMBER[match.group("day_first_month").lower()]
+                day = int(match.group("day_first_day"))
+                year = int(match.group("day_first_year"))
+            return dt.datetime(year, month, day, tzinfo=dt.timezone.utc)
+        month_day = MONTH_DAY_RE.search(str(text))
+        if month_day:
+            month = MONTH_NUMBER[month_day.group("month").lower()]
+            day = int(month_day.group("day"))
+            year = dt.datetime.now(dt.timezone.utc).year
+            return dt.datetime(year, month, day, tzinfo=dt.timezone.utc)
+    except (KeyError, ValueError):
+        return None
+    return None
+
+
+def _observation_temporal_decay(kind: str, text: str | None, source_path: str | None, created_at: str | None) -> tuple[float, dict]:
+    source_date = _extract_date_from_source_path(source_path)
+    date_source = "source_path" if source_date else None
+    if not source_date:
+        source_date = _extract_date_from_text(text)
+        date_source = "text" if source_date else None
+    age_days = _age_days_from_datetime(source_date)
+    if age_days is None:
+        age_days = _age_days_from_datetime(_parse_iso_datetime(created_at)) or 365.0
+        date_source = "created_at_fallback"
+    if kind in {"risk", "done", "blocked"}:
+        if date_source == "created_at_fallback":
+            age_days = max(age_days, 14.0)
+        penalty = min(120.0, age_days * 4.0)
+    else:
+        penalty = min(18.0, age_days * 0.08)
+    return -penalty, {"age_days": round(age_days, 2), "date_source": date_source}
 
 
 def create_config(config_path: Path | None = None, vault: Path | None = None, db: Path | None = None, out: Path | None = None, hints: list[str] | None = None) -> dict:
@@ -1368,8 +1483,11 @@ def tick(db_path: Path, *, hints: list[str] | None = None, limit: int = 100) -> 
         matched = [hint for hint in hints if hint.lower() in row["text"].lower()]
         if matched:
             factors["hint_match"] = float(2 * len(matched))
-        if row["created_at"]:
-            factors["freshness"] = 1.0
+        temporal_decay, temporal_info = _observation_temporal_decay(row["kind"], row["text"], row["source_path"], row["created_at"])
+        if temporal_decay:
+            factors["temporal_age_penalty"] = round(temporal_decay, 3)
+            if row["kind"] in {"risk", "done", "blocked"} and temporal_info["age_days"] >= 7:
+                reasons.append(f"aged {temporal_info['age_days']} days from {temporal_info['date_source']}")
         corroboration, corroboration_info = _corroboration_bonus(conn, row["text"], row["observation_id"])
         if corroboration:
             factors["cross_sense_corroboration"] = corroboration
@@ -1386,6 +1504,7 @@ def tick(db_path: Path, *, hints: list[str] | None = None, limit: int = 100) -> 
             "score": activation,
             "factors": factors,
             "reasons": list(dict.fromkeys(reasons))[:8],
+            "temporal": temporal_info,
             "corroboration": corroboration_info,
             "evidence": row["text"],
             "seed": {"id": row["note_id"], "name": row["name"], "type": row["type"]},
@@ -1416,6 +1535,7 @@ def surface_thoughts(db_path: Path, *, limit: int = 1, mark_surfaced: bool = Tru
     rows = conn.execute(
         """SELECT * FROM thought_candidates
            WHERE status NOT IN ('killed','acted','already_done')
+             AND activation_score > 0
              AND (cooldown_until IS NULL OR cooldown_until <= ?)
            ORDER BY activation_score DESC, updated_at DESC
            LIMIT ?""",
