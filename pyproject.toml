@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mneme-agent"
 version = "0.1.1"
-description = "A graph-based memory layer for AI agents that turns Markdown notes into visual thought paths."
+description = "A local-first proactive thought-surfacing system for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Mneme contributors"}]
-keywords = ["agents", "memory", "graph", "markdown", "second-brain", "sqlite"]
+keywords = ["agents", "memory", "graph", "markdown", "proactive", "sqlite"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
