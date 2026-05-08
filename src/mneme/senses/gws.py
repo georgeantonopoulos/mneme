@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import datetime as dt
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
 
@@ -51,23 +52,27 @@ class GwsSense:
 
     def commands(self, *, since: str | None = None, limit: int | None = None) -> list[list[str]]:
         cmds: list[list[str]] = []
-        limit_arg = str(limit or 25)
+        limit_n = int(limit or 25)
         if self.include_email:
-            cmd = ["gws", "gmail", "list", "--json", "--limit", limit_arg]
+            params: dict[str, Any] = {"userId": "me", "maxResults": limit_n}
             if self.query:
-                cmd += ["--query", self.query]
+                params["q"] = self.query
             if since:
-                cmd += ["--since", since]
-            cmds.append(cmd)
+                params["q"] = f"{params.get('q', '')} after:{since}".strip()
+            cmds.append(["gws", "gmail", "users", "messages", "list", "--params", json.dumps(params), "--format", "json"])
         if self.include_calendar:
-            cmd = ["gws", "calendar", "list", "--json", "--days", str(self.calendar_window_days), "--limit", limit_arg]
-            if since:
-                cmd += ["--since", since]
-            cmds.append(cmd)
+            now = dt.datetime.now(dt.timezone.utc)
+            time_min = since or now.isoformat().replace("+00:00", "Z")
+            time_max = (now + dt.timedelta(days=self.calendar_window_days)).isoformat().replace("+00:00", "Z")
+            params = {"calendarId": "primary", "maxResults": limit_n, "singleEvents": True, "orderBy": "startTime", "timeMin": time_min, "timeMax": time_max}
+            cmds.append(["gws", "calendar", "events", "list", "--params", json.dumps(params), "--format", "json"])
         if self.include_tasks:
-            cmd = ["gws", "tasks", "list", "--json", "--limit", limit_arg]
+            params = {"tasklist": "@default", "maxResults": limit_n}
+            cmd = ["gws", "tasks", "tasks", "list", "--params", json.dumps(params), "--format", "json"]
             if self.task_filter:
-                cmd += ["--filter", self.task_filter]
+                # Google Tasks list does not expose arbitrary server-side text search;
+                # keep this as metadata for callers/tests rather than inventing a flag.
+                cmd += []
             cmds.append(cmd)
         return cmds
 

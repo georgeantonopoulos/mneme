@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import argparse, json, sys
+import argparse, json, os, sys
 from pathlib import Path
 from . import md_edit
 from .core import (
@@ -32,9 +32,11 @@ from .core import (
     write_research_resolution,
 )
 from .render import render_card
+from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
 from .senses.gws import GwsSense
 from .senses.markdown import MarkdownSense
 from .senses.registry import available_senses, build_sense_from_config
+from .source_packets import store_packet
 
 
 def parse_hints(value: str | None):
@@ -42,26 +44,11 @@ def parse_hints(value: str | None):
 
 
 def path_from_config(args, name: str, required: bool = True) -> Path | None:
-    value = getattr(args, name, None)
-    if value is not None:
-        return value
-    cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
-    if Path(cfg_path).exists():
-        cfg = load_config(Path(cfg_path))
-        if cfg.get(name):
-            return Path(cfg[name]).expanduser()
-    if required:
-        raise SystemExit(f"missing --{name}; provide it or run `mneme init --{name} ...`")
-    return None
+    return resolve_path(args, name, required=required)
 
 
 def hints_from_args(args):
-    if getattr(args, "hints", None):
-        return parse_hints(args.hints)
-    cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
-    if Path(cfg_path).exists():
-        return load_config(Path(cfg_path)).get("hints", DEFAULT_HINTS)
-    return DEFAULT_HINTS
+    return resolve_hints(args)
 
 
 def emit(result, *, as_json: bool = True) -> None:
@@ -93,7 +80,7 @@ def sense_entries_from_args(args) -> list[dict]:
     if args.sense_type == "gws":
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
     cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
-    cfg = load_config(Path(cfg_path)) if Path(cfg_path).exists() else {}
+    cfg = load_runtime_config(Path(cfg_path))
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
 
 
@@ -124,7 +111,7 @@ def run_sense_entries(args, entries: list[dict]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Config path (default: ~/.config/mneme/config.json)"); sub=parser.add_subparsers(dest="cmd", required=True)
+    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)"); sub=parser.add_subparsers(dest="cmd", required=True)
     p=sub.add_parser("init", help="Create a Mneme config file"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
     sub.add_parser("doctor", help="Validate config, vault, and output paths")
     p=sub.add_parser("ingest"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
@@ -139,6 +126,8 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
+    packet=sub.add_parser("packet", help="Create sanitized untrusted source packets"); packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
+    p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata"); p.add_argument("--packet-dir",type=Path,default=Path(os.environ.get("MNEME_PACKET_DIR", ".mneme/source_packets"))); p.add_argument("--source",required=True); p.add_argument("--kind",default="source"); p.add_argument("--raw-path",type=Path); p.add_argument("--text"); p.add_argument("--text-path",type=Path,help="Read extracted untrusted text from a file instead of argv"); p.add_argument("--metadata-json",default="{}"); p.add_argument("--json",action="store_true")
     sense=sub.add_parser("sense", help="List and run source senses"); sense_sub=sense.add_subparsers(dest="sense_cmd", required=True)
     p=sense_sub.add_parser("list", help="List configured and available senses"); p.add_argument("--json", action="store_true")
     p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events"); p.add_argument("sense_type", choices=["md","gws","all"]); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--limit",type=int); p.add_argument("--follow-symlinks",action="store_true"); p.add_argument("--email",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--query"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json", action="store_true")
@@ -201,9 +190,18 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+    if args.cmd == "packet":
+        if args.packet_cmd == "create":
+            metadata = json.loads(args.metadata_json)
+            if args.text is not None and args.text_path is not None:
+                raise SystemExit("provide only one of --text or --text-path")
+            text = args.text if args.text is not None else (args.text_path.read_text(encoding="utf-8", errors="replace") if args.text_path else (args.raw_path.read_text(encoding="utf-8", errors="replace") if args.raw_path else sys.stdin.read()))
+            result = store_packet(packet_dir=args.packet_dir, source=args.source, kind=args.kind, raw_path=args.raw_path, text=text, metadata=metadata)
+            emit(result, as_json=args.json)
+            return
     if args.cmd == "sense":
         if args.sense_cmd == "list":
-            cfg = load_config(args.config) if args.config.exists() else {}
+            cfg = load_runtime_config(args.config)
             configured = configured_senses(cfg)
             configured_ids = {entry.get("id") for entry in configured}
             result = [

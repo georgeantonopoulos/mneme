@@ -536,6 +536,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
     """)
     for ddl in [
+        "ALTER TABLE nodes ADD COLUMN confidence REAL DEFAULT 1.0",
+        "ALTER TABLE nodes ADD COLUMN metadata_json TEXT DEFAULT '{}'",
         "ALTER TABLE edges ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE edges ADD COLUMN strength REAL DEFAULT 1.0",
         "ALTER TABLE edges ADD COLUMN source_type TEXT DEFAULT 'vault'",

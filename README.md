@@ -103,7 +103,7 @@ Public Mneme remains local-first and does not make cloud calls by default. For a
 3. Compress and encrypt the backup before it leaves the machine.
 4. Verify decryptability and `PRAGMA integrity_check` before considering the backup valid.
 5. Keep local encrypted backups and a restore script that makes a safety copy before replacing the live DB.
-6. If the user wants Google Drive backup, use Google Workspace/Drive tooling such as `gws drive +upload` first. Use rclone or other remotes only as fallback.
+6. If the user wants Google Drive backup, use Google Workspace/Drive tooling such as `gws drive files create --upload /path/file --params '{"fields":"id,name,size"}'` first. Use rclone or other remotes only as fallback.
 7. Never print, commit, or send the backup passphrase. If the encrypted backup is stored off-box, the passphrase must be stored separately somewhere safe or cloud restore will be impossible after machine loss.
 
 A private deployment can schedule this as: snapshot -> manifest/checksum -> encrypt -> verify -> upload to Drive -> periodically test restore verification.
@@ -183,7 +183,22 @@ mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 mneme doctor
 ```
 
-Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config. Once configured, `ingest`, `update`, `thought`, `run-once`, and `write` can read missing `--vault`, `--db`, or `--out` values from config.
+Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config, or set `MNEME_CONFIG`. Runtime paths resolve in this order: CLI argument, environment variable, config file. The generic environment variables are `MNEME_DB`, `MNEME_VAULT`, `MNEME_OUT`, and `MNEME_HINTS`. Once configured, CLI commands can read missing `--vault`, `--db`, or `--out` values from those defaults.
+
+Example config for sense-first automation:
+
+```json
+{
+  "db": "/path/to/mneme.sqlite",
+  "vault": "/path/to/markdown-vault",
+  "out": "/path/to/mneme-out",
+  "hints": ["deadline", "reminder", "invoice"],
+  "senses": [
+    {"id": "vault", "type": "md", "enabled": true, "config": {"path": "/path/to/markdown-vault"}},
+    {"id": "gws", "type": "gws", "enabled": true, "config": {"email": true, "calendar": true, "tasks": true}}
+  ]
+}
+```
 
 ### Ingest a Markdown vault
 
@@ -227,7 +242,23 @@ mneme explain <thought_id> --db /tmp/mneme.sqlite
 
 `mneme tick` is not search. It updates deterministic activation scores, applies cooldowns and feedback penalties, suppresses killed candidates, and generates current thought candidates from normalized evidence. `mneme surface` returns the highest-activation candidates with evidence, source/sense provenance, suggested action, and feedback options. Every new command supports `--json` for agent use.
 
-The optional `gws` sense is for Hermes / Google Workspace environments where a `gws` command already exists. Mneme shells out to `gws`; tests use fake command runners and do not require Gmail, Calendar, Tasks, Hermes, network access, or OAuth.
+The optional `gws` sense is for Google Workspace environments where a `gws` command already exists and is already authenticated. Mneme shells out to the current resource-style CLI forms (`gws gmail users messages list`, `gws calendar events list`, and `gws tasks tasks list`) with JSON `--params`; it does not manage OAuth or include Google API client dependencies. Tests use fake command runners and do not require Gmail, Calendar, Tasks, network access, or OAuth.
+
+### Source Packets
+
+Sensor crons and integrations should hand Mneme bounded source packets instead of pasting raw source text into prompts. Raw email bodies, attachments, and extracted document text are untrusted data. Mneme packet helpers store raw bytes on disk and persist only metadata, hashes, extraction status, and short sanitized excerpts labelled `UNTRUSTED DATA`.
+
+```bash
+pdftotext ./notice.pdf /tmp/notice.txt
+mneme packet create \
+  --packet-dir /tmp/mneme_packets \
+  --source email \
+  --kind attachment \
+  --raw-path ./notice.pdf \
+  --text-path /tmp/notice.txt
+```
+
+For automation, prefer `--text-path` or stdin instead of embedding raw external text in prompts or shell command strings. Sanitization removes invisible Unicode such as zero-width joiners/non-joiners, combining grapheme joiners, soft hyphens, and HTML zero-width entities, then redacts common prompt-injection markers from prompt-facing excerpts. Packet metadata is appended to `manifest.jsonl` and indexed in `source_packets.sqlite`.
 
 ### Candidate promotion
 
