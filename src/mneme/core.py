@@ -534,7 +534,6 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id);
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
-    CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
     """)
     for ddl in [
         "ALTER TABLE edges ADD COLUMN status TEXT DEFAULT 'active'",
@@ -549,6 +548,19 @@ def init_db(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as exc:
             if "duplicate column" not in str(exc).lower():
                 raise
+
+    # Migration: private DBs use `node_id`; public code expects `note_id`.
+    # Add `note_id` if missing, copy from `node_id`, so the public CLI works
+    # against both fresh public DBs and migrated private dogfood DBs.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(observations)")}
+    if "note_id" not in cols and "node_id" in cols:
+        conn.execute("ALTER TABLE observations ADD COLUMN note_id TEXT")
+        conn.execute(
+            "UPDATE observations SET note_id = node_id WHERE note_id IS NULL AND node_id IS NOT NULL"
+        )
+    # Ensure the idx_obs_note index points at note_id (not the old node_id column)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id)")
+
     seed_relationship_types(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_status ON edges(status)")
 
