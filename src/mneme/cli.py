@@ -32,6 +32,7 @@ from .core import (
     write_research_resolution,
 )
 from .render import render_card
+from .onboarding import run_onboarding
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
 from .senses.gws import GwsSense
 from .senses.markdown import MarkdownSense
@@ -113,6 +114,7 @@ def run_sense_entries(args, entries: list[dict]) -> dict:
 def main(argv: list[str] | None = None) -> None:
     parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)"); sub=parser.add_subparsers(dest="cmd", required=True)
     p=sub.add_parser("init", help="Create a Mneme config file"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
+    p=sub.add_parser("setup", help="Interactive onboarding: vault, senses, classifier model, and Hermes env hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
     sub.add_parser("doctor", help="Validate config, vault, and output paths")
     p=sub.add_parser("ingest"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
     p=sub.add_parser("update", help="Synchronize graph tables from the current vault while preserving thought history"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
@@ -150,6 +152,12 @@ def main(argv: list[str] | None = None) -> None:
         if args.config.exists() and not args.force:
             raise SystemExit(f"config already exists: {args.config}; pass --force to overwrite")
         print(json.dumps(create_config(args.config,args.vault,args.db,args.out,parse_hints(args.hints) if args.hints else None), indent=2, ensure_ascii=False)); return
+    if args.cmd == "setup":
+        try:
+            result = run_onboarding(args.config, force=args.force)
+        except FileExistsError as exc:
+            raise SystemExit(str(exc)) from None
+        print(result["summary"]); return
     if args.cmd == "doctor":
         print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False)); return
     if args.cmd == "ingest":

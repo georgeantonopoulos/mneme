@@ -139,12 +139,84 @@ mneme note --help
 
 The package includes the graph memory engine and a small path-safe Markdown editor; there is no separate editor plugin to install.
 
+## Prompt path classifier for agent hooks
+
+Mneme includes a small helper for prompt-time routing in agent integrations. It classifies the raw user message as:
+
+- `retrieval` — normal recall/search/help/planning.
+- `correction` — the user corrects, contradicts, resolves, dismisses, or marks memory/assistant state stale.
+- `both` — the user corrects something and also asks for help/search/action.
+
+This is intentionally optional: the public Mneme core remains local-first and makes **no network calls by default**. Agent hooks can opt in to a model-backed classifier and keep a conservative regex fallback.
+
+### Choosing a classifier model during onboarding
+
+For Hermes/Ollama Cloud deployments, the tested default is:
+
+```bash
+export MNEME_PATH_CLASSIFIER_ENABLED=1
+export MNEME_PATH_CLASSIFIER_PROVIDER=ollama-cloud
+export MNEME_PATH_CLASSIFIER_MODEL=gemma4:31b
+export MNEME_PATH_CLASSIFIER_TIMEOUT=2.0
+export OLLAMA_BASE_URL=https://ollama.com/v1
+export OLLAMA_API_KEY=...   # keep this in your agent's private .env, never in the repo
+```
+
+Why this default: in private dogfood testing, `gemma4:31b` via Ollama Cloud correctly classified `retrieval`, `correction`, and `both` examples in under ~1 second through the OpenAI-compatible `/chat/completions` route. Local tiny models can work, but on small CPU-only VPSes they may be slower than cloud inference or need more prompting.
+
+Alternative local choices to try when you need zero network calls:
+
+- `qwen3.5:0.8b` — good accuracy with few-shot prompting, but can be slow on 2-vCPU machines.
+- `qwen2.5:0.5b-instruct` — smaller/faster, lower expected accuracy.
+- `smollm2:360m-instruct-q4_K_M` — ultra-small, useful as an experiment but may miss subtle corrections.
+
+Integration rule: always strip injected context and generated hook text before classification. The classifier must see only the user message, not blocks like `[Prompt-time retrieved context]` or `MNEME RETRIEVAL PATH ...`, otherwise it can be contaminated by its own previous routing instructions.
+
+Python integration sketch:
+
+```python
+from mneme.path_classifier import classify_path
+
+route = classify_path(
+    user_message,
+    model=os.getenv("MNEME_PATH_CLASSIFIER_MODEL", "gemma4:31b"),
+    timeout=float(os.getenv("MNEME_PATH_CLASSIFIER_TIMEOUT", "2.0")),
+)
+if route["path"] in {"correction", "both"}:
+    # run correction/writeback path
+    ...
+else:
+    # run retrieval path
+    ...
+```
+
 ## Quick start
 
 Configure Mneme once, validate it, then use short commands:
 
 ```bash
+mneme setup
+```
+
+This opens a friendly terminal onboarding menu that asks for:
+
+- Markdown vault path
+- SQLite database path
+- output/cards directory
+- whether to enable Google Workspace (`gws`) as a sense
+- whether to enable the Hermes prompt path classifier
+- classifier provider/model choice (`gemma4:31b` on Ollama Cloud is the tested default)
+- Hermes `.env` location for private API keys
+
+For non-interactive setups you can still use:
+
+```bash
 mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
+```
+
+Then validate and run:
+
+```bash
 mneme doctor
 mneme sense run md
 mneme tick --surface
