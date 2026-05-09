@@ -437,7 +437,7 @@ Options:
 - `--dry-run` — scan and report duplicate groups without making changes
 - `--auto` — automatically merge duplicates (content from weaker nodes is merged into the stronger winner, then weaker files are deleted)
 - `--json` — output results as JSON for programmatic use
-- `--backup-dir` — custom backup directory (default: `/root/.hermes/vault_backups`)
+- `--backup-dir` — custom backup directory (default: `~/.hermes/vault_backups`)
 - `--title-threshold` — similarity threshold for title matching (default: 0.85)
 - `--content-threshold` — content overlap threshold (default: 0.6)
 
@@ -467,7 +467,7 @@ mneme tick --sense hermes_sessions --db /tmp/mneme.sqlite
 
 The `hermes_sessions` sense:
 
-- Reads JSONL session files from `/root/.hermes/sessions` (or custom path via config)
+- Reads JSONL session files from `~/.hermes/sessions` (or custom path via config)
 - Extracts user/assistant messages as text evidence
 - Creates `SenseEvent`s with `event_type="conversation"`
 - Enables cross-session knowledge retrieval and corroboration
@@ -478,7 +478,7 @@ Config example:
 {
   "senses": [
     {"id": "vault", "type": "md", "enabled": true, "config": {"path": "/path/to/vault"}},
-    {"id": "hermes_sessions", "type": "hermes_sessions", "enabled": true, "config": {"path": "/root/.hermes/sessions", "limit": 50}}
+    {"id": "hermes_sessions", "type": "hermes_sessions", "enabled": true, "config": {"path": "~/.hermes/sessions", "limit": 50}}
   ]
 }
 ```

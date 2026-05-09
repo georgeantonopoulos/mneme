@@ -47,6 +47,6 @@ def build_sense_from_config(entry: dict[str, Any]):
             task_filter=config.get("task_filter"),
         )
     if sense_type in {"hermes_sessions", "sessions"}:
-        sessions_dir = config.get("path") or config.get("sessions_dir") or "/root/.hermes/sessions"
+        sessions_dir = config.get("path") or config.get("sessions_dir") or os.path.expanduser("~/.hermes/sessions")
         return HermesSessionSense(sense_id=sense_id, sessions_dir=Path(sessions_dir).expanduser(), limit=config.get("limit"))
     return get_sense_class(str(sense_type))(sense_id=sense_id, **config)

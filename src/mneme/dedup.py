@@ -17,7 +17,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-DEFAULT_BACKUP_DIR = "/root/.hermes/vault_backups"
+DEFAULT_BACKUP_DIR = os.path.expanduser("~/.hermes/vault_backups")
 SIMILARITY_THRESHOLD = 0.75
 CONTENT_OVERLAP_THRESHOLD = 0.6
 MIN_SYNAPSE_STRENGTH_DIFF = 0.5

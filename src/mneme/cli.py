@@ -87,7 +87,7 @@ def sense_entries_from_args(args) -> list[dict]:
     if args.sense_type == "gws":
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
     if args.sense_type == "hermes_sessions":
-        return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": "/root/.hermes/sessions", "limit": args.limit}}]
+        return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": os.path.expanduser("~/.hermes/sessions"), "limit": args.limit}}]
     cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
     cfg = load_runtime_config(Path(cfg_path))
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
