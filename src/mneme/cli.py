@@ -31,6 +31,7 @@ from .core import (
     write_note,
     write_research_resolution,
 )
+from .dedup import run_dedup
 from .render import render_card
 from .onboarding import run_onboarding
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
@@ -38,6 +39,11 @@ from .senses.gws import GwsSense
 from .senses.markdown import MarkdownSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
+
+
+# Dedup command defaults
+SIMILARITY_THRESHOLD = 0.75
+CONTENT_OVERLAP_THRESHOLD = 0.6
 
 
 def parse_hints(value: str | None):
@@ -80,6 +86,8 @@ def sense_entries_from_args(args) -> list[dict]:
         return [{"id": "vault", "type": "md", "enabled": True, "config": {"path": str(vault), "follow_symlinks": args.follow_symlinks}}]
     if args.sense_type == "gws":
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
+    if args.sense_type == "hermes_sessions":
+        return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": "/root/.hermes/sessions", "limit": args.limit}}]
     cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
     cfg = load_runtime_config(Path(cfg_path))
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
@@ -132,8 +140,8 @@ def main(argv: list[str] | None = None) -> None:
     p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata"); p.add_argument("--packet-dir",type=Path,default=Path(os.environ.get("MNEME_PACKET_DIR", ".mneme/source_packets"))); p.add_argument("--source",required=True); p.add_argument("--kind",default="source"); p.add_argument("--raw-path",type=Path); p.add_argument("--text"); p.add_argument("--text-path",type=Path,help="Read extracted untrusted text from a file instead of argv"); p.add_argument("--metadata-json",default="{}"); p.add_argument("--json",action="store_true")
     sense=sub.add_parser("sense", help="List and run source senses"); sense_sub=sense.add_subparsers(dest="sense_cmd", required=True)
     p=sense_sub.add_parser("list", help="List configured and available senses"); p.add_argument("--json", action="store_true")
-    p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events"); p.add_argument("sense_type", choices=["md","gws","all"]); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--limit",type=int); p.add_argument("--follow-symlinks",action="store_true"); p.add_argument("--email",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--query"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json", action="store_true")
-    p=sub.add_parser("tick", help="Run the cognition pulse and update thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--sense",choices=["all","md","gws"]); p.add_argument("--surface",action="store_true"); p.add_argument("--limit",type=int,default=100); p.add_argument("--json", action="store_true")
+    p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events"); p.add_argument("sense_type", choices=["md","gws","hermes_sessions","all"]); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--limit",type=int); p.add_argument("--follow-symlinks",action="store_true"); p.add_argument("--email",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--query"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json", action="store_true")
+    p=sub.add_parser("tick", help="Run the cognition pulse and update thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--sense",choices=["all","md","gws","hermes_sessions"]); p.add_argument("--surface",action="store_true"); p.add_argument("--limit",type=int,default=100); p.add_argument("--json", action="store_true")
     p=sub.add_parser("surface", help="Surface current proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--limit",type=int,default=1); p.add_argument("--json", action="store_true")
     p=sub.add_parser("feedback", help="Record feedback for a surfaced thought candidate"); p.add_argument("thought_id"); p.add_argument("--db",type=Path); group=p.add_mutually_exclusive_group(required=True); group.add_argument("--accept",action="store_true"); group.add_argument("--deny",action="store_true"); group.add_argument("--snooze"); group.add_argument("--kill",action="store_true"); group.add_argument("--acted",action="store_true"); group.add_argument("--already-done",action="store_true"); group.add_argument("--too-obvious",action="store_true"); group.add_argument("--good-but-later",action="store_true"); p.add_argument("--reason"); p.add_argument("--json", action="store_true")
     p=sub.add_parser("explain", help="Explain why a thought candidate surfaced"); p.add_argument("thought_id"); p.add_argument("--db",type=Path); p.add_argument("--json", action="store_true")
@@ -147,6 +155,7 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
     p=sub.add_parser("weaken-edge", help="Reduce edge strength after negative feedback without killing"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path); p.add_argument("--reason",default="User dismissed surfaced proposal"); p.add_argument("--factor",type=float,default=0.5); p.add_argument("--floor",type=float,default=0.0)
     p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
+    p=sub.add_parser("dedup", help="Merge duplicate vault nodes by synapse strength"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--backup-dir",type=Path); p.add_argument("--title-threshold",type=float,default=SIMILARITY_THRESHOLD); p.add_argument("--content-threshold",type=float,default=CONTENT_OVERLAP_THRESHOLD); p.add_argument("--dry-run",action="store_true"); p.add_argument("--auto",action="store_true"); p.add_argument("--json",action="store_true")
     args=parser.parse_args(argv)
     if args.cmd == "init":
         if args.config.exists() and not args.force:
@@ -273,6 +282,11 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps({"ok": False, "error": str(exc), "command": "task"}, indent=2, ensure_ascii=False), file=sys.stderr)
             raise SystemExit(1) from None
         print(json.dumps(result, indent=2, ensure_ascii=False)); return
+    if args.cmd == "dedup":
+        result = run_dedup(args)
+        if not result.get("ok", False):
+            raise SystemExit(1)
+        return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}

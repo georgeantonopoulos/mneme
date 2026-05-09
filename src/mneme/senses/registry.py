@@ -4,17 +4,20 @@ from pathlib import Path
 from typing import Any
 
 from .gws import GwsSense
+from .hermes_sessions import HermesSessionSense
 from .markdown import MarkdownSense
 
 SENSE_TYPES = {
     "md": MarkdownSense,
     "markdown": MarkdownSense,
     "gws": GwsSense,
+    "hermes_sessions": HermesSessionSense,
+    "sessions": HermesSessionSense,
 }
 
 
 def available_senses() -> list[str]:
-    return sorted({"md", "gws"})
+    return sorted({"md", "gws", "hermes_sessions"})
 
 
 def get_sense_class(sense_type: str):
@@ -43,4 +46,7 @@ def build_sense_from_config(entry: dict[str, Any]):
             calendar_window_days=int(config.get("calendar_window_days", 14)),
             task_filter=config.get("task_filter"),
         )
+    if sense_type in {"hermes_sessions", "sessions"}:
+        sessions_dir = config.get("path") or config.get("sessions_dir") or "/root/.hermes/sessions"
+        return HermesSessionSense(sense_id=sense_id, sessions_dir=Path(sessions_dir).expanduser(), limit=config.get("limit"))
     return get_sense_class(str(sense_type))(sense_id=sense_id, **config)

@@ -303,8 +303,10 @@ mneme sense list
 mneme sense run md --vault ./examples/vault --db /tmp/mneme.sqlite
 mneme sense run gws --email --calendar --tasks --db /tmp/mneme.sqlite
 mneme sense run gws --dry-run
+mneme sense run hermes_sessions --db /tmp/mneme.sqlite --limit 10
 mneme tick --db /tmp/mneme.sqlite
 mneme tick --surface --db /tmp/mneme.sqlite
+mneme tick --sense hermes_sessions --db /tmp/mneme.sqlite
 mneme surface --limit 3 --db /tmp/mneme.sqlite
 mneme feedback <thought_id> --accept
 mneme feedback <thought_id> --snooze 7d
@@ -420,7 +422,68 @@ Safety rule: only sourced, confirmed/certain claims at or above `--active-thresh
 
 The command accepts JSON via `--file` or stdin, which keeps the interface simple for future Node/npm wrappers.
 
-### Legacy thought card generation
+### Vault deduplication
+
+Mneme can detect and merge duplicate notes in your vault based on title similarity and content overlap, using synapse strength from the graph to decide which duplicate to keep.
+
+```bash
+mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --dry-run
+mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --auto
+mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --json
+```
+
+Options:
+
+- `--dry-run` — scan and report duplicate groups without making changes
+- `--auto` — automatically merge duplicates (content from weaker nodes is merged into the stronger winner, then weaker files are deleted)
+- `--json` — output results as JSON for programmatic use
+- `--backup-dir` — custom backup directory (default: `/root/.hermes/vault_backups`)
+- `--title-threshold` — similarity threshold for title matching (default: 0.85)
+- `--content-threshold` — content overlap threshold (default: 0.6)
+
+The dedup command:
+
+1. Scans the vault for files with similar titles or high content overlap
+2. Queries the Mneme graph for synapse strength of each duplicate
+3. Merges all content into the strongest node (by synapse score)
+4. Tags the winner with `merged:` metadata listing merged sources
+5. Backs up deleted files with timestamps before removal
+6. Preserves daily notes — files with different dates are never merged together
+
+After deduplication, run `mneme update` to refresh the graph:
+
+```bash
+mneme update --vault ./examples/vault --db /tmp/mneme.sqlite
+```
+
+### Hermes Sessions sense (chat history)
+
+Mneme can ingest Hermes Agent conversation transcripts as a sense source, enabling retrieval to blend vault content with chat history.
+
+```bash
+mneme sense run hermes_sessions --db /tmp/mneme.sqlite --limit 10
+mneme tick --sense hermes_sessions --db /tmp/mneme.sqlite
+```
+
+The `hermes_sessions` sense:
+
+- Reads JSONL session files from `/root/.hermes/sessions` (or custom path via config)
+- Extracts user/assistant messages as text evidence
+- Creates `SenseEvent`s with `event_type="conversation"`
+- Enables cross-session knowledge retrieval and corroboration
+
+Config example:
+
+```json
+{
+  "senses": [
+    {"id": "vault", "type": "md", "enabled": true, "config": {"path": "/path/to/vault"}},
+    {"id": "hermes_sessions", "type": "hermes_sessions", "enabled": true, "config": {"path": "/root/.hermes/sessions", "limit": 50}}
+  ]
+}
+```
+
+Chat sessions are now included in `mneme retrieve` results, `mneme surface` candidates, and `mneme explain` evidence chains.
 
 `mneme thought` remains for backward compatibility and SVG/PNG card generation. For current proactive workflows, use `mneme tick --surface` and `mneme surface`; those commands persist inspectable thought candidates and feed the feedback loop.
 
