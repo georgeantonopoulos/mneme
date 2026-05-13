@@ -145,7 +145,7 @@ def test_feedback_kill_prevents_surface(tmp_path: Path):
                 source_uri=None,
                 observed_at="2026-05-07T00:00:00+00:00",
                 title="Alpha",
-                text="- [ ] Need follow up by 2026-05-10",
+                text="- [ ] Need follow up by 2026-05-20",
                 metadata={"path": "alpha.md"},
             )
         ],
@@ -164,7 +164,7 @@ def test_feedback_kill_prevents_surface(tmp_path: Path):
 def test_cli_sense_list_run_dry_tick_surface_feedback_explain(tmp_path: Path, capsys):
     vault = tmp_path / "vault"
     vault.mkdir()
-    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Follow up about invoice by 2026-05-10\n", encoding="utf-8")
+    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Follow up about invoice by 2026-05-20\n", encoding="utf-8")
     db = tmp_path / "mneme.sqlite"
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"vault": str(vault), "db": str(db), "hints": ["invoice"]}), encoding="utf-8")
