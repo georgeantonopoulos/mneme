@@ -72,3 +72,16 @@ def test_classifier_accepts_markdown_wrapped_json():
 
     assert result["path"] == "retrieval"
     assert result["source"] == "model"
+
+
+def test_regex_fallback_routes_meta_correction_plus_question_to_both():
+    text = """This should have triggered memory correction, did it?
+
+MNEME RETRIEVAL PATH (default). Public Mneme CLI is primary.
+No corrections detected in user message.
+Path tag (internal): retrieval"""
+
+    result = conservative_regex_classify(text)
+
+    assert result["path"] == "both"
+    assert result["source"] == "fallback"

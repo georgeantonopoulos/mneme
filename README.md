@@ -231,6 +231,19 @@ Research results can be written back as evidence packs plus weighted graph edges
 mneme resolve --file research-resolution.json
 ```
 
+Agent runtimes can also run a deterministic post-response safety net after a final answer. It does **not** trust the model blindly: it only writes when the response includes an explicit `mneme-resolution` JSON block or matches a narrow source-backed pattern (for example a property purchase/completion date answer that cites solicitor/SDLT/email evidence). This is intended for `post_llm_call` / post-response hooks so durable facts do not depend on the model remembering to call `mneme resolve` manually:
+
+```bash
+mneme post-response \
+  --user-message-file /tmp/user.txt \
+  --assistant-response-file /tmp/assistant.txt \
+  --vault ./examples/vault \
+  --db /tmp/mneme.sqlite \
+  --json
+```
+
+Use `--dry-run` while wiring hooks.
+
 You can keep multiple configs if needed:
 
 ```bash

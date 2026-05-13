@@ -56,6 +56,9 @@ _CORRECTION_PATTERNS = [
     r"\b(?:i'?m|i\s+am)\s+(?:the\s+)?(?:tenant|landlord|owner|agent|buyer|seller|client|customer|parent|guardian)\b",
     r"\b(?:mark\s+(?:as\s+)?|this\s+is\s+now)\s+(?:resolved|done|closed|paid|moot)",
     r"\b(?:update\s+(?:status|label|tag|memory)|change\s+(?:status|label|tag))\b",
+    # Meta-correction: the user says memory routing/classification should have used correction.
+    r"\bshould\s+have\s+triggered\s+(?:mneme\s+|memory\s+)?correction\b",
+    r"\b(?:mneme\s+|memory\s+)?correction\s+(?:did\s+not|didn't|should\s+have|failed\s+to)\b",
     r"\bnot urgent\b",
     r"\[silent\]",
 ]

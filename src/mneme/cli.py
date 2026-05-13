@@ -39,6 +39,7 @@ from .senses.gws import GwsSense
 from .senses.markdown import MarkdownSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
+from .post_response import process_post_response
 
 
 # Dedup command defaults
@@ -134,6 +135,7 @@ def main(argv: list[str] | None = None) -> None:
     p=note_sub.add_parser("upsert-section", help="Replace or append a Markdown heading section"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--content",required=True); p.add_argument("--level",type=int,default=2); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
     p=note_sub.add_parser("add-bullet", help="Add a deduped bullet under a heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--bullet",required=True); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
+    p=sub.add_parser("post-response", help="Post-response safety net: detect source-backed durable facts and write research-resolution edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--user-message"); p.add_argument("--user-message-file",type=Path); p.add_argument("--assistant-response"); p.add_argument("--assistant-response-file",type=Path); p.add_argument("--active-threshold",type=float,default=0.9); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json",action="store_true")
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
     packet=sub.add_parser("packet", help="Create sanitized untrusted source packets"); packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
@@ -199,6 +201,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "resolve":
         payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
         print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
+    if args.cmd == "post-response":
+        if args.user_message and args.user_message_file:
+            raise SystemExit("provide only one of --user-message or --user-message-file")
+        if args.assistant_response and args.assistant_response_file:
+            raise SystemExit("provide only one of --assistant-response or --assistant-response-file")
+        user_message = args.user_message if args.user_message is not None else (args.user_message_file.read_text(encoding="utf-8", errors="replace") if args.user_message_file else "")
+        assistant_response = args.assistant_response if args.assistant_response is not None else (args.assistant_response_file.read_text(encoding="utf-8", errors="replace") if args.assistant_response_file else sys.stdin.read())
+        result = process_post_response(user_message, assistant_response, vault=path_from_config(args,"vault"), db=path_from_config(args,"db"), active_threshold=args.active_threshold, dry_run=args.dry_run)
+        emit(result, as_json=args.json or True); return
     if args.cmd == "explain-edge":
         print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
     if args.cmd == "weaken-edge":
