@@ -24,7 +24,7 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and later prompt-time context selection. Those patterns are documented below as design direction, but the public CLI is centered on the sense -> evidence -> activation -> surface -> feedback loop.
 
-The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules.
+The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules. When private dogfood lessons should be upstreamed, use [docs/PRIVATE_PUBLIC_DIVERGENCE.md](docs/PRIVATE_PUBLIC_DIVERGENCE.md) to extract reusable mechanics without leaking private data.
 
 ## What it does
 
