@@ -418,23 +418,33 @@ def retrieval_cluster_matches(conn: sqlite3.Connection, prompt: str, *, limit: i
     for cluster_id, size, label_json, summary_json, node_id, role, salience, hubness, name, node_type, source_path in rows:
         labels = set(json.loads(label_json or "[]"))
         label_tokens = _tokens(*labels)
-        overlap = query_tokens & (_tokens(name, source_path) | label_tokens)
+        label_overlap = query_tokens & label_tokens
+        node_overlap = query_tokens & _tokens(name, source_path)
+        overlap = label_overlap | node_overlap
         if not overlap:
             continue
         cluster = by_cluster.setdefault(
             cluster_id,
-            {"cluster_id": cluster_id, "size": size, "labels": sorted(labels), "summary": json.loads(summary_json or "{}"), "score": 0.0, "matched_terms": set(), "members": []},
+            {"cluster_id": cluster_id, "size": size, "labels": sorted(labels), "summary": json.loads(summary_json or "{}"), "score": 0.0, "matched_terms": set(), "label_terms": set(), "member_scores": [], "members": []},
         )
         role_bonus = 1.2 if role in {"exemplar", "content"} else 0.5 if role == "bridge" else -0.6 if role == "hub" else 0.0
-        score = len(overlap) * 2.0 + float(salience or 0.0) + role_bonus - min(1.5, float(hubness or 0.0) * 0.12)
-        cluster["score"] += score
+        score = len(node_overlap) * 2.0 + float(salience or 0.0) + role_bonus - min(1.5, float(hubness or 0.0) * 0.12)
         cluster["matched_terms"].update(overlap)
+        cluster["label_terms"].update(label_overlap)
+        cluster["member_scores"].append(score)
         cluster["members"].append({"id": node_id, "name": name, "type": node_type, "source_path": source_path, "role": role, "score": round(score, 2)})
+    for cluster in by_cluster.values():
+        member_scores = sorted(cluster.pop("member_scores"), reverse=True)
+        best_members = sum(member_scores[:3]) / max(1, min(3, len(member_scores)))
+        label_bonus = len(cluster.get("label_terms") or []) * 5.0
+        coverage_bonus = len(cluster.get("matched_terms") or []) * 1.5
+        cluster["score"] = label_bonus + coverage_bonus + best_members
     clusters = sorted(by_cluster.values(), key=lambda item: (-item["score"], item["cluster_id"]))[:limit]
     node_boosts: dict[str, dict] = {}
     for cluster in clusters:
         cluster["score"] = round(cluster["score"], 2)
         cluster["matched_terms"] = sorted(cluster["matched_terms"])
+        cluster.pop("label_terms", None)
         cluster["members"] = sorted(cluster["members"], key=lambda item: (-item["score"], item["name"]))[:8]
         for member in cluster["members"]:
             node_boosts[member["id"]] = {
