@@ -168,55 +168,54 @@ def shortest_path_edges(graph: dict[str, list[tuple[str, str, float]]], start: s
 def run_physarum(db_path: Path, config: PhysarumRunConfig | None = None) -> dict:
     cfg = config or PhysarumRunConfig()
     rng = random.Random(cfg.seed)
-    conn = sqlite3.connect(db_path)
-    init_physarum_tables(conn)
-    nodes = _load_nodes(conn)
-    graph, edges = _load_graph(conn, nodes, cfg)
-    terminals = choose_terminals(nodes, graph, cfg.terminals, rng)
+    with sqlite3.connect(db_path) as conn:
+        init_physarum_tables(conn)
+        nodes = _load_nodes(conn)
+        graph, edges = _load_graph(conn, nodes, cfg)
+        terminals = choose_terminals(nodes, graph, cfg.terminals, rng)
 
-    conductivity = {edge_id: 0.0 for edge_id in edges}
-    flow_count = {edge_id: 0 for edge_id in edges}
+        conductivity = {edge_id: 0.0 for edge_id in edges}
+        flow_count = {edge_id: 0 for edge_id in edges}
 
-    for _ in range(cfg.iterations):
-        for edge_id in conductivity:
-            conductivity[edge_id] *= cfg.decay
-        if len(terminals) < 2:
-            continue
-        for _ in range(cfg.paths_per_iteration):
-            start, goal = rng.sample(terminals, 2)
-            path = shortest_path_edges(graph, start, goal)
-            if not path:
+        for _ in range(cfg.iterations):
+            for edge_id in conductivity:
+                conductivity[edge_id] *= cfg.decay
+            if len(terminals) < 2:
                 continue
-            boost = cfg.reinforcement / max(1.0, math.sqrt(len(path)))
-            for edge_id in path:
-                conductivity[edge_id] += boost
-                flow_count[edge_id] += 1
+            for _ in range(cfg.paths_per_iteration):
+                start, goal = rng.sample(terminals, 2)
+                path = shortest_path_edges(graph, start, goal)
+                if not path:
+                    continue
+                boost = cfg.reinforcement / max(1.0, math.sqrt(len(path)))
+                for edge_id in path:
+                    conductivity[edge_id] += boost
+                    flow_count[edge_id] += 1
 
-    active_edges = [
-        edge_id for edge_id, value in conductivity.items()
-        if value > 0 and flow_count.get(edge_id, 0) > 0
-    ]
-    run_id = stable_id("physarum_run", f"{now_iso()}:{cfg.seed}:{len(edges)}")
-    summary = {
-        "nodes": len(nodes),
-        "edges": len(edges),
-        "terminals": len(terminals),
-        "reinforced_edges": len(active_edges),
-        "top_edges": [
-            edge_to_record(edge_id, conductivity[edge_id], flow_count[edge_id], edges, nodes)
-            for edge_id in sorted(active_edges, key=lambda item: conductivity[item], reverse=True)[:20]
-        ],
-    }
-    conn.execute(
-        "INSERT INTO physarum_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
-        (run_id, now_iso(), json.dumps(asdict(cfg), ensure_ascii=False, sort_keys=True), json.dumps(summary, ensure_ascii=False, sort_keys=True)),
-    )
-    conn.executemany(
-        "INSERT INTO physarum_edges(run_id,edge_id,conductivity,flow_count) VALUES(?,?,?,?)",
-        [(run_id, edge_id, conductivity[edge_id], flow_count[edge_id]) for edge_id in active_edges],
-    )
-    conn.commit()
-    conn.close()
+        active_edges = [
+            edge_id for edge_id, value in conductivity.items()
+            if value > 0 and flow_count.get(edge_id, 0) > 0
+        ]
+        run_id = stable_id("physarum_run", f"{now_iso()}:{cfg.seed}:{len(edges)}")
+        summary = {
+            "nodes": len(nodes),
+            "edges": len(edges),
+            "terminals": len(terminals),
+            "reinforced_edges": len(active_edges),
+            "top_edges": [
+                edge_to_record(edge_id, conductivity[edge_id], flow_count[edge_id], edges, nodes)
+                for edge_id in sorted(active_edges, key=lambda item: conductivity[item], reverse=True)[:20]
+            ],
+        }
+        conn.execute(
+            "INSERT INTO physarum_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
+            (run_id, now_iso(), json.dumps(asdict(cfg), ensure_ascii=False, sort_keys=True), json.dumps(summary, ensure_ascii=False, sort_keys=True)),
+        )
+        conn.executemany(
+            "INSERT INTO physarum_edges(run_id,edge_id,conductivity,flow_count) VALUES(?,?,?,?)",
+            [(run_id, edge_id, conductivity[edge_id], flow_count[edge_id]) for edge_id in active_edges],
+        )
+        conn.commit()
     return {"run_id": run_id, **summary}
 
 
@@ -238,18 +237,17 @@ def edge_to_record(edge_id: str, conductivity: float, flow_count: int, edges: di
 
 
 def top_physarum_edges(db_path: Path, run_id: str, limit: int = 20) -> list[dict]:
-    conn = sqlite3.connect(db_path)
-    nodes = _load_nodes(conn)
-    _graph, edges = _load_graph(conn, nodes, PhysarumRunConfig())
-    rows = conn.execute(
-        """
-        SELECT edge_id,conductivity,flow_count
-        FROM physarum_edges
-        WHERE run_id=?
-        ORDER BY conductivity DESC, flow_count DESC
-        LIMIT ?
-        """,
-        (run_id, limit),
-    ).fetchall()
-    conn.close()
-    return [edge_to_record(edge_id, conductivity, flow_count, edges, nodes) for edge_id, conductivity, flow_count in rows if edge_id in edges]
+    with sqlite3.connect(db_path) as conn:
+        nodes = _load_nodes(conn)
+        _graph, edges = _load_graph(conn, nodes, PhysarumRunConfig())
+        rows = conn.execute(
+            """
+            SELECT edge_id,conductivity,flow_count
+            FROM physarum_edges
+            WHERE run_id=?
+            ORDER BY conductivity DESC, flow_count DESC
+            LIMIT ?
+            """,
+            (run_id, limit),
+        ).fetchall()
+        return [edge_to_record(edge_id, conductivity, flow_count, edges, nodes) for edge_id, conductivity, flow_count in rows if edge_id in edges]

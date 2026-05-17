@@ -1,4 +1,5 @@
 import sqlite3
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -8,8 +9,8 @@ from mneme.physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 
 class PhysarumTests(unittest.TestCase):
     def test_run_physarum_reinforces_edges_without_changing_status(self):
-        tmp = Path(self._testMethodName + ".sqlite")
-        try:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory) / "physarum.sqlite"
             conn = sqlite3.connect(tmp)
             init_db(conn)
             a = upsert_node(conn, "note", "Alpha", "alpha.md")
@@ -38,9 +39,6 @@ class PhysarumTests(unittest.TestCase):
             self.assertEqual(statuses[e1], "candidate")
             self.assertEqual(statuses[e2], "candidate")
             self.assertEqual(run_count, 1)
-        finally:
-            if tmp.exists():
-                tmp.unlink()
 
 
 if __name__ == "__main__":

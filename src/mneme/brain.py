@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from .consolidate import LabelerConfig, _json_from_text, _label_command, _tokens, ensure_consolidation_tables
 from .harness import run_llm
@@ -241,8 +243,9 @@ def label_brain(
     conn = sqlite3.connect(db_path)
     ensure_brain_tables(conn)
     consolidation_run_id = _latest_consolidation_run_id(conn)
-    created_at = conn.execute("SELECT datetime('now')").fetchone()[0]
-    run_id = f"brain-labels-{created_at.replace(':','').replace(' ','-')}"
+    created_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    timestamp = created_at.replace("+00:00", "Z").replace(":", "").replace(".", "").replace("T", "-")
+    run_id = f"brain-labels-{timestamp}-{uuid4().hex[:8]}"
     conn.execute("DELETE FROM brain_label_runs WHERE id=?", (run_id,))
     conn.execute("DELETE FROM brain_labels WHERE run_id=?", (run_id,))
 
@@ -359,7 +362,11 @@ def brain_report(db_path: Path, *, limit: int = 20) -> dict:
     if not run_id:
         conn.close()
         return {"run_id": None, "empty_reason": "No brain label run exists yet."}
-    consolidation_run_id = _latest_consolidation_run_id(conn)
+    row = conn.execute(
+        "SELECT source_consolidation_run_id FROM brain_label_runs WHERE id=?",
+        (run_id,),
+    ).fetchone()
+    consolidation_run_id = row[0] if row else None
     rows = conn.execute(
         "SELECT target_type,label_json,summary_json,provenance_json FROM brain_labels WHERE run_id=?",
         (run_id,),
@@ -397,7 +404,7 @@ def brain_report(db_path: Path, *, limit: int = 20) -> dict:
             "depth": depth,
         }
     vague = []
-    for target_type, label_json, summary_json, provenance_json in rows:
+    for target_type, label_json, _summary_json, _provenance_json in rows:
         labels = json.loads(label_json or "[]")
         generic = {"memory", "project", "notes", "source", "run", "actions", "current"}
         if len(set(_tokens(*labels)) - generic) <= 1:

@@ -1,5 +1,6 @@
 import io
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -108,6 +109,18 @@ class HarnessTests(unittest.TestCase):
 
         output = stream.getvalue()
         self.assertIn('"empty_reason"', output)
+
+    def test_hermes_brain_ready_fails_fast_for_missing_db(self):
+        script = Path(__file__).resolve().parents[1] / "scripts" / "hermes_brain_ready.sh"
+        result = subprocess.run(
+            [str(script), "/path/to/missing.sqlite"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("DB_PATH must be an existing readable SQLite file", result.stderr)
 
 
 if __name__ == "__main__":

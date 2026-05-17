@@ -17,6 +17,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ ! -f "$DB_PATH" || ! -r "$DB_PATH" ]]; then
+  echo "DB_PATH must be an existing readable SQLite file: $DB_PATH" >&2
+  exit 2
+fi
+
 case "$DEPTH" in
   smoke)
     DEFAULT_MAX_CLUSTERS=3
@@ -55,7 +60,12 @@ LABEL_MAX_RELATIONSHIPS="${MNEME_LABEL_MAX_RELATIONSHIPS:-$DEFAULT_MAX_RELATIONS
 
 label_args=(--label-provider "$LABEL_PROVIDER" --label-model "$LABEL_MODEL")
 if [[ -n "$LABEL_COMMAND" ]]; then
-  label_args=(--label-provider custom --label-command "$LABEL_COMMAND")
+  label_args=(--label-command "$LABEL_COMMAND")
+  if [[ -n "${MNEME_LABEL_PROVIDER:-}" ]]; then
+    label_args=(--label-provider "$LABEL_PROVIDER" "${label_args[@]}")
+  else
+    label_args=(--label-provider custom "${label_args[@]}")
+  fi
 fi
 
 "$PYTHON_BIN" -m mneme.cli consolidate \

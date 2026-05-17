@@ -1138,6 +1138,16 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
         edge_brain = brain_match(("synapse", edge_id), ("node", src_id), ("node", dst_id), ("relationship", relation))
         if overlap < min_overlap and not edge_brain:
+            skipped.append({
+                "kind": "edge",
+                "id": edge_id,
+                "source_path": source_path,
+                "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"],
+                "status": status,
+                "overlap": overlap,
+                "min_overlap": min_overlap,
+                "brain_match": False,
+            })
             continue
         rel = relationship_type(relation)
         policy = _edge_truth_policy(status, relation)

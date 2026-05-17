@@ -7,6 +7,7 @@ from mneme.brain import brain_label_matches, brain_report, label_brain
 from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
+from mneme.retrieval.scoring import freshness_breakdown, score_observation_candidate, source_quality_breakdown
 
 
 def test_ingest_and_walk(tmp_path: Path):
@@ -640,6 +641,54 @@ def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_
     assert report["coverage"]["node"]["available"] == 2
     assert report["coverage"]["node"]["depth"] == "deep"
     assert report["coverage"]["synapse"]["labelled"] == 1
+
+
+def test_brain_report_uses_label_run_consolidation_snapshot(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Snapshot Note", "snapshot.md")
+    owner = upsert_node(conn, "person", "Snapshot Owner", "snapshot.md")
+    upsert_edge(conn, note, owner, "relates_to", "snapshot.md", "Snapshot owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+
+    first = consolidate_graph(db, iterations=4, min_cluster_size=2)
+    label_brain(db, targets=["cluster"], max_clusters=1)
+
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
+        ("newer-run", "extra-cluster", 1, "[]", "{}"),
+    )
+    conn.execute(
+        "INSERT INTO consolidation_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
+        ("newer-run", "9999-01-01 00:00:00", "{}", "{}"),
+    )
+    conn.commit()
+    conn.close()
+
+    report = brain_report(db)
+    assert report["source_consolidation_run_id"] == first["run_id"]
+    assert report["coverage"]["cluster"]["available"] == first["clusters"]
+
+
+def test_retrieval_scoring_handles_hint_and_source_edge_cases():
+    scored = score_observation_candidate(
+        kind="note",
+        text="plain context",
+        base_score=1,
+        hints=["", "   "],
+        observation_created_at=None,
+        node_updated_at="2026-01-01T00:00:00Z",
+    )
+
+    assert all(factor["label"] != "hint match" for factor in scored.factors)
+    freshness = freshness_breakdown("", None, None, "2026-01-01T00:00:00Z")
+    assert freshness["basis"] == "node_updated_at"
+    source = source_quality_breakdown("Archive/Archives/Runs/example.md")
+    assert source["score"] == -2.5
+    assert "archived run note" in source["reasons"]
 
 
 def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):

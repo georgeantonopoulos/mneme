@@ -211,7 +211,7 @@ def _load_graph(conn: sqlite3.Connection):
     }
     adjacency: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     edge_relations: dict[tuple[str, str], Counter] = defaultdict(Counter)
-    for edge_id, src, dst, relation, confidence, strength, status in conn.execute(
+    for _edge_id, src, dst, relation, confidence, strength, status in conn.execute(
         "SELECT id,src_id,dst_id,relation,confidence,strength,status FROM edges WHERE COALESCE(status,'candidate') != 'killed'"
     ):
         if src not in nodes or dst not in nodes:
@@ -296,106 +296,105 @@ def _node_stats(nodes: dict, adjacency: dict[str, dict[str, float]], clusters: d
 
 def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: int = 2, labeler: LabelerConfig | None = None) -> dict:
     labeler = labeler or LabelerConfig()
-    conn = sqlite3.connect(db_path)
-    ensure_consolidation_tables(conn)
-    nodes, adjacency, edge_relations = _load_graph(conn)
-    clusters = _label_propagation(nodes, adjacency, iterations)
-    stats = _node_stats(nodes, adjacency, clusters)
-    digest = hashlib.sha1(f"{len(nodes)}:{len(edge_relations)}:{iterations}:{min_cluster_size}".encode()).hexdigest()[:8]
-    run_id = f"consolidate-{digest}"
-    created_at = conn.execute("SELECT datetime('now')").fetchone()[0]
-    conn.execute("DELETE FROM consolidation_runs WHERE id=?", (run_id,))
-    conn.execute("DELETE FROM memory_clusters WHERE run_id=?", (run_id,))
-    conn.execute("DELETE FROM cluster_memberships WHERE run_id=?", (run_id,))
+    with sqlite3.connect(db_path) as conn:
+        ensure_consolidation_tables(conn)
+        nodes, adjacency, edge_relations = _load_graph(conn)
+        clusters = _label_propagation(nodes, adjacency, iterations)
+        stats = _node_stats(nodes, adjacency, clusters)
+        digest = hashlib.sha1(f"{len(nodes)}:{len(edge_relations)}:{iterations}:{min_cluster_size}".encode()).hexdigest()[:8]
+        run_id = f"consolidate-{digest}"
+        created_at = conn.execute("SELECT datetime('now')").fetchone()[0]
+        conn.execute("DELETE FROM consolidation_runs WHERE id=?", (run_id,))
+        conn.execute("DELETE FROM memory_clusters WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM cluster_memberships WHERE run_id=?", (run_id,))
 
-    grouped: dict[str, list[str]] = defaultdict(list)
-    for node_id, cluster_id in clusters.items():
-        grouped[cluster_id].append(node_id)
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for node_id, cluster_id in clusters.items():
+            grouped[cluster_id].append(node_id)
 
-    kept_clusters = {cid: ids for cid, ids in grouped.items() if len(ids) >= min_cluster_size}
-    labelled = 0
-    fallback_labels = 0
-    for cluster_id, node_ids in kept_clusters.items():
-        for node_id in node_ids:
-            stat = stats[node_id]
+        kept_clusters = {cid: ids for cid, ids in grouped.items() if len(ids) >= min_cluster_size}
+        labelled = 0
+        fallback_labels = 0
+        for cluster_id, node_ids in kept_clusters.items():
+            for node_id in node_ids:
+                stat = stats[node_id]
+                conn.execute(
+                    """INSERT INTO cluster_memberships(run_id,cluster_id,node_id,role,salience,hubness,participation,local_clustering,weighted_degree)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (run_id, cluster_id, node_id, stat.role, stat.salience, stat.hubness, stat.participation, stat.local_clustering, stat.weighted_degree),
+                )
+            top_ids = sorted(node_ids, key=lambda nid: (-stats[nid].salience, stats[nid].hubness, nodes[nid]["name"]))[:5]
+            label_tokens: Counter = Counter()
+            for node_id in top_ids:
+                label_tokens.update(_tokens(nodes[node_id]["name"], nodes[node_id].get("source_path")))
+            labels = [token for token, _ in label_tokens.most_common(6)]
+            role_counts = Counter(stats[node_id].role for node_id in node_ids)
+            type_counts = Counter(nodes[node_id]["type"] for node_id in node_ids)
+            summary = {
+                "top_members": [
+                    {
+                        "id": node_id,
+                        "name": nodes[node_id]["name"],
+                        "type": nodes[node_id]["type"],
+                        "source_path": nodes[node_id].get("source_path"),
+                        "role": stats[node_id].role,
+                        "salience": round(stats[node_id].salience, 3),
+                        "hubness": round(stats[node_id].hubness, 3),
+                    }
+                    for node_id in top_ids
+                ],
+                "role_counts": dict(role_counts),
+                "type_counts": dict(type_counts),
+                "label_meta": {"source": "procedural"},
+            }
+            if labeler.enabled and labelled < max(0, labeler.max_clusters):
+                labels, label_meta = _llm_label_cluster(cluster_id, len(node_ids), labels, summary, labeler)
+                summary["label_meta"] = label_meta
+                labelled += 1
+                if label_meta["source"] != "llm":
+                    fallback_labels += 1
             conn.execute(
-                """INSERT INTO cluster_memberships(run_id,cluster_id,node_id,role,salience,hubness,participation,local_clustering,weighted_degree)
-                   VALUES(?,?,?,?,?,?,?,?,?)""",
-                (run_id, cluster_id, node_id, stat.role, stat.salience, stat.hubness, stat.participation, stat.local_clustering, stat.weighted_degree),
+                "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
+                (run_id, cluster_id, len(node_ids), json.dumps(labels), json.dumps(summary, ensure_ascii=False)),
             )
-        top_ids = sorted(node_ids, key=lambda nid: (-stats[nid].salience, stats[nid].hubness, nodes[nid]["name"]))[:5]
-        label_tokens: Counter = Counter()
-        for node_id in top_ids:
-            label_tokens.update(_tokens(nodes[node_id]["name"], nodes[node_id].get("source_path")))
-        labels = [token for token, _ in label_tokens.most_common(6)]
-        role_counts = Counter(stats[node_id].role for node_id in node_ids)
-        type_counts = Counter(nodes[node_id]["type"] for node_id in node_ids)
         summary = {
-            "top_members": [
-                {
-                    "id": node_id,
-                    "name": nodes[node_id]["name"],
-                    "type": nodes[node_id]["type"],
-                    "source_path": nodes[node_id].get("source_path"),
-                    "role": stats[node_id].role,
-                    "salience": round(stats[node_id].salience, 3),
-                    "hubness": round(stats[node_id].hubness, 3),
-                }
-                for node_id in top_ids
-            ],
-            "role_counts": dict(role_counts),
-            "type_counts": dict(type_counts),
-            "label_meta": {"source": "procedural"},
+            "nodes": len(nodes),
+            "edges": len(edge_relations),
+            "clusters": len(kept_clusters),
+            "largest_cluster": max((len(ids) for ids in kept_clusters.values()), default=0),
+            "roles": dict(Counter(stat.role for node_id, stat in stats.items() if clusters.get(node_id) in kept_clusters)),
+            "labeling": {
+                "source": "llm" if labeler.enabled else "procedural",
+                "provider": labeler.provider,
+                "model": labeler.model,
+                "clusters_requested": min(len(kept_clusters), max(0, labeler.max_clusters)) if labeler.enabled else 0,
+                "clusters_labelled": labelled,
+                "fallback_labels": fallback_labels,
+            },
         }
-        if labeler.enabled and labelled < max(0, labeler.max_clusters):
-            labels, label_meta = _llm_label_cluster(cluster_id, len(node_ids), labels, summary, labeler)
-            summary["label_meta"] = label_meta
-            labelled += 1
-            if label_meta["source"] != "llm":
-                fallback_labels += 1
         conn.execute(
-            "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
-            (run_id, cluster_id, len(node_ids), json.dumps(labels), json.dumps(summary, ensure_ascii=False)),
-        )
-    summary = {
-        "nodes": len(nodes),
-        "edges": len(edge_relations),
-        "clusters": len(kept_clusters),
-        "largest_cluster": max((len(ids) for ids in kept_clusters.values()), default=0),
-        "roles": dict(Counter(stat.role for node_id, stat in stats.items() if clusters.get(node_id) in kept_clusters)),
-        "labeling": {
-            "source": "llm" if labeler.enabled else "procedural",
-            "provider": labeler.provider,
-            "model": labeler.model,
-            "clusters_requested": min(len(kept_clusters), max(0, labeler.max_clusters)) if labeler.enabled else 0,
-            "clusters_labelled": labelled,
-            "fallback_labels": fallback_labels,
-        },
-    }
-    conn.execute(
-        "INSERT INTO consolidation_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
-        (
-            run_id,
-            created_at,
-            json.dumps(
-                {
-                    "iterations": iterations,
-                    "min_cluster_size": min_cluster_size,
-                    "labeler": {
-                        "enabled": labeler.enabled,
-                        "provider": labeler.provider,
-                        "model": labeler.model,
-                        "timeout": labeler.timeout,
-                        "max_clusters": labeler.max_clusters,
-                        "command": list(labeler.command) if isinstance(labeler.command, (list, tuple)) else labeler.command,
-                    },
-                }
+            "INSERT INTO consolidation_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
+            (
+                run_id,
+                created_at,
+                json.dumps(
+                    {
+                        "iterations": iterations,
+                        "min_cluster_size": min_cluster_size,
+                        "labeler": {
+                            "enabled": labeler.enabled,
+                            "provider": labeler.provider,
+                            "model": labeler.model,
+                            "timeout": labeler.timeout,
+                            "max_clusters": labeler.max_clusters,
+                            "command": list(labeler.command) if isinstance(labeler.command, (list, tuple)) else labeler.command,
+                        },
+                    }
+                ),
+                json.dumps(summary),
             ),
-            json.dumps(summary),
-        ),
-    )
-    conn.commit()
-    conn.close()
+        )
+        conn.commit()
     return {"run_id": run_id, **summary}
 
 

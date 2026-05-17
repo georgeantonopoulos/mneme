@@ -88,12 +88,16 @@ def freshness_breakdown(text: str, source_path: str | None, observation_created_
             "score": score,
             "reason": "source path carries a date",
         }
-    created = _parse_iso(observation_created_at) or _parse_iso(node_updated_at)
+    created = _parse_iso(observation_created_at)
+    basis = "observation_created_at"
+    if created is None:
+        created = _parse_iso(node_updated_at)
+        basis = "node_updated_at"
     if created is not None:
         age_days = max(0, (now - created).days)
         score = 0.3 if age_days <= 30 else 0.0 if age_days <= 120 else -0.15
         return {
-            "basis": "observation_created_at",
+            "basis": basis,
             "value": created.isoformat(),
             "age_days": age_days,
             "score": score,
@@ -111,7 +115,7 @@ def source_quality_breakdown(source_path: str | None, note_name: str | None = No
     path = (source_path or "").lower()
     score = 0.0
     reasons: list[str] = []
-    if "/archive/runs/" in path:
+    if "/archive/runs/" in path or "/archives/runs/" in path:
         score -= 2.5
         reasons.append("archived run note")
     elif "/runs/" in path:
@@ -159,7 +163,8 @@ def score_observation_candidate(
     if any(word in low for word in ["waiting", "awaiting", "follow up", "needs", "todo"]):
         total = _add_factor(total, factors, "follow-up needed", 3.0)
         reasons.append("follow-up needed")
-    matched = [hint for hint in hints if hint.lower() in low]
+    normalized_hints = [hint.strip() for hint in hints if hint and hint.strip()]
+    matched = [hint for hint in normalized_hints if hint.lower() in low]
     if matched:
         total = _add_factor(total, factors, "hint match", 2.0 * len(matched))
         reasons.append("matches hints: " + ", ".join(matched[:4]))

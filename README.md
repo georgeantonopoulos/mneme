@@ -486,7 +486,7 @@ Recommended retrieval scoring direction:
 
 Killed/rejected edges should be excluded, and stale/low-strength/noisy observations should be demoted even when they lexically match the prompt.
 
-This prompt-time retrieval layer is under private dogfood and is not yet included as a public CLI command.
+This prompt-time retrieval layer is available through the public `mneme retrieve` CLI command.
 
 ## How it works today
 
