@@ -636,6 +636,10 @@ def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_
     assert any(item.get("brain_label") for item in retrieved["items"])
     report = brain_report(db)
     assert report["counts"]["node"] == 2
+    assert report["coverage"]["node"]["labelled"] == 2
+    assert report["coverage"]["node"]["available"] == 2
+    assert report["coverage"]["node"]["depth"] == "deep"
+    assert report["coverage"]["synapse"]["labelled"] == 1
 
 
 def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):

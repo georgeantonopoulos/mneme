@@ -33,17 +33,17 @@ single audition loop that can answer:
 A local private test vault was used only as a read source. Generated artifacts were
 written outside the repo and vault:
 
-- DB: ``
-- Thought output: `/thought_20260517_173029.svg`
+- DB: `$MNEME_TEST_DB`
+- Thought output: `$MNEME_TEST_OUT/thought_YYYYMMDD_HHMMSS.svg`
 
 Commands run:
 
 ```bash
 uv run --with pytest pytest -q
-uv run python -m mneme.cli ingest --vault  --db  --max-notes 250
-uv run python -m mneme.cli candidates --db  --limit 5 --hops 4
-uv run python -m mneme.cli thought --db  --out  --hops 4
-uv run python -m mneme.cli physarum run --db  --iterations 20 --terminals 16 --paths-per-iteration 6 --seed 17
+uv run python -m mneme.cli ingest --vault "$MNEME_TEST_VAULT" --db "$MNEME_TEST_DB" --max-notes 250
+uv run python -m mneme.cli candidates --db "$MNEME_TEST_DB" --limit 5 --hops 4
+uv run python -m mneme.cli thought --db "$MNEME_TEST_DB" --out "$MNEME_TEST_OUT" --hops 4
+uv run python -m mneme.cli physarum run --db "$MNEME_TEST_DB" --iterations 20 --terminals 16 --paths-per-iteration 6 --seed 17
 ```
 
 Observed:
@@ -258,15 +258,15 @@ Acceptance:
 
 Use a private local vault as a scale and realism test, but keep it non-destructive:
 
-- Read from ``.
-- Write DBs and rendered cards to ``.
+- Read from `$MNEME_TEST_VAULT`.
+- Write DBs and rendered cards to `$MNEME_TEST_OUT`.
 - Never commit generated DBs, cards, JSON dumps, or private note snippets.
 - Keep committed fixtures fictional.
 
 Recommended smoke command:
 
 ```bash
-uv run python -m mneme.cli ingest --vault  --db  --max-notes 250
+uv run python -m mneme.cli ingest --vault "$MNEME_TEST_VAULT" --db "$MNEME_TEST_DB" --max-notes 250
 ```
 
 ## Definition Of Amazing

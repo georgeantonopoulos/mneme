@@ -359,12 +359,43 @@ def brain_report(db_path: Path, *, limit: int = 20) -> dict:
     if not run_id:
         conn.close()
         return {"run_id": None, "empty_reason": "No brain label run exists yet."}
+    consolidation_run_id = _latest_consolidation_run_id(conn)
     rows = conn.execute(
         "SELECT target_type,label_json,summary_json,provenance_json FROM brain_labels WHERE run_id=?",
         (run_id,),
     ).fetchall()
     source_counts = Counter(json.loads(row[3] or "{}").get("source", "unknown") for row in rows)
     target_counts = Counter(row[0] for row in rows)
+    available_counts = {
+        "cluster": 0,
+        "node": conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0],
+        "synapse": conn.execute("SELECT COUNT(*) FROM edges WHERE COALESCE(status,'candidate') != 'killed'").fetchone()[0],
+        "relationship": conn.execute("SELECT COUNT(*) FROM relationship_types").fetchone()[0],
+    }
+    if consolidation_run_id:
+        available_counts["cluster"] = conn.execute(
+            "SELECT COUNT(*) FROM memory_clusters WHERE run_id=?",
+            (consolidation_run_id,),
+        ).fetchone()[0]
+    coverage = {}
+    for target_type in BRAIN_TARGETS:
+        labelled = int(target_counts.get(target_type, 0))
+        available = int(available_counts.get(target_type, 0) or 0)
+        ratio = (labelled / available) if available else 0.0
+        if not available:
+            depth = "none"
+        elif ratio >= 0.8:
+            depth = "deep"
+        elif ratio >= 0.25:
+            depth = "moderate"
+        else:
+            depth = "shallow"
+        coverage[target_type] = {
+            "labelled": labelled,
+            "available": available,
+            "coverage": round(ratio, 3),
+            "depth": depth,
+        }
     vague = []
     for target_type, label_json, summary_json, provenance_json in rows:
         labels = json.loads(label_json or "[]")
@@ -374,7 +405,9 @@ def brain_report(db_path: Path, *, limit: int = 20) -> dict:
     conn.close()
     return {
         "run_id": run_id,
+        "source_consolidation_run_id": consolidation_run_id,
         "counts": dict(target_counts),
+        "coverage": coverage,
         "sources": dict(source_counts),
         "vague_label_examples": vague[:limit],
     }

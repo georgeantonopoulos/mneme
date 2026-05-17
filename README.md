@@ -355,6 +355,22 @@ MNEME_LABEL_PROVIDER=ollama MNEME_LABEL_MODEL=gemma4:e4b \
   scripts/hermes_brain_ready.sh /tmp/mneme.sqlite "retrieval prompt"
 ```
 
+Set `MNEME_BRAIN_DEPTH` when the agent needs a different pass size:
+
+```bash
+MNEME_BRAIN_DEPTH=smoke scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=default scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=deep scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=full scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+```
+
+`smoke` labels a tiny proof set, `default` labels the largest clusters plus top
+nodes and synapses, `deep` labels every discovered cluster plus a broader active
+frontier, and `full` attempts to label every eligible target. Individual
+`MNEME_LABEL_MAX_*` values still override the preset. `mneme brain report`
+returns per-target coverage so Hermes can tell whether the latest brain is
+shallow, moderate, or deep before trusting retrieval.
+
 `retrieve` includes `clusters` and `brain_labels` in its JSON response, and
 returned items may include `cluster` and `brain_label` metadata showing why a
 node or synapse entered the context pack.
