@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+from .consolidate import retrieval_cluster_matches
 from .retrieval import score_observation_candidate
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -1053,6 +1054,26 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
            WHERE COALESCE(e.status,'candidate') != 'killed'
            ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
     ).fetchall()
+    cluster_context = retrieval_cluster_matches(conn, prompt, limit=5)
+    node_boosts = cluster_context.get("node_boosts", {})
+
+    def cluster_for_text(*values: str | None) -> dict | None:
+        value_tokens = _query_tokens(" ".join(value or "" for value in values))
+        best: dict | None = None
+        best_score = 0
+        for cluster in cluster_context.get("clusters", []):
+            matched = set(cluster.get("matched_terms") or [])
+            score = len(tokens & value_tokens & matched)
+            if score > best_score:
+                best = {
+                    "run_id": cluster_context.get("run_id"),
+                    "cluster_id": cluster.get("cluster_id"),
+                    "cluster_score": cluster.get("score"),
+                    "role": "text_match",
+                    "matched_terms": sorted(tokens & value_tokens & matched),
+                }
+                best_score = score
+        return best
 
     items: list[dict] = []
     skipped: list[dict] = []
@@ -1070,6 +1091,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             node_updated_at=updated_at,
         )
         score = breakdown.total + (overlap * 3.0)
+        cluster = node_boosts.get(note_id) or cluster_for_text(note_name, source_path, text)
+        if cluster:
+            score += min(5.0, float(cluster.get("cluster_score", 0)) * 0.2)
         if overlap < min_overlap and score < 8:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
             continue
@@ -1086,6 +1110,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "score_breakdown": breakdown.to_dict(),
             "path": _path_from_observation(conn, note_id, text, hops=3),
         }
+        if cluster:
+            item["cluster"] = cluster
         if overlap >= min_overlap:
             items.append(item)
         else:
@@ -1102,6 +1128,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         policy = _edge_truth_policy(status, relation)
         base = (float(confidence or 0) + float(strength or 0)) * 2.0
         score = base + overlap * 3.0
+        edge_cluster = node_boosts.get(src_id) or node_boosts.get(dst_id)
+        if edge_cluster:
+            score += min(4.0, float(edge_cluster.get("cluster_score", 0)) * 0.15)
         if status != "active":
             score -= 2.0
         if rel.get("category") in {"reference", "structure", "extraction"}:
@@ -1122,6 +1151,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
             "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
         })
+        if edge_cluster:
+            items[-1]["cluster"] = edge_cluster
 
     conn.close()
     items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
@@ -1142,6 +1173,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         "used_budget": used,
         "max_items": max_items,
         "tokens": sorted(tokens),
+        "clusters": cluster_context.get("clusters", []),
         "items": selected,
         "skipped": skipped[:50],
         "stats": {

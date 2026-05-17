@@ -11,19 +11,6 @@ DATE_RE = re.compile(
 )
 SOURCE_DATE_RE = re.compile(r"\b(20\d{2})[-_/](\d{2})[-_/](\d{2})\b")
 
-HUB_NOTE_NAMES = {
-    "architecture",
-    "current memory",
-    "debugging notes",
-    "decisions",
-    "moc",
-    "open questions",
-    "release notes",
-    "roadmap",
-    "run log",
-}
-
-
 @dataclass
 class ScoreBreakdown:
     total: float
@@ -122,7 +109,6 @@ def freshness_breakdown(text: str, source_path: str | None, observation_created_
 
 def source_quality_breakdown(source_path: str | None, note_name: str | None = None) -> dict:
     path = (source_path or "").lower()
-    name = (note_name or "").strip().lower()
     score = 0.0
     reasons: list[str] = []
     if "/archive/runs/" in path:
@@ -131,9 +117,6 @@ def source_quality_breakdown(source_path: str | None, note_name: str | None = No
     elif "/runs/" in path:
         score -= 1.0
         reasons.append("raw run note")
-    if name in HUB_NOTE_NAMES:
-        score -= 1.5
-        reasons.append("project hub note")
     if "current memory.md" in path or "/topics/" in path or "/compactions/" in path:
         score += 0.6
         reasons.append("distilled memory surface")

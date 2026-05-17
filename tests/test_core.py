@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.consolidate import consolidate_graph
 from mneme.render import render_card, safe_basename
 
 
@@ -503,6 +504,81 @@ def test_retrieve_finds_observations_and_budgeted_evidence(tmp_path: Path):
     assert "supplier" in top["snippet"].lower()
     assert top["score_breakdown"]["freshness"]["basis"] == "explicit_date"
     assert all("supplier" in item["snippet"].lower() for item in result["items"] if item["kind"] == "observation")
+
+
+def test_consolidate_assigns_procedural_roles_without_name_blacklist(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    center = upsert_node(conn, "note", "Central Switchboard", "Switchboard.md")
+    for index in range(6):
+        project = upsert_node(conn, "project", f"Project {index}", f"Project-{index}.md")
+        detail = upsert_node(conn, "observation", f"Project {index} owner follow up", f"Project-{index}.md")
+        upsert_edge(conn, center, project, "links_to", "Switchboard.md", f"[[Project {index}]]", 0.95, strength=0.95)
+        upsert_edge(conn, project, detail, "has_blocked", f"Project-{index}.md", f"Project {index} owner follow up", 0.95, strength=0.95)
+    conn.commit()
+    conn.close()
+
+    summary = consolidate_graph(db, iterations=8, min_cluster_size=2)
+
+    conn = sqlite3.connect(db)
+    role = conn.execute(
+        "SELECT role FROM cluster_memberships WHERE run_id=? AND node_id=?",
+        (summary["run_id"], center),
+    ).fetchone()[0]
+    hubness = conn.execute(
+        "SELECT hubness FROM cluster_memberships WHERE run_id=? AND node_id=?",
+        (summary["run_id"], center),
+    ).fetchone()[0]
+    conn.close()
+    assert role in {"hub", "bridge"}
+    assert hubness > 1.0
+
+
+def test_retrieve_uses_consolidated_cluster_context(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Launch.md").write_text("# Launch\n\n- [ ] Follow up with supplier by 2026-05-20\n\nSupplier plan relates to launch readiness.\n", encoding="utf-8")
+    (vault / "Supplier.md").write_text("# Supplier\n\n- [ ] Waiting for owner confirmation on supplier plan\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["supplier"])
+    consolidate_graph(db, iterations=8, min_cluster_size=2)
+
+    result = retrieve_context(db, "supplier owner follow up", budget=500, max_items=5, hints=["supplier"])
+
+    assert result["clusters"]
+    assert result["items"]
+    assert any(item.get("cluster") for item in result["items"])
+
+
+def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    child = upsert_node(conn, "person", "Example Child", "child.md")
+    activity = upsert_node(conn, "project", "Chess Club", "activity.md")
+    candidate_edge = upsert_edge(
+        conn,
+        child,
+        activity,
+        "requested_activity",
+        "email.md",
+        "Email asked about Chess Club availability.",
+        0.72,
+        status="candidate",
+        strength=0.7,
+        source_type="email",
+    )
+    conn.commit()
+    conn.close()
+
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+    result = retrieve_context(db, "Chess Club availability", max_items=5)
+    edge_items = [item for item in result["items"] if item["id"] == candidate_edge]
+
+    assert edge_items
+    assert edge_items[0]["truth_policy"] == "candidate_only"
+    assert edge_items[0]["status"] == "candidate"
 
 
 def test_init_db_migrates_old_edge_schema(tmp_path: Path):
