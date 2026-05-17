@@ -8,9 +8,13 @@ import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
+
+from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_\-]{2,}")
+ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 RELATION_WEIGHTS = {
     "has_blocked": 3.0,
@@ -34,6 +38,19 @@ class NodeStats:
     role: str
 
 
+@dataclass
+class LabelerConfig:
+    provider: str | None = None
+    model: str | None = None
+    command: str | Sequence[str] | None = None
+    timeout: int = DEFAULT_TIMEOUT_SECONDS
+    max_clusters: int = 25
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.provider or self.command)
+
+
 def _tokens(*values: str | None) -> set[str]:
     found: set[str] = set()
     for value in values:
@@ -41,6 +58,97 @@ def _tokens(*values: str | None) -> set[str]:
             continue
         found.update(token.lower() for token in TOKEN_RE.findall(value))
     return found
+
+
+def _label_command(config: LabelerConfig) -> str | Sequence[str] | None:
+    if config.command is not None:
+        return config.command
+    if config.provider == "ollama":
+        if not config.model:
+            raise ValueError("--label-model is required when --label-provider=ollama")
+        return ["ollama", "run", config.model, "--format", "json", "--hidethinking", "--think", "false", "--nowordwrap"]
+    return None
+
+
+def _json_from_text(text: str) -> dict:
+    cleaned = ANSI_RE.sub("", text or "")
+    cleaned = "".join(ch for ch in cleaned if ch in "\n\r\t" or ord(ch) >= 32).strip()
+    if not cleaned:
+        return {}
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start < 0 or end <= start:
+            return {}
+        try:
+            parsed = json.loads(cleaned[start : end + 1])
+        except json.JSONDecodeError:
+            return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _cluster_label_prompt(cluster_id: str, size: int, summary: dict) -> str:
+    members = summary.get("top_members") or []
+    compact_members = [
+        {
+            "name": item.get("name"),
+            "type": item.get("type"),
+            "source_path": item.get("source_path"),
+            "role": item.get("role"),
+        }
+        for item in members[:10]
+    ]
+    return (
+        "You label a memory-graph cluster for retrieval. "
+        "Return only JSON with keys: labels (2-6 short lowercase phrases), "
+        "summary (one short sentence), intent (short phrase), ignore (boolean). "
+        "Do not invent facts beyond the supplied members.\n\n"
+        + json.dumps(
+            {
+                "cluster_id": cluster_id,
+                "size": size,
+                "role_counts": summary.get("role_counts", {}),
+                "type_counts": summary.get("type_counts", {}),
+                "top_members": compact_members,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _llm_label_cluster(cluster_id: str, size: int, labels: list[str], summary: dict, config: LabelerConfig) -> tuple[list[str], dict]:
+    command = _label_command(config)
+    result = run_llm(
+        _cluster_label_prompt(cluster_id, size, summary),
+        provider=config.provider or "custom",
+        command=command,
+        timeout=config.timeout,
+    )
+    parsed = _json_from_text(result.stdout)
+    llm_labels = parsed.get("labels") if isinstance(parsed.get("labels"), list) else []
+    clean_labels = []
+    for label in llm_labels:
+        text = str(label).strip().lower()
+        if text and len(text) <= 80:
+            clean_labels.append(text)
+    if not clean_labels:
+        clean_labels = labels
+    label_meta = {
+        "source": "llm" if result.ok and parsed else "procedural_fallback",
+        "provider": config.provider or "custom",
+        "model": config.model,
+        "ok": result.ok,
+        "exit_code": result.exit_code,
+        "error": result.error,
+        "stderr": result.stderr[:500],
+        "stdout_excerpt": result.stdout[:500] if result.ok and not parsed else "",
+        "summary": str(parsed.get("summary") or "")[:500] if parsed else "",
+        "intent": str(parsed.get("intent") or "")[:160] if parsed else "",
+        "ignore": bool(parsed.get("ignore")) if parsed else False,
+    }
+    return clean_labels[:6], label_meta
 
 
 def _edge_weight(relation: str, status: str | None, confidence: float | None, strength: float | None) -> float:
@@ -186,7 +294,8 @@ def _node_stats(nodes: dict, adjacency: dict[str, dict[str, float]], clusters: d
     return stats
 
 
-def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: int = 2) -> dict:
+def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: int = 2, labeler: LabelerConfig | None = None) -> dict:
+    labeler = labeler or LabelerConfig()
     conn = sqlite3.connect(db_path)
     ensure_consolidation_tables(conn)
     nodes, adjacency, edge_relations = _load_graph(conn)
@@ -204,6 +313,8 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
         grouped[cluster_id].append(node_id)
 
     kept_clusters = {cid: ids for cid, ids in grouped.items() if len(ids) >= min_cluster_size}
+    labelled = 0
+    fallback_labels = 0
     for cluster_id, node_ids in kept_clusters.items():
         for node_id in node_ids:
             stat = stats[node_id]
@@ -234,7 +345,14 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
             ],
             "role_counts": dict(role_counts),
             "type_counts": dict(type_counts),
+            "label_meta": {"source": "procedural"},
         }
+        if labeler.enabled and labelled < max(0, labeler.max_clusters):
+            labels, label_meta = _llm_label_cluster(cluster_id, len(node_ids), labels, summary, labeler)
+            summary["label_meta"] = label_meta
+            labelled += 1
+            if label_meta["source"] != "llm":
+                fallback_labels += 1
         conn.execute(
             "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
             (run_id, cluster_id, len(node_ids), json.dumps(labels), json.dumps(summary, ensure_ascii=False)),
@@ -245,10 +363,36 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
         "clusters": len(kept_clusters),
         "largest_cluster": max((len(ids) for ids in kept_clusters.values()), default=0),
         "roles": dict(Counter(stat.role for node_id, stat in stats.items() if clusters.get(node_id) in kept_clusters)),
+        "labeling": {
+            "source": "llm" if labeler.enabled else "procedural",
+            "provider": labeler.provider,
+            "model": labeler.model,
+            "clusters_requested": min(len(kept_clusters), max(0, labeler.max_clusters)) if labeler.enabled else 0,
+            "clusters_labelled": labelled,
+            "fallback_labels": fallback_labels,
+        },
     }
     conn.execute(
         "INSERT INTO consolidation_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
-        (run_id, created_at, json.dumps({"iterations": iterations, "min_cluster_size": min_cluster_size}), json.dumps(summary)),
+        (
+            run_id,
+            created_at,
+            json.dumps(
+                {
+                    "iterations": iterations,
+                    "min_cluster_size": min_cluster_size,
+                    "labeler": {
+                        "enabled": labeler.enabled,
+                        "provider": labeler.provider,
+                        "model": labeler.model,
+                        "timeout": labeler.timeout,
+                        "max_clusters": labeler.max_clusters,
+                        "command": list(labeler.command) if isinstance(labeler.command, (list, tuple)) else labeler.command,
+                    },
+                }
+            ),
+            json.dumps(summary),
+        ),
     )
     conn.commit()
     conn.close()
@@ -273,7 +417,8 @@ def retrieval_cluster_matches(conn: sqlite3.Connection, prompt: str, *, limit: i
     by_cluster: dict[str, dict] = {}
     for cluster_id, size, label_json, summary_json, node_id, role, salience, hubness, name, node_type, source_path in rows:
         labels = set(json.loads(label_json or "[]"))
-        overlap = query_tokens & (_tokens(name, source_path) | labels)
+        label_tokens = _tokens(*labels)
+        overlap = query_tokens & (_tokens(name, source_path) | label_tokens)
         if not overlap:
             continue
         cluster = by_cluster.setdefault(

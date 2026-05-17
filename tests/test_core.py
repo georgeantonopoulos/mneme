@@ -1,8 +1,10 @@
+import json
 import sqlite3
+import sys
 from pathlib import Path
 
 from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
-from mneme.consolidate import consolidate_graph
+from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
 
 
@@ -549,6 +551,46 @@ def test_retrieve_uses_consolidated_cluster_context(tmp_path: Path):
     assert result["clusters"]
     assert result["items"]
     assert any(item.get("cluster") for item in result["items"])
+
+
+def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    blocked = upsert_node(conn, "observation", "Supplier launch owner follow up", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Launch owner owns supplier readiness", 0.9, strength=0.9)
+    upsert_edge(conn, note, blocked, "has_blocked", "Launch.md", "Supplier launch owner follow up", 0.95, strength=0.95)
+    conn.commit()
+    conn.close()
+
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['supplier launch','owner followup'], 'summary':'Supplier launch follow-up cluster.', 'intent':'follow up', 'ignore':False}))",
+    ]
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT label_json,summary_json FROM memory_clusters WHERE run_id=? LIMIT 1", (summary["run_id"],)).fetchone()
+    conn.close()
+    labels = json.loads(row[0])
+    cluster_summary = json.loads(row[1])
+    assert labels == ["supplier launch", "owner followup"]
+    assert cluster_summary["label_meta"]["source"] == "llm"
+    assert summary["labeling"]["clusters_labelled"] == 1
+
+    conn = sqlite3.connect(db)
+    matches = retrieval_cluster_matches(conn, "supplier launch handoff", limit=3)
+    conn.close()
+    assert matches["clusters"]
+    assert matches["clusters"][0]["matched_terms"] == ["launch", "supplier"]
 
 
 def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):
