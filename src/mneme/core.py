@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+from .brain import brain_label_matches
 from .consolidate import retrieval_cluster_matches
 from .retrieval import score_observation_candidate
 
@@ -1056,6 +1057,14 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     ).fetchall()
     cluster_context = retrieval_cluster_matches(conn, prompt, limit=5)
     node_boosts = cluster_context.get("node_boosts", {})
+    brain_context = brain_label_matches(conn, prompt, limit=16)
+    brain_matches = brain_context.get("by_target", {})
+
+    def brain_match(*keys: tuple[str, str]) -> dict | None:
+        found = [brain_matches[key] for key in keys if key in brain_matches]
+        if not found:
+            return None
+        return sorted(found, key=lambda item: -float(item.get("score", 0)))[0]
 
     def cluster_for_text(*values: str | None) -> dict | None:
         value_tokens = _query_tokens(" ".join(value or "" for value in values))
@@ -1094,7 +1103,10 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         cluster = node_boosts.get(note_id) or cluster_for_text(note_name, source_path, text)
         if cluster:
             score += min(5.0, float(cluster.get("cluster_score", 0)) * 0.2)
-        if overlap < min_overlap and score < 8:
+        obs_brain = brain_match(("node", note_id))
+        if obs_brain:
+            score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
+        if overlap < min_overlap and score < 8 and not obs_brain:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
             continue
         item = {
@@ -1112,7 +1124,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         }
         if cluster:
             item["cluster"] = cluster
-        if overlap >= min_overlap:
+        if obs_brain:
+            item["brain_label"] = {key: obs_brain[key] for key in ("run_id", "target_type", "target_id", "labels", "matched_terms", "score")}
+        if overlap >= min_overlap or obs_brain:
             items.append(item)
         else:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
@@ -1122,7 +1136,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["candidate edge excluded"], "status": status})
             continue
         overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
-        if overlap < min_overlap:
+        edge_brain = brain_match(("synapse", edge_id), ("node", src_id), ("node", dst_id), ("relationship", relation))
+        if overlap < min_overlap and not edge_brain:
             continue
         rel = relationship_type(relation)
         policy = _edge_truth_policy(status, relation)
@@ -1131,6 +1146,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         edge_cluster = node_boosts.get(src_id) or node_boosts.get(dst_id)
         if edge_cluster:
             score += min(4.0, float(edge_cluster.get("cluster_score", 0)) * 0.15)
+        if edge_brain:
+            score += min(4.0, float(edge_brain.get("score", 0)) * 0.3)
         if status != "active":
             score -= 2.0
         if rel.get("category") in {"reference", "structure", "extraction"}:
@@ -1153,6 +1170,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         })
         if edge_cluster:
             items[-1]["cluster"] = edge_cluster
+        if edge_brain:
+            items[-1]["brain_label"] = {key: edge_brain[key] for key in ("run_id", "target_type", "target_id", "labels", "matched_terms", "score")}
 
     conn.close()
     items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
@@ -1174,6 +1193,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         "max_items": max_items,
         "tokens": sorted(tokens),
         "clusters": cluster_context.get("clusters", []),
+        "brain_labels": brain_context.get("matches", []),
         "items": selected,
         "skipped": skipped[:50],
         "stats": {

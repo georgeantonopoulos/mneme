@@ -311,6 +311,54 @@ quality notes, skipped-item reasons, and a `truth_policy` for every edge. Killed
 edges are excluded. Candidate semantic edges may be shown as `candidate_only`,
 but they are not phrased as facts.
 
+### Build the Hermes-ready working brain
+
+The working-brain pipeline keeps graph structure deterministic and runs model
+labelling as a replaceable harness step. A local Ollama model is useful for
+dogfooding, while Hermes can pass its own command through the same interface.
+
+```bash
+mneme consolidate \
+  --db /tmp/mneme.sqlite \
+  --label-provider ollama \
+  --label-model gemma4:e4b \
+  --label-max-clusters 25
+
+mneme brain label \
+  --db /tmp/mneme.sqlite \
+  --targets cluster,node,synapse,relationship \
+  --max-clusters 25 \
+  --max-nodes 50 \
+  --max-synapses 50 \
+  --max-relationships 25 \
+  --label-provider ollama \
+  --label-model gemma4:e4b
+
+mneme brain report --db /tmp/mneme.sqlite
+mneme retrieve --db /tmp/mneme.sqlite --prompt "what should the agent remember here?"
+```
+
+Hermes can swap the model runner without changing Mneme's graph logic:
+
+```bash
+mneme brain label \
+  --db /tmp/mneme.sqlite \
+  --targets cluster,node,synapse,relationship \
+  --label-provider hermes \
+  --label-command "hermes label --json"
+```
+
+For a single smoke script:
+
+```bash
+MNEME_LABEL_PROVIDER=ollama MNEME_LABEL_MODEL=gemma4:e4b \
+  scripts/hermes_brain_ready.sh /tmp/mneme.sqlite "retrieval prompt"
+```
+
+`retrieve` includes `clusters` and `brain_labels` in its JSON response, and
+returned items may include `cluster` and `brain_label` metadata showing why a
+node or synapse entered the context pack.
+
 ### Ingest and generate in one command
 
 ```bash

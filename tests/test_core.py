@@ -3,6 +3,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from mneme.brain import brain_label_matches, brain_report, label_brain
 from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
@@ -591,6 +592,50 @@ def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path)
     conn.close()
     assert matches["clusters"]
     assert matches["clusters"][0]["matched_terms"] == ["launch", "supplier"]
+
+
+def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    edge = upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier launch owner owns readiness", 0.9, strength=0.9)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs-launch", note, "blocked", "Supplier launch owner follow up", "Launch.md", 5, "now"),
+    )
+    conn.commit()
+    conn.close()
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; text=sys.stdin.read().lower(); labels=['supplier launch','owner readiness'] if 'supplier' in text else ['relationship semantics','graph traversal']; print(json.dumps({'labels':labels,'summary':'brain target label','intent':'retrieval routing','ignore':False}))",
+    ]
+    result = label_brain(
+        db,
+        labeler=LabelerConfig(provider="test-labeler", command=command, timeout=10),
+        targets=["node", "synapse", "relationship"],
+        max_nodes=3,
+        max_synapses=3,
+        max_relationships=3,
+    )
+
+    assert result["targets"]["node"] == 2
+    assert result["targets"]["synapse"] == 1
+    assert result["targets"]["relationship"] == 3
+    conn = sqlite3.connect(db)
+    matches = brain_label_matches(conn, "supplier launch readiness", limit=5)
+    conn.close()
+    assert any(item["target_type"] in {"node", "synapse"} for item in matches["matches"])
+
+    retrieved = retrieve_context(db, "supplier launch readiness", max_items=5)
+    assert retrieved["brain_labels"]
+    assert any(item.get("brain_label") for item in retrieved["items"])
+    report = brain_report(db)
+    assert report["counts"]["node"] == 2
 
 
 def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):

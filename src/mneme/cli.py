@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
 from . import md_edit
+from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, retrieve_context, save_thought, update_vault, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
@@ -37,6 +38,23 @@ def hints_from_args(args):
     return DEFAULT_HINTS
 
 
+def labeler_from_args(args) -> LabelerConfig:
+    return LabelerConfig(
+        provider=getattr(args, "label_provider", None),
+        model=getattr(args, "label_model", None),
+        command=getattr(args, "label_command", None),
+        timeout=getattr(args, "label_timeout", DEFAULT_TIMEOUT_SECONDS),
+        max_clusters=getattr(args, "label_max_clusters", 25),
+    )
+
+
+def add_labeler_args(p) -> None:
+    p.add_argument("--label-provider",help="Optional label provider, for example 'ollama' or any label used with --label-command")
+    p.add_argument("--label-model",help="Model name for provider-backed labelling, for example qwen3:1.7b")
+    p.add_argument("--label-command",help="Custom command used by the harness for labelling; prompt is sent on stdin unless {prompt} is present")
+    p.add_argument("--label-timeout",type=int,default=DEFAULT_TIMEOUT_SECONDS)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Config path (default: ~/.config/mneme/config.json)"); sub=parser.add_subparsers(dest="cmd", required=True)
     p=sub.add_parser("init", help="Create a Mneme config file"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
@@ -54,7 +72,10 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
     p=sub.add_parser("debug-candidates", help="Explain scored candidates, including suppressed items when requested"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=20); p.add_argument("--include-skipped",action="store_true")
     p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence"); p.add_argument("--db",type=Path); p.add_argument("--prompt",help="Prompt text; omit to read from stdin"); p.add_argument("--budget",type=int,default=2500); p.add_argument("--max-items",type=int,default=8); p.add_argument("--hints"); p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
-    p=sub.add_parser("consolidate", help="Create graph clusters and node roles for retrieval"); p.add_argument("--db",type=Path); p.add_argument("--iterations",type=int,default=12); p.add_argument("--min-cluster-size",type=int,default=2); p.add_argument("--label-provider",help="Optional label provider, for example 'ollama' or any label used with --label-command"); p.add_argument("--label-model",help="Model name for provider-backed labelling, for example qwen3:1.7b"); p.add_argument("--label-command",help="Custom command used by the harness for cluster labelling; prompt is sent on stdin unless {prompt} is present"); p.add_argument("--label-timeout",type=int,default=DEFAULT_TIMEOUT_SECONDS); p.add_argument("--label-max-clusters",type=int,default=25)
+    p=sub.add_parser("consolidate", help="Create graph clusters and node roles for retrieval"); p.add_argument("--db",type=Path); p.add_argument("--iterations",type=int,default=12); p.add_argument("--min-cluster-size",type=int,default=2); add_labeler_args(p); p.add_argument("--label-max-clusters",type=int,default=25)
+    brain=sub.add_parser("brain", help="Hermes-ready working-brain labelling and reports"); brain_sub=brain.add_subparsers(dest="brain_cmd", required=True)
+    p=brain_sub.add_parser("label", help="Label clusters, nodes, synapses, and relationship types through the harness"); p.add_argument("--db",type=Path); p.add_argument("--targets",default="cluster,node,synapse,relationship"); p.add_argument("--max-clusters",type=int,default=25); p.add_argument("--max-nodes",type=int,default=50); p.add_argument("--max-synapses",type=int,default=50); p.add_argument("--max-relationships",type=int,default=25); add_labeler_args(p)
+    p=brain_sub.add_parser("report", help="Summarize latest brain labels and obvious quality risks"); p.add_argument("--db",type=Path); p.add_argument("--limit",type=int,default=20)
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
@@ -111,8 +132,15 @@ def main(argv: list[str] | None = None) -> None:
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
         print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
     if args.cmd == "consolidate":
-        labeler = LabelerConfig(provider=args.label_provider, model=args.label_model, command=args.label_command, timeout=args.label_timeout, max_clusters=args.label_max_clusters)
+        labeler = labeler_from_args(args)
         print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False)); return
+    if args.cmd == "brain":
+        db_path = path_from_config(args,"db")
+        if args.brain_cmd == "label":
+            targets = [part.strip() for part in args.targets.split(",") if part.strip()]
+            print(json.dumps(label_brain(db_path, labeler=labeler_from_args(args), targets=targets, max_clusters=args.max_clusters, max_nodes=args.max_nodes, max_synapses=args.max_synapses, max_relationships=args.max_relationships), indent=2, ensure_ascii=False)); return
+        if args.brain_cmd == "report":
+            print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
     if args.cmd == "harness":

@@ -94,6 +94,21 @@ class HarnessTests(unittest.TestCase):
         output = stream.getvalue()
         self.assertIn('"empty_reason"', output)
 
+    def test_cli_brain_report_handles_empty_labels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "mneme.sqlite"
+            conn = sqlite3.connect(db)
+            init_db(conn)
+            conn.commit()
+            conn.close()
+
+            stream = io.StringIO()
+            with redirect_stdout(stream):
+                main(["brain", "report", "--db", str(db)])
+
+        output = stream.getvalue()
+        self.assertIn('"empty_reason"', output)
+
 
 if __name__ == "__main__":
     unittest.main()
