@@ -4,6 +4,8 @@ import argparse, json, sys
 from pathlib import Path
 from . import md_edit
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, save_thought, update_vault, write_note, write_research_resolution
+from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
+from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
 
 
@@ -52,6 +54,11 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
+    harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness"); harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
+    p=harness_sub.add_parser("run", help="Run a prompt through a provider command"); p.add_argument("prompt", nargs="?", help="Prompt text; omit to read from stdin"); p.add_argument("--provider", default="echo", help="Built-in provider name, or any label when --command is supplied"); p.add_argument("--command", help="Command to run; use {prompt} for argv prompts, otherwise stdin is used"); p.add_argument("--cwd", type=Path, help="Working directory for the provider command"); p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    physarum=sub.add_parser("physarum", help="Run structure-only Physarum-style graph-flow experiments"); physarum_sub=physarum.add_subparsers(dest="physarum_cmd", required=True)
+    p=physarum_sub.add_parser("run", help="Run a Physarum-style flow over the graph without changing edge status"); p.add_argument("--db",type=Path); p.add_argument("--iterations",type=int,default=80); p.add_argument("--terminals",type=int,default=24); p.add_argument("--paths-per-iteration",type=int,default=12); p.add_argument("--decay",type=float,default=0.92); p.add_argument("--reinforcement",type=float,default=1.0); p.add_argument("--relation-penalty",type=float,default=1.0); p.add_argument("--hub-penalty",type=float,default=0.35); p.add_argument("--seed",type=int,default=13)
+    p=physarum_sub.add_parser("top", help="Show top reinforced edges from a Physarum run"); p.add_argument("run_id"); p.add_argument("--db",type=Path); p.add_argument("--limit",type=int,default=20)
     p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
     args=parser.parse_args(argv)
     if args.cmd == "init":
@@ -96,6 +103,17 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+    if args.cmd == "harness":
+        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        result = run_llm(prompt, provider=args.provider, command=args.command, cwd=args.cwd, timeout=args.timeout)
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False)); return
+    if args.cmd == "physarum":
+        db_path = path_from_config(args,"db")
+        if args.physarum_cmd == "run":
+            cfg = PhysarumRunConfig(iterations=args.iterations, terminals=args.terminals, paths_per_iteration=args.paths_per_iteration, decay=args.decay, reinforcement=args.reinforcement, relation_penalty=args.relation_penalty, hub_penalty=args.hub_penalty, seed=args.seed)
+            print(json.dumps(run_physarum(db_path, cfg), indent=2, ensure_ascii=False)); return
+        if args.physarum_cmd == "top":
+            print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False)); return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
