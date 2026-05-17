@@ -1,9 +1,13 @@
 import io
+import sqlite3
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 
 from mneme.cli import main
+from mneme.core import init_db, upsert_edge, upsert_node
 from mneme.harness import prepare_command, run_llm
 
 
@@ -55,6 +59,40 @@ class HarnessTests(unittest.TestCase):
         output = stream.getvalue()
         self.assertIn('"ok": true', output)
         self.assertIn('"stdout": "hello cli"', output)
+
+    def test_cli_retrieve_outputs_candidate_synapse_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "mneme.sqlite"
+            conn = sqlite3.connect(db)
+            init_db(conn)
+            src = upsert_node(conn, "person", "Example Child", "source")
+            dst = upsert_node(conn, "activity", "Art Club", "source")
+            upsert_edge(conn, src, dst, "requested_activity", "Sources/art.md", "Art Club request is pending.", 0.7, status="candidate")
+            conn.commit()
+            conn.close()
+
+            stream = io.StringIO()
+            with redirect_stdout(stream):
+                main(["retrieve", "--db", str(db), "--prompt", "Art Club"])
+
+        output = stream.getvalue()
+        self.assertIn('"truth_policy": "candidate_only"', output)
+        self.assertIn('"requested_activity"', output)
+
+    def test_cli_debug_candidates_outputs_empty_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "mneme.sqlite"
+            conn = sqlite3.connect(db)
+            init_db(conn)
+            conn.commit()
+            conn.close()
+
+            stream = io.StringIO()
+            with redirect_stdout(stream):
+                main(["debug-candidates", "--db", str(db), "--include-skipped"])
+
+        output = stream.getvalue()
+        self.assertIn('"empty_reason"', output)
 
 
 if __name__ == "__main__":

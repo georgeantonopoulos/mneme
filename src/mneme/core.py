@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+from .retrieval import score_observation_candidate
+
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
 TASK_RE = re.compile(r"^\s*[-*]\s+\[([ xX])]\s+(.+)$", re.M)
@@ -300,6 +302,12 @@ def stable_id(kind: str, name: str) -> str:
     return hashlib.sha1(f"{kind}:{name.lower()}".encode()).hexdigest()[:16]
 
 
+def node_identity_name(kind: str, name: str, source_path: str | None = None) -> str:
+    if source_path and kind in {"note", "heading", "observation"}:
+        return f"{source_path}:{name}"
+    return name
+
+
 def relationship_type(relation_id: str) -> dict:
     for rel in DEFAULT_RELATIONSHIP_TYPES:
         if rel["id"] == relation_id:
@@ -376,7 +384,7 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=None):
-    nid = stable_id(kind, name); ts = now_iso()
+    nid = stable_id(kind, node_identity_name(kind, name, source_path)); ts = now_iso()
     conn.execute("""INSERT INTO nodes(id,type,name,source_path,created_at,updated_at,confidence,metadata_json) VALUES(?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, source_path=COALESCE(excluded.source_path,nodes.source_path), confidence=max(nodes.confidence, excluded.confidence), metadata_json=excluded.metadata_json""",
     (nid, kind, name.strip(), source_path, ts, ts, confidence, json.dumps(metadata or {}, ensure_ascii=False)))
@@ -908,22 +916,6 @@ def _node_by_id(conn: sqlite3.Connection, node_id: str) -> dict:
     return node or {"id": node_id, "type": "unknown", "name": node_id, "source_path": None, "metadata": {}}
 
 
-def _candidate_reasons(kind: str, text: str, score: float, hints: list[str]) -> tuple[float, list[str]]:
-    low = text.lower(); reasons=[]; total = float(score)
-    if kind == "blocked":
-        total += 5; reasons.append("open loop / unresolved task")
-    if kind == "risk":
-        total += 4; reasons.append("risk or deadline language")
-    if any(word in low for word in ["due", "deadline", "expires", "overdue", "urgent"]):
-        total += 4; reasons.append("deadline pressure")
-    if any(word in low for word in ["waiting", "awaiting", "follow up", "needs", "todo"]):
-        total += 3; reasons.append("follow-up needed")
-    matched = [hint for hint in hints if hint.lower() in low]
-    if matched:
-        total += 2 * len(matched); reasons.append("matches hints: " + ", ".join(matched[:4]))
-    return total, reasons or ["high-signal observation"]
-
-
 def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_text: str, hops: int) -> list[dict]:
     path=[_node_by_id(conn, note_id)]
     obs_node = conn.execute(
@@ -956,33 +948,209 @@ def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_t
 
 
 def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints: list[str] | None = None) -> list[dict]:
+    return _scored_thought_candidates(db_path, limit=limit, hops=hops, hints=hints, include_skipped=False)
+
+
+def _scored_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints: list[str] | None = None, include_skipped: bool = False) -> list[dict]:
     hints = hints or DEFAULT_HINTS
     conn = sqlite3.connect(db_path)
     recent = {r[0] for r in conn.execute("SELECT seed_id FROM thoughts ORDER BY created_at DESC LIMIT 20").fetchall() if r[0]}
     rows = conn.execute(
-        """SELECT o.note_id,o.kind,o.text,o.source_path,o.score,n.name,n.type,n.updated_at
+        """SELECT o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
            FROM observations o JOIN nodes n ON n.id=o.note_id
            ORDER BY o.score DESC,o.created_at DESC LIMIT 200"""
     ).fetchall()
     candidates=[]
-    for note_id, kind, text, source_path, base_score, name, ntype, updated_at in rows:
-        score, reasons = _candidate_reasons(kind, text, base_score, hints)
-        if note_id in recent:
-            score -= 3; reasons.append("recently surfaced penalty")
-        if ntype in {"project", "finance", "event", "person"}:
-            score += 1.5; reasons.append(f"important {ntype} note")
+    for note_id, kind, text, source_path, base_score, observation_created_at, name, ntype, updated_at in rows:
+        breakdown = score_observation_candidate(
+            kind=kind,
+            text=text,
+            base_score=base_score,
+            hints=hints,
+            note_type=ntype,
+            note_name=name,
+            source_path=source_path,
+            recently_surfaced=note_id in recent,
+            observation_created_at=observation_created_at,
+            node_updated_at=updated_at,
+        )
+        if breakdown.skip_reasons and not include_skipped:
+            continue
         path = _path_from_observation(conn, note_id, text, hops)
         candidates.append({
-            "score": round(score, 2),
+            "score": round(breakdown.total, 2),
             "seed": {"id": note_id, "name": name, "type": ntype, "source_path": source_path},
             "observation": {"kind": kind, "text": text, "source_path": source_path, "score": base_score},
             "evidence": [text],
-            "reasons": reasons,
+            "reasons": breakdown.reasons,
+            "score_breakdown": breakdown.to_dict(),
+            "skip_reasons": breakdown.skip_reasons,
             "path": path,
         })
     conn.close()
     candidates.sort(key=lambda c: (-c["score"], c["seed"]["name"].lower()))
     return candidates[:limit]
+
+
+def debug_candidates(db_path: Path, limit: int = 20, hops: int = 5, hints: list[str] | None = None, include_skipped: bool = False) -> dict:
+    candidates = _scored_thought_candidates(db_path, limit=limit, hops=hops, hints=hints, include_skipped=include_skipped)
+    return {
+        "db": str(db_path),
+        "include_skipped": include_skipped,
+        "count": len(candidates),
+        "candidates": candidates,
+        "empty_reason": None if candidates else "No observations scored above the surfacing threshold. Re-run with --include-skipped to inspect suppressed candidates.",
+    }
+
+
+TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]{2,}", re.I)
+
+
+def _query_tokens(prompt: str) -> set[str]:
+    stop = {"about", "after", "again", "agent", "brain", "could", "from", "have", "into", "make", "need", "next", "that", "this", "what", "when", "where", "with", "work"}
+    return {token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop}
+
+
+def _lexical_overlap(tokens: set[str], *values: str | None) -> tuple[int, list[str]]:
+    haystack = " ".join(value or "" for value in values).lower()
+    matched = sorted(token for token in tokens if token in haystack)
+    return len(matched), matched
+
+
+def _edge_truth_policy(status: str | None, relation: str) -> str:
+    rel = relationship_type(relation)
+    status = status or "candidate"
+    if status == "killed":
+        return "excluded"
+    if status != "active":
+        return "candidate_only"
+    if rel.get("category") in {"semantic", "semantic_pending"} and rel.get("requires_validation"):
+        return "active_validated_claim"
+    if rel.get("category") in {"reference", "structure", "extraction"}:
+        return "provenance_not_fact"
+    return "active_evidence"
+
+
+def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True) -> dict:
+    hints = hints or DEFAULT_HINTS
+    tokens = _query_tokens(prompt)
+    if not tokens:
+        tokens = _query_tokens(" ".join(hints))
+    min_overlap = 2 if len(tokens) >= 3 else 1
+    conn = sqlite3.connect(db_path)
+    observation_rows = conn.execute(
+        """SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
+           FROM observations o JOIN nodes n ON n.id=o.note_id
+           ORDER BY o.score DESC,o.created_at DESC LIMIT 500"""
+    ).fetchall()
+    edge_rows = conn.execute(
+        """SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
+                  s.id,s.type,s.name,s.source_path,
+                  d.id,d.type,d.name,d.source_path
+           FROM edges e
+           JOIN nodes s ON s.id=e.src_id
+           JOIN nodes d ON d.id=e.dst_id
+           WHERE COALESCE(e.status,'candidate') != 'killed'
+           ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
+    ).fetchall()
+
+    items: list[dict] = []
+    skipped: list[dict] = []
+    for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at in observation_rows:
+        overlap, matched = _lexical_overlap(tokens, text, source_path, note_name)
+        breakdown = score_observation_candidate(
+            kind=kind,
+            text=text,
+            base_score=base_score,
+            hints=hints,
+            note_type=note_type,
+            note_name=note_name,
+            source_path=source_path,
+            observation_created_at=created_at,
+            node_updated_at=updated_at,
+        )
+        score = breakdown.total + (overlap * 3.0)
+        if overlap < min_overlap and score < 8:
+            skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
+            continue
+        item = {
+            "kind": "observation",
+            "id": obs_id,
+            "title": note_name,
+            "source_path": source_path,
+            "snippet": text[:500],
+            "score": round(score, 2),
+            "matched_terms": matched,
+            "status": "active_evidence",
+            "truth_policy": "source_contained_observation",
+            "score_breakdown": breakdown.to_dict(),
+            "path": _path_from_observation(conn, note_id, text, hops=3),
+        }
+        if overlap >= min_overlap:
+            items.append(item)
+        else:
+            skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
+
+    for edge_id, relation, status, confidence, strength, source_type, source_path, evidence_text, src_id, src_type, src_name, src_path, dst_id, dst_type, dst_name, dst_path in edge_rows:
+        if status != "active" and not include_candidates:
+            skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["candidate edge excluded"], "status": status})
+            continue
+        overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
+        if overlap < min_overlap:
+            continue
+        rel = relationship_type(relation)
+        policy = _edge_truth_policy(status, relation)
+        base = (float(confidence or 0) + float(strength or 0)) * 2.0
+        score = base + overlap * 3.0
+        if status != "active":
+            score -= 2.0
+        if rel.get("category") in {"reference", "structure", "extraction"}:
+            score -= 0.8
+        items.append({
+            "kind": "edge",
+            "id": edge_id,
+            "title": f"{src_name} {relation} {dst_name}",
+            "source_path": source_path,
+            "snippet": (evidence_text or "")[:500],
+            "score": round(score, 2),
+            "matched_terms": matched,
+            "relation": relation,
+            "relationship_type": rel,
+            "status": status,
+            "truth_policy": policy,
+            "source_type": source_type,
+            "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
+            "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
+        })
+
+    conn.close()
+    items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
+    selected: list[dict] = []
+    used = 0
+    for item in items:
+        cost = len(item.get("snippet") or "") + len(item.get("title") or "")
+        if selected and (used + cost) > budget:
+            skipped.append({"kind": item["kind"], "id": item["id"], "source_path": item.get("source_path"), "skip_reasons": ["budget limit"], "score": item.get("score")})
+            continue
+        selected.append(item)
+        used += cost
+        if len(selected) >= max_items:
+            break
+    return {
+        "prompt": prompt,
+        "budget": budget,
+        "used_budget": used,
+        "max_items": max_items,
+        "tokens": sorted(tokens),
+        "items": selected,
+        "skipped": skipped[:50],
+        "stats": {
+            "candidate_items_considered": len(items),
+            "items_returned": len(selected),
+            "skipped_reported": min(len(skipped), 50),
+        },
+        "empty_reason": None if selected else "No prompt-relevant context survived scoring and budget limits.",
+    }
 
 
 def _evidence_seed(obs: list[str]) -> str:

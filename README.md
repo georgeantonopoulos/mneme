@@ -285,11 +285,31 @@ Inspect candidates before generating:
 mneme candidates --db /tmp/mneme.sqlite --limit 5
 ```
 
+Explain scored and suppressed candidates:
+
+```bash
+mneme debug-candidates --db /tmp/mneme.sqlite --include-skipped
+```
+
 Generate the top thought card:
 
 ```bash
 mneme thought --db /tmp/mneme.sqlite --out /tmp/mneme_out
 ```
+
+### Retrieve prompt-time context
+
+Build a deterministic local context pack for an agent prompt:
+
+```bash
+mneme retrieve --db /tmp/mneme.sqlite --prompt "What needs follow-up for the supplier?" --budget 2500 --max-items 8
+```
+
+`retrieve` uses the same scoring core as `candidates` and `thought`. It returns
+source-backed observations, relevant edges, score factors, freshness/source
+quality notes, skipped-item reasons, and a `truth_policy` for every edge. Killed
+edges are excluded. Candidate semantic edges may be shown as `candidate_only`,
+but they are not phrased as facts.
 
 ### Ingest and generate in one command
 

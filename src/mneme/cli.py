@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
 from . import md_edit
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, save_thought, update_vault, write_note, write_research_resolution
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, retrieve_context, save_thought, update_vault, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> None:
     p=note_sub.add_parser("add-bullet", help="Add a deduped bullet under a heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--bullet",required=True); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
     p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
+    p=sub.add_parser("debug-candidates", help="Explain scored candidates, including suppressed items when requested"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=20); p.add_argument("--include-skipped",action="store_true")
+    p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence"); p.add_argument("--db",type=Path); p.add_argument("--prompt",help="Prompt text; omit to read from stdin"); p.add_argument("--budget",type=int,default=2500); p.add_argument("--max-items",type=int,default=8); p.add_argument("--hints"); p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
     p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
     p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
@@ -101,6 +103,11 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
+    if args.cmd == "debug-candidates":
+        print(json.dumps(debug_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False)); return
+    if args.cmd == "retrieve":
+        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
     if args.cmd == "harness":

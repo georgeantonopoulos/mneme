@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from mneme.core import activate_candidate_edges, create_config, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.render import render_card, safe_basename
 
 
@@ -155,6 +155,22 @@ def test_task_checkbox_not_duplicated_as_generic_bullet(tmp_path: Path):
     rows = conn.execute("SELECT text FROM observations").fetchall()
     conn.close()
     assert [row[0] for row in rows] == ["Book movers by Apr 15"]
+
+
+def test_notes_with_same_title_keep_source_specific_identities(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "alpha").mkdir(parents=True)
+    (vault / "beta").mkdir()
+    (vault / "alpha" / "Run Log.md").write_text("# Run Log\n\n- Alpha follow up\n", encoding="utf-8")
+    (vault / "beta" / "Run Log.md").write_text("# Run Log\n\n- Beta follow up\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    rows = conn.execute("SELECT name,source_path FROM nodes WHERE type='note' AND name='Run Log' ORDER BY source_path").fetchall()
+    conn.close()
+
+    assert rows == [("Run Log", "alpha/Run Log.md"), ("Run Log", "beta/Run Log.md")]
 
 
 def test_symlink_escape_is_skipped(tmp_path: Path):
@@ -394,6 +410,99 @@ def test_generate_proactive_thought_uses_candidate_why_now(tmp_path: Path):
     assert thought["insight"].startswith("Why this matters:")
     assert thought["action"] != thought["evidence"][0]
     assert thought["action"].startswith(("Ask", "Check"))
+
+
+def test_candidates_expose_shared_score_breakdown_for_thoughts(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Project.md").write_text("# Project\n\n- [ ] Waiting for owner by 2026-05-01\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["owner"])
+
+    candidate = list_thought_candidates(db, limit=1, hints=["owner"])[0]
+    thought = generate_proactive_thought(db, hints=["owner"])
+
+    assert candidate["score_breakdown"]["factors"]
+    assert candidate["score_breakdown"]["freshness"]["basis"] == "explicit_date"
+    assert thought["score"] == candidate["score"]
+    assert "Waiting for owner" in thought["evidence"][0]
+
+
+def test_debug_candidates_explains_suppressed_low_quality_sources(tmp_path: Path):
+    vault = tmp_path / "vault"
+    archive = vault / "Project Memory" / "demo" / "Archive" / "Runs"
+    archive.mkdir(parents=True)
+    (archive / "2026-01-01-old.md").write_text("# Old\n\n- [ ] Waiting for archived owner\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["missing"])
+
+    report = debug_candidates(db, include_skipped=True, limit=5)
+
+    assert report["candidates"]
+    first = report["candidates"][0]
+    assert any(p["label"] == "source quality" for p in first["score_breakdown"]["penalties"])
+    assert "Archive/Runs" in first["seed"]["source_path"]
+
+
+def test_retrieve_returns_prompt_context_without_promoting_candidate_synapses(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    child = upsert_node(conn, "person", "Example Child", "research")
+    club = upsert_node(conn, "activity", "Art Club", "research")
+    killed = upsert_node(conn, "activity", "Wrong Club", "research")
+    candidate_edge = upsert_edge(
+        conn,
+        child,
+        club,
+        "requested_activity",
+        "Sources/art.md",
+        "Email asked school to add Art Club if a place opens.",
+        0.76,
+        status="candidate",
+        strength=0.72,
+        source_type="email",
+    )
+    killed_edge = upsert_edge(
+        conn,
+        child,
+        killed,
+        "attends_activity",
+        "Sources/wrong.md",
+        "User correction says this was wrong.",
+        0.0,
+        status="killed",
+        strength=0.0,
+        source_type="user_confirmed",
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "What is going on with Art Club?", max_items=5)
+    edge_items = [item for item in result["items"] if item["kind"] == "edge"]
+
+    assert any(item["id"] == candidate_edge and item["truth_policy"] == "candidate_only" for item in edge_items)
+    assert killed_edge not in {item["id"] for item in edge_items}
+
+
+def test_retrieve_finds_observations_and_budgeted_evidence(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Launch.md").write_text("# Launch\n\n- [ ] Follow up with supplier by 2026-05-20\n- General note\n", encoding="utf-8")
+    (vault / "Noise.md").write_text("# Noise\n\n- [ ] Urgent deadline due 2026-05-18 for unrelated archive\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["supplier"])
+
+    result = retrieve_context(db, "supplier follow up", budget=200, max_items=3, hints=["supplier"])
+
+    assert result["items"]
+    top = result["items"][0]
+    assert top["kind"] == "observation"
+    assert "supplier" in top["snippet"].lower()
+    assert top["score_breakdown"]["freshness"]["basis"] == "explicit_date"
+    assert all("supplier" in item["snippet"].lower() for item in result["items"] if item["kind"] == "observation")
 
 
 def test_init_db_migrates_old_edge_schema(tmp_path: Path):
