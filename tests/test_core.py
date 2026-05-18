@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from mneme.brain import brain_label_matches, brain_report, label_brain
-from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, retrieve_context, stable_id, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
 from mneme.retrieval.scoring import freshness_breakdown, score_observation_candidate, source_quality_breakdown
@@ -641,6 +641,83 @@ def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_
     assert report["coverage"]["node"]["available"] == 2
     assert report["coverage"]["node"]["depth"] == "deep"
     assert report["coverage"]["synapse"]["labelled"] == 1
+
+
+def test_surface_thoughts_uses_retrieval_brain_metadata(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier launch owner owns readiness", 0.9, strength=0.9)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs-surface-launch", note, "blocked", "Supplier launch owner follow up", "Launch.md", 5, "now"),
+    )
+    conn.commit()
+    conn.close()
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['supplier launch','owner readiness'],'summary':'brain label','intent':'surface routing','ignore':False}))",
+    ]
+    label_brain(db, labeler=LabelerConfig(provider="test-labeler", command=command, timeout=10), targets=["node", "synapse"], max_nodes=3, max_synapses=3)
+
+    result = surface_thoughts(db, "supplier launch readiness", limit=2, hints=["supplier"])
+
+    assert result["count"] >= 1
+    assert result["retrieval"]["brain_labels"]
+    thought = result["thoughts"][0]
+    assert thought["surface"]["prompt"] == "supplier launch readiness"
+    assert thought["surface"]["kind"] in {"observation", "edge"}
+    assert thought["surface"]["brain_label"] or thought["surface"]["cluster"]
+    assert thought["suggested_actions"]
+
+
+def test_remember_graph_adds_and_forgets_scoped_agent_memory(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "source_path": "mneme://test/surface-validation",
+        "nodes": [
+            {"ref": "agent", "type": "agent", "name": "Temporary Surface Agent"},
+            {"ref": "task", "type": "task", "name": "Temporary retrieval validation"},
+        ],
+        "edges": [
+            {
+                "src": "agent",
+                "dst": "task",
+                "relation": "relates_to",
+                "status": "active",
+                "confidence": 0.92,
+                "evidence": "Temporary Surface Agent checks retrieval validation.",
+            }
+        ],
+        "observations": [
+            {"node": "task", "kind": "fact", "text": "Temporary retrieval validation should surface from scoped memory.", "score": 5}
+        ],
+    }
+
+    added = remember_graph(db, payload)
+    surfaced = surface_thoughts(db, "temporary retrieval validation", limit=3)
+    removed = forget_source(db, payload["source_path"])
+
+    conn = sqlite3.connect(db)
+    remaining = {
+        "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+        "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+        "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+    }
+    conn.close()
+
+    assert len(added["nodes"]) == 2
+    assert len(added["edges"]) == 1
+    assert len(added["observations"]) == 1
+    assert surfaced["count"] >= 1
+    assert any(thought["surface"]["source_path"] == payload["source_path"] for thought in surfaced["thoughts"])
+    assert any(action["type"] == "graph_memory_review" for thought in surfaced["thoughts"] for action in thought["suggested_actions"])
+    assert removed["removed"] == {"observations": 1, "edges": 1, "nodes": 2}
+    assert remaining == {"nodes": 0, "edges": 0, "observations": 0}
 
 
 def test_brain_report_uses_label_run_consolidation_snapshot(tmp_path: Path):

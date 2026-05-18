@@ -5,7 +5,7 @@ from pathlib import Path
 from . import md_edit
 from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, retrieve_context, save_thought, update_vault, write_note, write_research_resolution
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, ingest_vault, list_thought_candidates, load_config, remember_graph, retrieve_context, save_thought, surface_thoughts, update_vault, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
@@ -144,6 +144,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max-items",type=int,default=8)
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    p=sub.add_parser("surface", help="Surface thought cards from the same scored retrieval and brain labels")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prompt",help="Prompt text; omit for hint-led surfacing")
+    p.add_argument("--limit",type=int,default=5)
+    p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--hints")
+    p.add_argument("--no-candidates",action="store_true",help="Exclude candidate synapses from thought surfacing")
     p=sub.add_parser("consolidate", help="Create graph clusters and node roles for retrieval")
     p.add_argument("--db",type=Path)
     p.add_argument("--iterations",type=int,default=12)
@@ -166,6 +173,16 @@ def main(argv: list[str] | None = None) -> None:
     p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates")
     p.add_argument("--db",type=Path)
     p.add_argument("--mode",choices=["validated-only","all"],default="validated-only")
+    p.add_argument("--dry-run",action="store_true")
+    remember=sub.add_parser("remember", help="Add or remove scoped agent memory without editing vault notes")
+    remember_sub=remember.add_subparsers(dest="remember_cmd", required=True)
+    p=remember_sub.add_parser("add", help="Add a mneme:// scoped memory payload to the graph")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin")
+    p.add_argument("--dry-run",action="store_true")
+    p=remember_sub.add_parser("remove", help="Remove all graph rows for a mneme:// scoped memory source")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--source-path",required=True)
     p.add_argument("--dry-run",action="store_true")
     p=sub.add_parser("thought")
     p.add_argument("--db",type=Path)
@@ -254,6 +271,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "retrieve":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
         print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
+    if args.cmd == "surface":
+        print(json.dumps(surface_thoughts(path_from_config(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
     if args.cmd == "consolidate":
         labeler = labeler_from_args(args)
         print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False)); return
@@ -266,6 +285,13 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False)); return
     if args.cmd == "promote-candidates":
         print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+    if args.cmd == "remember":
+        db_path = path_from_config(args,"db")
+        if args.remember_cmd == "add":
+            payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
+            print(json.dumps(remember_graph(db_path, payload, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+        if args.remember_cmd == "remove":
+            print(json.dumps(forget_source(db_path, args.source_path, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
     if args.cmd == "harness":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
         result = run_llm(prompt, provider=args.provider, command=args.command, cwd=args.cwd, timeout=args.timeout)

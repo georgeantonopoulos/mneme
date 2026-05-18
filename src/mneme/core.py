@@ -1215,6 +1215,205 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     }
 
 
+def _surface_item_to_thought(db_path: Path, item: dict, prompt: str) -> dict:
+    path = item.get("path") or []
+    if not path and item.get("src") and item.get("dst"):
+        path = [item["src"], item["dst"]]
+    if not path:
+        path = [{"id": item.get("id"), "type": item.get("kind", "unknown"), "name": item.get("title") or item.get("id"), "source_path": item.get("source_path")}]
+    evidence = [item.get("snippet", "")] if item.get("snippet") else []
+    reasons = []
+    for key in ("matched_terms",):
+        if item.get(key):
+            reasons.append("matched: " + ", ".join(item[key][:5]))
+    if item.get("cluster"):
+        reasons.append(f"cluster {item['cluster'].get('cluster_id')} activated")
+    if item.get("brain_label"):
+        reasons.append("brain label activated: " + ", ".join(item["brain_label"].get("labels", [])[:3]))
+    if item.get("truth_policy"):
+        reasons.append(f"truth policy: {item['truth_policy']}")
+    candidate = {
+        "score": item.get("score", 0),
+        "evidence": evidence,
+        "reasons": reasons,
+    }
+    thought = generate_thought(db_path, path, candidate)
+    thought["surface"] = {
+        "prompt": prompt,
+        "kind": item.get("kind"),
+        "source_id": item.get("id"),
+        "source_path": item.get("source_path"),
+        "score": item.get("score"),
+        "matched_terms": item.get("matched_terms", []),
+        "truth_policy": item.get("truth_policy"),
+        "cluster": item.get("cluster"),
+        "brain_label": item.get("brain_label"),
+    }
+    thought["suggested_actions"] = _suggest_surface_actions(item)
+    return thought
+
+
+def _suggest_surface_actions(item: dict) -> list[dict]:
+    actions: list[dict] = []
+    source_path = item.get("source_path")
+    if source_path and str(source_path).startswith("mneme://"):
+        actions.append({
+            "type": "graph_memory_review",
+            "source_path": source_path,
+            "action": "keep_or_forget",
+        })
+    elif source_path and item.get("kind") == "observation":
+        actions.append({
+            "type": "vault_append_bullet",
+            "path": source_path,
+            "heading": "Next Actions",
+            "bullet": f"Review surfaced memory: {item.get('title') or item.get('id')}",
+        })
+    if item.get("kind") == "edge" and item.get("status") == "candidate":
+        actions.append({
+            "type": "synapse_review",
+            "edge_id": item.get("id"),
+            "action": "validate_or_kill",
+        })
+    if not actions:
+        actions.append({"type": "inspect", "source_path": source_path, "id": item.get("id")})
+    return actions
+
+
+def surface_thoughts(
+    db_path: Path,
+    prompt: str | None = None,
+    *,
+    limit: int = 5,
+    hops: int = 5,
+    hints: list[str] | None = None,
+    include_candidates: bool = True,
+) -> dict:
+    hints = hints or DEFAULT_HINTS
+    query = prompt or " ".join(hints)
+    context = retrieve_context(
+        db_path,
+        query,
+        budget=5000,
+        max_items=max(limit * 2, limit),
+        hints=hints,
+        include_candidates=include_candidates,
+    )
+    thoughts = [_surface_item_to_thought(db_path, item, query) for item in context.get("items", [])[:limit]]
+    if not thoughts and not prompt:
+        candidates = list_thought_candidates(db_path, limit=limit, hops=hops, hints=hints)
+        thoughts = [generate_thought(db_path, candidate["path"], candidate) for candidate in candidates]
+    return {
+        "prompt": query,
+        "count": len(thoughts),
+        "thoughts": thoughts,
+        "retrieval": {
+            "clusters": context.get("clusters", []),
+            "brain_labels": context.get("brain_labels", []),
+            "stats": context.get("stats", {}),
+            "empty_reason": context.get("empty_reason"),
+        },
+        "empty_reason": None if thoughts else "No retrievable items or thought candidates surfaced.",
+    }
+
+
+def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False) -> dict:
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    source_path = str(payload.get("source_path") or "").strip()
+    if not source_path:
+        raise ValueError("remember payload requires source_path")
+    if not source_path.startswith("mneme://"):
+        raise ValueError("remember source_path must use the mneme:// namespace")
+    nodes_in = payload.get("nodes") or []
+    edges_in = payload.get("edges") or []
+    observations_in = payload.get("observations") or []
+    created_nodes: dict[str, str] = {}
+    out_nodes = []
+    out_edges = []
+    out_observations = []
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    try:
+        for index, node in enumerate(nodes_in):
+            ref = str(node.get("ref") or node.get("id") or f"node{index + 1}")
+            node_type = str(node.get("type") or "entity")
+            name = str(node.get("name") or "").strip()
+            if not name:
+                raise ValueError(f"remember node {ref} requires name")
+            node_id = upsert_node(conn, node_type, name, source_path, float(node.get("confidence", 1.0)), node.get("metadata") or {})
+            created_nodes[ref] = node_id
+            out_nodes.append({"ref": ref, "id": node_id, "type": node_type, "name": name, "source_path": source_path})
+        for edge in edges_in:
+            src_ref = str(edge.get("src") or "")
+            dst_ref = str(edge.get("dst") or "")
+            if src_ref not in created_nodes or dst_ref not in created_nodes:
+                raise ValueError("remember edges must reference nodes from the same payload")
+            relation = str(edge.get("relation") or "relates_to")
+            status = str(edge.get("status") or "candidate")
+            confidence = float(edge.get("confidence", 0.7))
+            strength = float(edge.get("strength", confidence))
+            edge_id = upsert_edge(
+                conn,
+                created_nodes[src_ref],
+                created_nodes[dst_ref],
+                relation,
+                source_path,
+                str(edge.get("evidence") or ""),
+                confidence,
+                status=status,
+                strength=strength,
+                source_type=str(edge.get("source_type") or "remember"),
+                metadata=edge.get("metadata") or {},
+            )
+            out_edges.append({"id": edge_id, "src": created_nodes[src_ref], "dst": created_nodes[dst_ref], "relation": relation, "status": status})
+        for obs in observations_in:
+            node_ref = str(obs.get("node") or "")
+            if node_ref not in created_nodes:
+                raise ValueError("remember observations must reference nodes from the same payload")
+            text = str(obs.get("text") or "").strip()
+            if not text:
+                raise ValueError("remember observation requires text")
+            kind = str(obs.get("kind") or "fact")
+            out_observations.append({"node": created_nodes[node_ref], "kind": kind, "text": text[:1000]})
+            if not dry_run:
+                add_observation(conn, created_nodes[node_ref], kind, text, source_path, float(obs.get("score", 3.0)))
+        if dry_run:
+            conn.rollback()
+        else:
+            conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "source_path": source_path,
+        "nodes": out_nodes,
+        "edges": out_edges,
+        "observations": out_observations,
+    }
+
+
+def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> dict:
+    if not source_path.startswith("mneme://"):
+        raise ValueError("forget_source only removes mneme:// scoped test or agent memory sources")
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    counts = {
+        "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (source_path,)).fetchone()[0],
+        "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
+        "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (source_path,)).fetchone()[0],
+    }
+    if not dry_run:
+        conn.execute("DELETE FROM observations WHERE source_path=?", (source_path,))
+        conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))
+        conn.execute("DELETE FROM edges WHERE source_path=?", (source_path,))
+        conn.execute("DELETE FROM nodes WHERE source_path=?", (source_path,))
+        conn.commit()
+    conn.close()
+    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts}
+
+
 def _evidence_seed(obs: list[str]) -> str:
     return (obs[0] if obs else "").strip()
 

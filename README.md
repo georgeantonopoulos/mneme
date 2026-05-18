@@ -311,6 +311,56 @@ quality notes, skipped-item reasons, and a `truth_policy` for every edge. Killed
 edges are excluded. Candidate semantic edges may be shown as `candidate_only`,
 but they are not phrased as facts.
 
+### Surface thoughts from retrieval
+
+Use `surface` when an agent wants thought cards from the same cluster-aware,
+brain-labelled retrieval path instead of a random walk:
+
+```bash
+mneme surface --db /tmp/mneme.sqlite --prompt "what should I remember about supplier launch readiness?" --limit 5
+```
+
+Each surfaced thought keeps the generated `title`, `insight`, `action`, and
+graph `path`, plus a `surface` block with the retrieval item, matched terms,
+cluster, brain label, and truth policy that caused it to appear. The response
+also includes `suggested_actions`. For example, a source-contained observation
+may suggest appending a bullet under `Next Actions`; a candidate synapse may
+suggest explicit validation or deletion before it is trusted.
+
+### Add and remove scoped agent memory
+
+Agents can add working memory to the graph without editing Markdown notes by
+using a `mneme://` source namespace:
+
+```bash
+mneme remember add --db /tmp/mneme.sqlite --file /tmp/agent-memory.json
+mneme surface --db /tmp/mneme.sqlite --prompt "temporary validation memory"
+mneme remember remove --db /tmp/mneme.sqlite --source-path mneme://test/validation
+```
+
+Payloads may contain `nodes`, `edges`, and `observations`. Edges and
+observations must reference nodes from the same payload, which keeps temporary
+memory removable as a unit:
+
+```json
+{
+  "source_path": "mneme://test/validation",
+  "nodes": [
+    {"ref": "agent", "type": "agent", "name": "Test agent"},
+    {"ref": "task", "type": "task", "name": "Validate retrieval"}
+  ],
+  "edges": [
+    {"src": "agent", "dst": "task", "relation": "relates_to", "status": "active"}
+  ],
+  "observations": [
+    {"node": "task", "kind": "fact", "text": "Validate retrieval before trusting output.", "score": 5}
+  ]
+}
+```
+
+`remember remove` only accepts `mneme://` sources. That keeps vault-ingested
+notes and user-authored Markdown outside the deletion path.
+
 ### Build the Hermes-ready working brain
 
 The working-brain pipeline keeps graph structure deterministic and runs model

@@ -80,6 +80,37 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('"truth_policy": "candidate_only"', output)
         self.assertIn('"requested_activity"', output)
 
+    def test_cli_surface_and_remember_use_scoped_graph_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "mneme.sqlite"
+            payload = {
+                "source_path": "mneme://test/cli-surface",
+                "nodes": [{"ref": "task", "type": "task", "name": "CLI surface validation"}],
+                "observations": [{"node": "task", "kind": "fact", "text": "CLI surface validation should appear.", "score": 5}],
+            }
+
+            stdin = sys.stdin
+            try:
+                sys.stdin = io.StringIO(__import__("json").dumps(payload))
+                stream = io.StringIO()
+                with redirect_stdout(stream):
+                    main(["remember", "add", "--db", str(db)])
+
+                stream = io.StringIO()
+                with redirect_stdout(stream):
+                    main(["surface", "--db", str(db), "--prompt", "CLI surface validation"])
+
+                output = stream.getvalue()
+                self.assertIn('"thoughts"', output)
+                self.assertIn('"source_path": "mneme://test/cli-surface"', output)
+
+                stream = io.StringIO()
+                with redirect_stdout(stream):
+                    main(["remember", "remove", "--db", str(db), "--source-path", "mneme://test/cli-surface"])
+                self.assertIn('"nodes": 1', stream.getvalue())
+            finally:
+                sys.stdin = stdin
+
     def test_cli_debug_candidates_outputs_empty_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "mneme.sqlite"
