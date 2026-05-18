@@ -1107,7 +1107,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         obs_brain = brain_match(("node", note_id))
         if obs_brain:
             score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
-        if overlap < min_overlap and score < 8 and not obs_brain:
+        include_by_score = score >= 8
+        if overlap < min_overlap and not include_by_score and not obs_brain:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
             continue
         item = {
@@ -1127,7 +1128,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             item["cluster"] = cluster
         if obs_brain:
             item["brain_label"] = {key: obs_brain[key] for key in ("run_id", "target_type", "target_id", "labels", "matched_terms", "score")}
-        if overlap >= min_overlap or obs_brain:
+        if overlap >= min_overlap or include_by_score or obs_brain:
             items.append(item)
         else:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})

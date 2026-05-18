@@ -522,7 +522,36 @@ def test_retrieve_finds_observations_and_budgeted_evidence(tmp_path: Path):
     assert top["kind"] == "observation"
     assert "supplier" in top["snippet"].lower()
     assert top["score_breakdown"]["freshness"]["basis"] == "explicit_date"
-    assert all("supplier" in item["snippet"].lower() for item in result["items"] if item["kind"] == "observation")
+    assert all(
+        "supplier" in item["snippet"].lower() or item["score"] >= 8
+        for item in result["items"]
+        if item["kind"] == "observation"
+    )
+
+
+def test_retrieve_keeps_high_score_observation_with_low_lexical_overlap(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Signal Note", "Signals/high.md")
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        (
+            "obs-high-score",
+            note,
+            "risk",
+            "Critical renewal deadline due tomorrow.",
+            "Signals/high.md",
+            9.0,
+            "2026-05-18T00:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "calendar rental followup", max_items=3)
+
+    assert any(item["kind"] == "observation" and item["id"] == "obs-high-score" for item in result["items"])
 
 
 def test_consolidate_assigns_procedural_roles_without_name_blacklist(tmp_path: Path):
