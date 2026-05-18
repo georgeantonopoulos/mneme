@@ -40,13 +40,13 @@ def ensure_brain_tables(conn: sqlite3.Connection) -> None:
 
 
 def _latest_consolidation_run_id(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute("SELECT id FROM consolidation_runs ORDER BY created_at DESC LIMIT 1").fetchone()
+    row = conn.execute("SELECT id FROM consolidation_runs ORDER BY created_at DESC,id DESC LIMIT 1").fetchone()
     return row[0] if row else None
 
 
 def _latest_brain_label_run_id(conn: sqlite3.Connection) -> str | None:
     try:
-        row = conn.execute("SELECT id FROM brain_label_runs ORDER BY created_at DESC LIMIT 1").fetchone()
+        row = conn.execute("SELECT id FROM brain_label_runs ORDER BY created_at DESC,id DESC LIMIT 1").fetchone()
     except sqlite3.OperationalError:
         return None
     return row[0] if row else None

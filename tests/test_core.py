@@ -178,6 +178,21 @@ def test_notes_with_same_title_keep_source_specific_identities(tmp_path: Path):
     assert rows == [("Run Log", "alpha/Run Log.md"), ("Run Log", "beta/Run Log.md")]
 
 
+def test_nodes_with_same_entity_name_keep_source_specific_identities(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+
+    alpha = upsert_node(conn, "person", "Alex", "alpha.md")
+    beta = upsert_node(conn, "person", "Alex", "beta.md")
+    conn.commit()
+    rows = conn.execute("SELECT id,source_path FROM nodes WHERE type='person' AND name='Alex' ORDER BY source_path").fetchall()
+    conn.close()
+
+    assert alpha != beta
+    assert rows == [(alpha, "alpha.md"), (beta, "beta.md")]
+
+
 def test_symlink_escape_is_skipped(tmp_path: Path):
     outside = tmp_path / "outside.md"
     outside.write_text("# Outside\n\nPRIVATE_MARKER\n", encoding="utf-8")
@@ -595,6 +610,92 @@ def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path)
     assert matches["clusters"][0]["matched_terms"] == ["launch", "supplier"]
 
 
+def test_consolidate_keeps_unique_runs_and_uses_latest(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Supplier Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+
+    first = consolidate_graph(db, iterations=4, min_cluster_size=2)
+    second = consolidate_graph(db, iterations=4, min_cluster_size=2)
+
+    conn = sqlite3.connect(db)
+    run_count = conn.execute("SELECT COUNT(*) FROM consolidation_runs").fetchone()[0]
+    latest = retrieval_cluster_matches(conn, "supplier owner", limit=3)["run_id"]
+    conn.close()
+
+    assert first["run_id"] != second["run_id"]
+    assert run_count == 2
+    assert latest == second["run_id"]
+
+
+def test_consolidate_ignores_llm_marked_clusters(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Ignored Hub", "ignored.md")
+    child = upsert_node(conn, "person", "Ignored Person", "ignored.md")
+    upsert_edge(conn, note, child, "relates_to", "ignored.md", "Ignored relation", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['ignore me'],'summary':'noise','intent':'ignore','ignore':True}))",
+    ]
+
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    clusters = conn.execute("SELECT COUNT(*) FROM memory_clusters WHERE run_id=?", (summary["run_id"],)).fetchone()[0]
+    memberships = conn.execute("SELECT COUNT(*) FROM cluster_memberships WHERE run_id=?", (summary["run_id"],)).fetchone()[0]
+    conn.close()
+    assert summary["clusters"] == 0
+    assert clusters == 0
+    assert memberships == 0
+
+
+def test_consolidate_ignores_failed_labeler_stdout(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Fallback Supplier Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Fallback Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Fallback supplier owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['bad llm label'],'summary':'should not parse'})); raise SystemExit(2)",
+    ]
+
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    label_json, summary_json = conn.execute("SELECT label_json,summary_json FROM memory_clusters WHERE run_id=? LIMIT 1", (summary["run_id"],)).fetchone()
+    conn.close()
+    labels = json.loads(label_json)
+    cluster_summary = json.loads(summary_json)
+    assert "bad llm label" not in labels
+    assert cluster_summary["label_meta"]["source"] == "procedural_fallback"
+    assert summary["labeling"]["fallback_labels"] == 1
+
+
 def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
@@ -905,7 +1006,7 @@ def test_research_resolution_missing_evidence_stays_candidate_and_candidates_do_
 
     conn = sqlite3.connect(db)
     status = conn.execute("SELECT status FROM edges").fetchone()[0]
-    child_id = stable_id("person", "Example Child")
+    child_id = conn.execute("SELECT id FROM nodes WHERE type='person' AND name='Example Child'").fetchone()[0]
     conn.close()
     path = walk_graph(db, seed_id=child_id, hops=2)
     assert status == "candidate"

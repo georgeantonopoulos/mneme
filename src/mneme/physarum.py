@@ -240,14 +240,19 @@ def top_physarum_edges(db_path: Path, run_id: str, limit: int = 20) -> list[dict
     with sqlite3.connect(db_path) as conn:
         nodes = _load_nodes(conn)
         _graph, edges = _load_graph(conn, nodes, PhysarumRunConfig())
-        rows = conn.execute(
-            """
-            SELECT edge_id,conductivity,flow_count
-            FROM physarum_edges
-            WHERE run_id=?
-            ORDER BY conductivity DESC, flow_count DESC
-            LIMIT ?
-            """,
-            (run_id, limit),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT edge_id,conductivity,flow_count
+                FROM physarum_edges
+                WHERE run_id=?
+                ORDER BY conductivity DESC, flow_count DESC
+                LIMIT ?
+                """,
+                (run_id, limit),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+            return []
         return [edge_to_record(edge_id, conductivity, flow_count, edges, nodes) for edge_id, conductivity, flow_count in rows if edge_id in edges]

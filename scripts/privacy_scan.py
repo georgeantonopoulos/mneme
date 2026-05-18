@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache", ".hermes-synced-skills", "dist", "build"}
+SKIP_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".hermes-synced-skills", "dist", "build"}
 SKIP_SUFFIXES = {".pyc"}
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".sqlite", ".db"}
 ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
@@ -20,7 +20,7 @@ ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
 ARTIFACT_PATTERNS = ["*.sqlite", "*.sqlite-*", "*.db", "*.pyc", "__pycache__", "thought_*.svg", "thought_*.png", "out"]
 BASE_PATTERNS = [
     ("email", re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)),
-    ("absolute_private_path", re.compile(r"(/Users/[^/\s`\"']+/|/root/|/home/[^/]+/|C:\\\\Users\\\\)", re.I)),
+    ("absolute_private_path", re.compile(r"(/Users/[^/\s`\"']+/|/root/|/home/[^/]+/|[A-Za-z]:[\\/]+Users[\\/]+)", re.I)),
     (
         "private_vault_reference",
         re.compile(

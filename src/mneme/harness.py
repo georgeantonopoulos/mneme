@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import os
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -100,6 +101,10 @@ def run_llm(
     base_command = command_for_provider(provider, command)
     argv, stdin = prepare_command(base_command, prompt)
     cwd_text = str(cwd_path) if cwd_path is not None else None
+    child_env = None
+    if env is not None:
+        child_env = os.environ.copy()
+        child_env.update({str(key): str(value) for key, value in env.items()})
 
     try:
         completed = subprocess.run(
@@ -109,18 +114,20 @@ def run_llm(
             capture_output=True,
             cwd=cwd_text,
             timeout=timeout,
-            env=dict(env) if env is not None else None,
+            env=child_env,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
         return HarnessResult(
             ok=False,
             provider=provider,
             command=argv,
             cwd=cwd_text,
             exit_code=None,
-            stdout=exc.stdout or "",
-            stderr=exc.stderr or "",
+            stdout=stdout,
+            stderr=stderr,
             timed_out=True,
             error=f"provider timed out after {timeout}s",
         )

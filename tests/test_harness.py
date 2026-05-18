@@ -1,4 +1,5 @@
 import io
+import os
 import sqlite3
 import subprocess
 import sys
@@ -65,6 +66,22 @@ class HarnessTests(unittest.TestCase):
 
         self.assertEqual(argv, ["llm", "run"])
         self.assertEqual(stdin, "hello")
+
+    def test_run_llm_merges_env_overrides_with_process_env(self):
+        result = run_llm(
+            "hello env",
+            provider="custom",
+            command=[
+                sys.executable,
+                "-c",
+                "import os,sys; sys.stdin.read(); print(os.environ.get('PATH','')); print(os.environ.get('MNEME_TEST_ENV',''))",
+            ],
+            env={"MNEME_TEST_ENV": "present"},
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn(os.environ.get("PATH", ""), result.stdout)
+        self.assertIn("present", result.stdout)
 
     def test_cli_harness_run_outputs_json(self):
         stream = io.StringIO()

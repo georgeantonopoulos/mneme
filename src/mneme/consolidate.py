@@ -4,11 +4,12 @@ import json
 import math
 import re
 import sqlite3
-import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
+from uuid import uuid4
 
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 
@@ -126,7 +127,7 @@ def _llm_label_cluster(cluster_id: str, size: int, labels: list[str], summary: d
         command=command,
         timeout=config.timeout,
     )
-    parsed = _json_from_text(result.stdout)
+    parsed = _json_from_text(result.stdout) if result.ok else {}
     llm_labels = parsed.get("labels") if isinstance(parsed.get("labels"), list) else []
     clean_labels = []
     for label in llm_labels:
@@ -195,7 +196,7 @@ def ensure_consolidation_tables(conn: sqlite3.Connection) -> None:
 
 def _latest_run_id(conn: sqlite3.Connection) -> str | None:
     try:
-        row = conn.execute("SELECT id FROM consolidation_runs ORDER BY created_at DESC LIMIT 1").fetchone()
+        row = conn.execute("SELECT id FROM consolidation_runs ORDER BY created_at DESC,id DESC LIMIT 1").fetchone()
     except sqlite3.OperationalError:
         return None
     return row[0] if row else None
@@ -301,28 +302,20 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
         nodes, adjacency, edge_relations = _load_graph(conn)
         clusters = _label_propagation(nodes, adjacency, iterations)
         stats = _node_stats(nodes, adjacency, clusters)
-        digest = hashlib.sha1(f"{len(nodes)}:{len(edge_relations)}:{iterations}:{min_cluster_size}".encode()).hexdigest()[:8]
-        run_id = f"consolidate-{digest}"
-        created_at = conn.execute("SELECT datetime('now')").fetchone()[0]
-        conn.execute("DELETE FROM consolidation_runs WHERE id=?", (run_id,))
-        conn.execute("DELETE FROM memory_clusters WHERE run_id=?", (run_id,))
-        conn.execute("DELETE FROM cluster_memberships WHERE run_id=?", (run_id,))
+        created_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        timestamp = created_at.replace("+00:00", "Z").replace(":", "").replace(".", "").replace("T", "-")
+        run_id = f"consolidate-{timestamp}-{uuid4().hex[:8]}"
 
         grouped: dict[str, list[str]] = defaultdict(list)
         for node_id, cluster_id in clusters.items():
             grouped[cluster_id].append(node_id)
 
         kept_clusters = {cid: ids for cid, ids in grouped.items() if len(ids) >= min_cluster_size}
+        ordered_clusters = sorted(kept_clusters.items(), key=lambda item: (-len(item[1]), item[0]))
         labelled = 0
         fallback_labels = 0
-        for cluster_id, node_ids in kept_clusters.items():
-            for node_id in node_ids:
-                stat = stats[node_id]
-                conn.execute(
-                    """INSERT INTO cluster_memberships(run_id,cluster_id,node_id,role,salience,hubness,participation,local_clustering,weighted_degree)
-                       VALUES(?,?,?,?,?,?,?,?,?)""",
-                    (run_id, cluster_id, node_id, stat.role, stat.salience, stat.hubness, stat.participation, stat.local_clustering, stat.weighted_degree),
-                )
+        persisted_clusters: dict[str, list[str]] = {}
+        for cluster_id, node_ids in ordered_clusters:
             top_ids = sorted(node_ids, key=lambda nid: (-stats[nid].salience, stats[nid].hubness, nodes[nid]["name"]))[:5]
             label_tokens: Counter = Counter()
             for node_id in top_ids:
@@ -353,6 +346,16 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
                 labelled += 1
                 if label_meta["source"] != "llm":
                     fallback_labels += 1
+            if summary["label_meta"].get("ignore"):
+                continue
+            persisted_clusters[cluster_id] = node_ids
+            for node_id in node_ids:
+                stat = stats[node_id]
+                conn.execute(
+                    """INSERT INTO cluster_memberships(run_id,cluster_id,node_id,role,salience,hubness,participation,local_clustering,weighted_degree)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (run_id, cluster_id, node_id, stat.role, stat.salience, stat.hubness, stat.participation, stat.local_clustering, stat.weighted_degree),
+                )
             conn.execute(
                 "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
                 (run_id, cluster_id, len(node_ids), json.dumps(labels), json.dumps(summary, ensure_ascii=False)),
@@ -360,14 +363,14 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
         summary = {
             "nodes": len(nodes),
             "edges": len(edge_relations),
-            "clusters": len(kept_clusters),
-            "largest_cluster": max((len(ids) for ids in kept_clusters.values()), default=0),
-            "roles": dict(Counter(stat.role for node_id, stat in stats.items() if clusters.get(node_id) in kept_clusters)),
+            "clusters": len(persisted_clusters),
+            "largest_cluster": max((len(ids) for ids in persisted_clusters.values()), default=0),
+            "roles": dict(Counter(stat.role for node_id, stat in stats.items() if clusters.get(node_id) in persisted_clusters)),
             "labeling": {
                 "source": "llm" if labeler.enabled else "procedural",
                 "provider": labeler.provider,
                 "model": labeler.model,
-                "clusters_requested": min(len(kept_clusters), max(0, labeler.max_clusters)) if labeler.enabled else 0,
+                "clusters_requested": min(len(ordered_clusters), max(0, labeler.max_clusters)) if labeler.enabled else 0,
                 "clusters_labelled": labelled,
                 "fallback_labels": fallback_labels,
             },

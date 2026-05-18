@@ -305,7 +305,7 @@ def stable_id(kind: str, name: str) -> str:
 
 
 def node_identity_name(kind: str, name: str, source_path: str | None = None) -> str:
-    if source_path and kind in {"note", "heading", "observation"}:
+    if source_path:
         return f"{source_path}:{name}"
     return name
 
@@ -386,7 +386,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=None):
-    nid = stable_id(kind, node_identity_name(kind, name, source_path)); ts = now_iso()
+    nid = stable_id(kind, node_identity_name(kind, name, source_path))
+    ts = now_iso()
     conn.execute("""INSERT INTO nodes(id,type,name,source_path,created_at,updated_at,confidence,metadata_json) VALUES(?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, source_path=COALESCE(excluded.source_path,nodes.source_path), confidence=max(nodes.confidence, excluded.confidence), metadata_json=excluded.metadata_json""",
     (nid, kind, name.strip(), source_path, ts, ts, confidence, json.dumps(metadata or {}, ensure_ascii=False)))

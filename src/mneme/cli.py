@@ -229,16 +229,21 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "init":
         if args.config.exists() and not args.force:
             raise SystemExit(f"config already exists: {args.config}; pass --force to overwrite")
-        print(json.dumps(create_config(args.config,args.vault,args.db,args.out,parse_hints(args.hints) if args.hints else None), indent=2, ensure_ascii=False)); return
+        print(json.dumps(create_config(args.config,args.vault,args.db,args.out,parse_hints(args.hints) if args.hints else None), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "doctor":
-        print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False)); return
+        print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "ingest":
-        print(json.dumps(ingest_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False)); return
+        print(json.dumps(ingest_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "update":
-        print(json.dumps(update_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False)); return
+        print(json.dumps(update_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "write":
         content = args.content if args.content is not None else sys.stdin.read()
-        print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False)); return
+        print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "note":
         try:
             vault = path_from_config(args,"vault")
@@ -258,55 +263,73 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:
             print(json.dumps({"ok": False, "error": str(exc), "command": "note"}, indent=2, ensure_ascii=False), file=sys.stderr)
             raise SystemExit(1) from None
-        print(json.dumps(result, indent=2, ensure_ascii=False)); return
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
     if args.cmd == "resolve":
         payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
-        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
+        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "explain-edge":
-        print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
+        print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "candidates":
-        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
+        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "debug-candidates":
-        print(json.dumps(debug_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False)); return
+        print(json.dumps(debug_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "retrieve":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
+        print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "surface":
-        print(json.dumps(surface_thoughts(path_from_config(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False)); return
+        print(json.dumps(surface_thoughts(path_from_config(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "consolidate":
         labeler = labeler_from_args(args)
-        print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False)); return
+        print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "brain":
         db_path = path_from_config(args,"db")
         if args.brain_cmd == "label":
             targets = [part.strip() for part in args.targets.split(",") if part.strip()]
-            print(json.dumps(label_brain(db_path, labeler=labeler_from_args(args), targets=targets, max_clusters=args.max_clusters, max_nodes=args.max_nodes, max_synapses=args.max_synapses, max_relationships=args.max_relationships), indent=2, ensure_ascii=False)); return
+            print(json.dumps(label_brain(db_path, labeler=labeler_from_args(args), targets=targets, max_clusters=args.max_clusters, max_nodes=args.max_nodes, max_synapses=args.max_synapses, max_relationships=args.max_relationships), indent=2, ensure_ascii=False))
+            return
         if args.brain_cmd == "report":
-            print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False)); return
+            print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False))
+            return
     if args.cmd == "promote-candidates":
-        print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+        print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "remember":
         db_path = path_from_config(args,"db")
         if args.remember_cmd == "add":
             payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
-            print(json.dumps(remember_graph(db_path, payload, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+            print(json.dumps(remember_graph(db_path, payload, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
         if args.remember_cmd == "remove":
-            print(json.dumps(forget_source(db_path, args.source_path, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+            print(json.dumps(forget_source(db_path, args.source_path, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
     if args.cmd == "harness":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
         result = run_llm(prompt, provider=args.provider, command=args.command, cwd=args.cwd, timeout=args.timeout)
-        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False)); return
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "physarum":
         db_path = path_from_config(args,"db")
         if args.physarum_cmd == "run":
             cfg = PhysarumRunConfig(iterations=args.iterations, terminals=args.terminals, paths_per_iteration=args.paths_per_iteration, decay=args.decay, reinforcement=args.reinforcement, relation_penalty=args.relation_penalty, hub_penalty=args.hub_penalty, seed=args.seed)
-            print(json.dumps(run_physarum(db_path, cfg), indent=2, ensure_ascii=False)); return
+            print(json.dumps(run_physarum(db_path, cfg), indent=2, ensure_ascii=False))
+            return
         if args.physarum_cmd == "top":
-            print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False)); return
+            print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False))
+            return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
-    generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops); image=render_card(generated,out_path); thought_id=save_thought(db_path,generated,str(image))
+    generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops)
+    image=render_card(generated,out_path)
+    thought_id=save_thought(db_path,generated,str(image))
     print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__": main()

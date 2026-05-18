@@ -40,6 +40,16 @@ class PhysarumTests(unittest.TestCase):
             self.assertEqual(statuses[e2], "candidate")
             self.assertEqual(run_count, 1)
 
+    def test_top_physarum_edges_returns_empty_for_fresh_db(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory) / "fresh.sqlite"
+            conn = sqlite3.connect(tmp)
+            init_db(conn)
+            conn.commit()
+            conn.close()
+
+            self.assertEqual(top_physarum_edges(tmp, "missing-run"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

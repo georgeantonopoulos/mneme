@@ -504,11 +504,13 @@ Mneme's graph-building layer is intentionally location-agnostic: callers pass `-
 Recommended public packaging shape:
 
 ```bash
-mneme ingest --vault /path/to/markdown --db /private/path/mneme.sqlite
-mneme serve --db /private/path/mneme.sqlite --host 127.0.0.1 --port 8002 --mount /mneme
+mneme ingest --vault /path/to/markdown --db /path/to/mneme.sqlite
+mneme retrieve --db /path/to/mneme.sqlite --prompt "what should the agent remember here?"
 ```
 
-`mneme serve` is a design target, not yet part of the public CLI. A served workbench should be optional, read-only by default, and configurable for:
+The prompt-time retrieval layer is available through the public `mneme retrieve`
+CLI command. A future served workbench should be optional, read-only by default,
+and configurable for:
 
 - graph DB path
 - host/port
