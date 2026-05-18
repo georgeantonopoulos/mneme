@@ -26,6 +26,12 @@ The private dogfood runtime is also exploring active synapse validation, graph w
 
 The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules.
 
+The repo also includes a Hermes-compatible skill bundle at
+`skills/mneme-agent-brain/`. Install or point Hermes at that
+directory when an agent should operate Mneme as a working brain. The skill
+contains the `SKILL.md` entrypoint, a detailed operator runbook, and a smoke
+helper that delegates to `scripts/hermes_brain_ready.sh`.
+
 ## What it does
 
 - Ingests Markdown notes from a vault/folder.

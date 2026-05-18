@@ -12,6 +12,20 @@ from mneme.core import init_db, upsert_edge, upsert_node
 from mneme.harness import prepare_command, run_llm
 
 
+def _frontmatter(text: str) -> dict[str, str]:
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        return {}
+    data: dict[str, str] = {}
+    for line in lines[1:]:
+        if line == "---":
+            break
+        if ":" in line and not line.startswith(" "):
+            key, value = line.split(":", 1)
+            data[key.strip()] = value.strip()
+    return data
+
+
 class HarnessTests(unittest.TestCase):
     def test_echo_provider_round_trips_prompt(self):
         result = run_llm("hello harness", provider="echo")
@@ -186,6 +200,30 @@ class HarnessTests(unittest.TestCase):
         self.assertIn('"thoughts"', result.stdout)
         self.assertIn('"surface"', result.stdout)
         self.assertIn('"prompt": "Hermes surface validation"', result.stdout)
+
+    def test_repo_contains_hermes_mneme_skill_bundle(self):
+        root = Path(__file__).resolve().parents[1]
+        skill_dir = root / "skills" / "mneme-agent-brain"
+        skill = skill_dir / "SKILL.md"
+        reference = skill_dir / "references" / "operator-flow.md"
+        helper = skill_dir / "scripts" / "mneme_brain_smoke.sh"
+
+        skill_text = skill.read_text(encoding="utf-8")
+        reference_text = reference.read_text(encoding="utf-8")
+        helper_text = helper.read_text(encoding="utf-8")
+        meta = _frontmatter(skill_text)
+
+        self.assertEqual(meta["name"], "mneme-agent-brain")
+        self.assertIn("description", meta)
+        self.assertIn("mneme retrieve", skill_text)
+        self.assertIn("mneme surface", skill_text)
+        self.assertIn("mneme remember add", skill_text)
+        self.assertIn("scripts/hermes_brain_ready.sh", skill_text)
+        self.assertIn("truth_policy", reference_text)
+        self.assertIn("mneme://", reference_text)
+        self.assertIn("hermes_brain_ready.sh", helper_text)
+        self.assertTrue(helper.stat().st_mode & 0o111)
+        self.assertEqual(skill.parent.parent, root / "skills")
 
 
 if __name__ == "__main__":
