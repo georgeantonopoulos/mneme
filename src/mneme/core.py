@@ -1700,6 +1700,147 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
     return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts}
 
 
+def forget_past_dates(db_path: Path, *, days_threshold: int = 30, dry_run: bool = False) -> dict:
+    """Set edge weights to 0 for observations with dates older than threshold.
+    
+    This is Mneme's version of forgetting — edges stay in the graph but have
+    zero weight so they don't surface. Never deletes nodes or observations.
+    
+    Args:
+        db_path: Path to SQLite database
+        days_threshold: Observations with dates older than this many days ago
+        dry_run: If True, only report what would be affected
+    
+    Returns:
+        Dict with counts of edges forgotten
+    """
+    import re
+    from datetime import datetime, timedelta, timezone
+    
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days_threshold)).date()
+    
+    # Find all observations with date-like patterns in their text
+    date_patterns = [
+        r'\b(\d{4}-\d{2}-\d{2})\b',  # ISO date: 2026-04-21
+        r'\b(Apr|Mar|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\b',  # Apr 21
+        r'\b(\d{1,2})\s+(Apr|Mar|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b',  # 21 Apr 2026
+    ]
+    
+    obs_rows = conn.execute("SELECT id, text, source_path FROM observations").fetchall()
+    
+    forgotten = []
+    for obs in obs_rows:
+        obs_id = obs['id']
+        text = obs['text']
+        
+        # Extract dates from observation text
+        extracted_dates = []
+        for pattern in date_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                try:
+                    if isinstance(match, tuple):
+                        # Handle different match group patterns
+                        if len(match) == 3:  # 21 Apr 2026
+                            day, month, year = match
+                            date_str = f"{year}-{month}-{int(day):02d}"
+                        elif len(match) == 2:  # Apr 21 or 2026-04-21
+                            if match[0].isdigit():  # 2026-04-21
+                                date_str = match[0]
+                            else:  # Apr 21
+                                month, day = match
+                                date_str = f"2026-{month}-{int(day):02d}"
+                        else:
+                            continue
+                    else:
+                        date_str = match
+                    
+                    # Try to parse the date
+                    for fmt in ['%Y-%m-%d', '%Y-%b-%d']:
+                        try:
+                            parsed = datetime.strptime(date_str, fmt).date()
+                            extracted_dates.append(parsed)
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    continue
+        
+        # Check if any extracted date is older than threshold
+        for extracted_date in extracted_dates:
+            if extracted_date < cutoff:
+                # Get edges connected to this observation via source_path
+                edge_rows = []
+                if obs['source_path']:
+                    edge_rows = conn.execute("""
+                        SELECT e.id, e.strength, e.status 
+                        FROM edges e
+                        WHERE e.source_path = ?
+                    """, (obs['source_path'],)).fetchall()
+                
+                # If no edges by source_path, try matching evidence_text containing obs ID
+                if not edge_rows:
+                    edge_rows = conn.execute("""
+                        SELECT e.id, e.strength, e.status 
+                        FROM edges e
+                        WHERE e.evidence_text LIKE ?
+                    """, (f'%{obs_id[:12]}%',)).fetchall()
+                
+                for edge in edge_rows:
+                    if edge['strength'] > 0:
+                        forgotten.append({
+                            'edge_id': edge['id'],
+                            'obs_id': obs_id,
+                            'previous_strength': edge['strength'],
+                            'date_found': str(extracted_date),
+                            'source_path': obs['source_path']
+                        })
+                break  # Move to next observation once we've found a past date
+    
+    # Apply weight changes and update thought candidates
+    if not dry_run and forgotten:
+        for item in forgotten:
+            conn.execute("""
+                UPDATE edges 
+                SET strength = 0.0, status = 'candidate', updated_at = ?
+                WHERE id = ? AND strength > 0
+            """, (datetime.now(timezone.utc).isoformat(), item['edge_id']))
+            
+            # Mark related thought candidates as resolved
+            conn.execute("""
+                UPDATE thought_candidates
+                SET status = 'resolved', updated_at = ?
+                WHERE seed_observation_id = ? AND status = 'candidate'
+            """, (datetime.now(timezone.utc).isoformat(), item['obs_id']))
+            
+            # Log the forget event
+            conn.execute("""
+                INSERT INTO edge_debug_log (edge_id, event, actor, thinking_json, created_at)
+                VALUES (?, 'forgotten', 'past_date_auto_forget', ?, ?)
+            """, (item['edge_id'], json.dumps({
+                'previous_strength': item['previous_strength'],
+                'date_found': item['date_found'],
+                'threshold_days': days_threshold
+            }), datetime.now(timezone.utc).isoformat()))
+        
+        conn.commit()
+    
+    conn.close()
+    
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "threshold_days": days_threshold,
+        "cutoff_date": str(cutoff),
+        "forgotten_count": len(forgotten),
+        "forgotten_edges": forgotten[:20] if not dry_run else []  # Limit output
+    }
+
+
 def configured_senses(config: dict | None) -> list[dict]:
     senses = (config or {}).get("senses")
     if isinstance(senses, list):

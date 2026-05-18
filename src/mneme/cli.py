@@ -5,7 +5,7 @@ from pathlib import Path
 from . import md_edit
 from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, record_feedback, remember_graph, retrieve_context, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, record_feedback, remember_graph, retrieve_context, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
@@ -279,6 +279,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--reason",default="User dismissed surfaced proposal")
     p.add_argument("--factor",type=float,default=0.5)
     p.add_argument("--floor",type=float,default=0.0)
+    p=sub.add_parser("forget", help="Mneme's version of forgetting — set edge weights to 0 for past-dated observations without deleting")
+    p.add_argument("--db",required=True,type=Path)
+    p.add_argument("--days-threshold",type=int,default=30,help="Forget observations with dates older than this many days (default: 30)")
+    p.add_argument("--dry-run",action="store_true",help="Show what would be forgotten without applying changes")
+    p.add_argument("--json",action="store_true")
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -361,6 +366,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "weaken-edge":
         print(json.dumps(weaken_edge(args.db, args.edge_id, reason=args.reason, factor=args.factor, floor=args.floor), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "forget":
+        print(json.dumps(forget_past_dates(args.db, days_threshold=args.days_threshold, dry_run=args.dry_run), indent=2, ensure_ascii=False))
         return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
