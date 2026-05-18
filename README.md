@@ -16,10 +16,11 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - SQLite graph storage
 - relationship ontology seeding
 - edge evidence + debug/audit logs
-- thought-path generation
+- retrieval-backed context and thought surfacing
+- thought-path generation and rendered cards
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for ingestion, thought generation, research resolution writeback, and edge explanation
+- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, and edge explanation
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
@@ -132,6 +133,8 @@ mneme doctor
 mneme update
 mneme candidates
 mneme promote-candidates --dry-run
+mneme retrieve --prompt "what should the agent remember here?"
+mneme surface --prompt "what should surface now?"
 mneme thought
 ```
 
@@ -165,7 +168,7 @@ mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 mneme doctor
 ```
 
-Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config. Once configured, `ingest`, `update`, `thought`, `run-once`, and `write` can read missing `--vault`, `--db`, or `--out` values from config.
+Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config. Once configured, `ingest`, `update`, `retrieve`, `surface`, `thought`, `run-once`, and `write` can read missing `--vault`, `--db`, or `--out` values from config when that command needs them.
 
 ### Ingest a Markdown vault
 
@@ -404,6 +407,11 @@ For a single smoke script:
 MNEME_LABEL_PROVIDER=ollama MNEME_LABEL_MODEL=gemma4:e4b \
   scripts/hermes_brain_ready.sh /tmp/mneme.sqlite "retrieval prompt"
 ```
+
+The script runs the full harness path Hermes needs before trusting the DB:
+`consolidate`, `brain label`, `brain report`, `retrieve`, and `surface`. Set
+`MNEME_SURFACE_LIMIT` to change how many retrieval-backed thoughts the final
+surface check returns.
 
 Set `MNEME_BRAIN_DEPTH` when the agent needs a different pass size:
 

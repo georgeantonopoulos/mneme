@@ -8,6 +8,7 @@ fi
 
 DB_PATH="$1"
 PROMPT="${2:-working brain retrieval validation}"
+SURFACE_LIMIT="${MNEME_SURFACE_LIMIT:-5}"
 LABEL_PROVIDER="${MNEME_LABEL_PROVIDER:-ollama}"
 LABEL_MODEL="${MNEME_LABEL_MODEL:-gemma4:e4b}"
 LABEL_COMMAND="${MNEME_LABEL_COMMAND:-}"
@@ -83,3 +84,4 @@ fi
 
 "$PYTHON_BIN" -m mneme.cli brain report --db "$DB_PATH"
 "$PYTHON_BIN" -m mneme.cli retrieve --db "$DB_PATH" --prompt "$PROMPT" --max-items 5
+"$PYTHON_BIN" -m mneme.cli surface --db "$DB_PATH" --prompt "$PROMPT" --limit "$SURFACE_LIMIT"

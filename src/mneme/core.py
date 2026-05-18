@@ -296,7 +296,7 @@ def doctor(config_path: Path | None = None) -> dict:
         "config": str(path),
         "settings": {"vault": str(vault), "db": str(db), "out": str(out), "hints": cfg.get("hints", DEFAULT_HINTS)},
         "checks": checks,
-        "next": "Run `mneme update` then `mneme thought`." if ok else "Fix failed checks, or rerun `mneme init --force` with correct paths.",
+        "next": "Run `mneme update`, then `mneme retrieve` or `mneme surface` for agent context; use `mneme thought` when you need a rendered card." if ok else "Fix failed checks, or rerun `mneme init --force` with correct paths.",
     }
 
 

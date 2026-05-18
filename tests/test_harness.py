@@ -153,6 +153,40 @@ class HarnessTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("DB_PATH must be an existing readable SQLite file", result.stderr)
 
+    def test_hermes_brain_ready_runs_surface_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "mneme.sqlite"
+            conn = sqlite3.connect(db)
+            init_db(conn)
+            note = upsert_node(conn, "note", "Hermes Surface Validation", "validation.md")
+            conn.execute(
+                "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+                ("obs-hermes-surface", note, "fact", "Hermes surface validation should appear.", "validation.md", 5, "now"),
+            )
+            conn.commit()
+            conn.close()
+
+            script = Path(__file__).resolve().parents[1] / "scripts" / "hermes_brain_ready.sh"
+            result = subprocess.run(
+                [str(script), str(db), "Hermes surface validation"],
+                env={
+                    **__import__("os").environ,
+                    "PYTHON": sys.executable,
+                    "MNEME_BRAIN_DEPTH": "smoke",
+                    "MNEME_LABEL_PROVIDER": "test-labeler",
+                    "MNEME_LABEL_COMMAND": f"{sys.executable} -c \"import json,sys; sys.stdin.read(); print(json.dumps({{'labels':['hermes surface'],'summary':'script label','intent':'surface validation','ignore':False}}))\"",
+                    "MNEME_SURFACE_LIMIT": "2",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"thoughts"', result.stdout)
+        self.assertIn('"surface"', result.stdout)
+        self.assertIn('"prompt": "Hermes surface validation"', result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
