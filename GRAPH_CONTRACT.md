@@ -44,3 +44,20 @@ ingest, writeback, validation, retrieval, and thought generation.
 4. `killed` edges/synapses are tombstones. Rebuilds and re-ingests must preserve them or restore them from a verified backup before activation can proceed.
 5. Durable validated `active` edges/synapses (for example research/writeback or user-confirmed claims) must survive rebuilds; deterministic vault/ingest edges may be recalculated to avoid stale private content.
 6. Retrieval and thought generation may show candidates as candidates, but must not phrase them as resolved facts.
+7. Corrective guardrails are stronger than stale observations. If a later source says an old task/claim was stale, wrong, hallucinated, or must not be mentioned without fresh evidence, proactive thought/candidate selection must not resurrect the old item as an open loop.
+8. Dismissal feedback should weaken, not automatically delete, a surfaced relationship. If a user declines a proposed thought/action, reduce the relevant edge/synapse strength and record the feedback event; kill/tombstone only when the feedback or evidence says the relationship is false.
+9. Open-task discovery must distinguish “source-contained observation exists” from “task is currently live”. Old daily-note rows, imported tracker rows, and candidate edges require fresh confirming evidence before an agent says they are still open, overdue, requested, or stalled.
+
+## Compatibility Invariants
+
+These invariants are the minimum bar for keeping public Mneme aligned with private dogfood runtimes while preserving privacy:
+
+1. **Evidence before belief:** every durable relationship must have bounded evidence and source provenance. A node name or co-mention is not enough.
+2. **Candidates stay tentative:** candidate edges may be stored, inspected, and explained, but user-facing retrieval must label them as tentative and thought generation must not treat them as facts.
+3. **Tombstones survive:** killed edges are guardrails. Rebuilds, re-ingests, migrations, and candidate promotion must not recreate a killed relationship unless a later explicit correction supersedes the tombstone.
+4. **Dismissal weakens by default:** “not useful” feedback reduces priority; it does not imply the underlying relationship is false. Kill only when feedback or source evidence says the claim is wrong.
+5. **Freshness is source-derived:** age/decay logic should derive dates from source paths or source text when possible. Rebuild timestamps are operational metadata, not evidence freshness.
+6. **Open loops need current evidence:** old TODOs, cron summaries, daily notes, and generated drafts are historical evidence. Treat them as live obligations only after a fresh source or explicit lifecycle event confirms them.
+7. **Lifecycle is explicit:** close or update thought/task state through feedback, writeback, reminder, dismissal, or source-specific evidence. Do not infer closure solely from prose words in unrelated text.
+8. **Generated artifacts are private by default:** SQLite databases, cards, logs, and session-derived outputs can contain source snippets and must stay out of public commits.
+9. **Private incidents become fictional fixtures:** public tests should encode generic failure modes with invented names, paths, and source packets, never copied private evidence.
