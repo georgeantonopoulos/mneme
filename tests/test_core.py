@@ -1,9 +1,13 @@
-import datetime as dt
+import json
 import sqlite3
+import sys
 from pathlib import Path
 
-from mneme.core import actionability_from_candidate, activate_candidate_edges, contract_from_candidate, create_config, dismiss_thought_task, doctor, explain_edge, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, list_thought_tasks, load_config, log_edge_event, record_thought_reminder, record_thought_writeback, relationship_type, save_thought, stable_id, tick, update_thought_task, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.brain import brain_label_matches, brain_report, label_brain
+from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
+from mneme.retrieval.scoring import freshness_breakdown, score_observation_candidate, source_quality_breakdown
 
 
 def test_ingest_and_walk(tmp_path: Path):
@@ -22,101 +26,6 @@ def test_ingest_and_walk(tmp_path: Path):
     assert path
     thought = generate_thought(db, path)
     assert thought["title"] and thought["insight"]
-
-
-def test_thought_candidate_emits_contract_with_internal_lifecycle_tag(tmp_path: Path):
-    vault = tmp_path / "vault"
-    (vault / "Projects").mkdir(parents=True)
-    (vault / "Projects" / "alpha.md").write_text(
-        "# Alpha\n\n- [ ] Ask Casey for the signed agreement by Apr 15\nRelated: [[Casey]]\n",
-        encoding="utf-8",
-    )
-    db = tmp_path / "mneme.sqlite"
-    ingest_vault(vault, db)
-
-    candidate = list_thought_candidates(db, limit=1)[0]
-    contract = contract_from_candidate(candidate)
-    thought = generate_proactive_thought(db)
-
-    assert contract["mission"].startswith("Finish this unfinished loop:")
-    assert contract["done_when"] == "A human-visible next action, note update, scheduled reminder, or explicit dismissal exists."
-    assert contract["lifecycle_tag"] == "mneme:thought/open_loop"
-    assert contract["writeback_target"].startswith("Thoughts/")
-    assert "ask_user" in contract["allowed_actions"]
-    assert thought["contract"]["mission"]
-    assert "Finish" in thought["action"] or "first move" in thought["action"].lower()
-
-
-def test_actionability_score_uses_internal_tags_not_resolved_word_matching():
-    candidate = {
-        "base_score": 2.0,
-        "score": 99.0,
-        "observation": {"kind": "blocked", "text": "Casey item is resolved confirmed closed done", "source_path": "Projects/alpha.md"},
-        "path": [
-            {"type": "project", "name": "Alpha"},
-            {"type": "person", "name": "Casey"},
-        ],
-        "reasons": [],
-    }
-
-    score, tags, reasons = actionability_from_candidate(candidate)
-    contract = contract_from_candidate({**candidate, "score": score, "internal_tags": tags})
-
-    assert score == 10.5
-    assert contract["actionability_score"] == score
-    assert "mneme:thought/open_loop" in tags
-    assert "mneme:near_human" in tags
-    assert not any("resolved" in reason.lower() for reason in reasons)
-
-
-def test_saving_contract_creates_explicit_lifecycle_task_not_lexical_closure(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Ask Casey by Apr 15\n", encoding="utf-8")
-    db = tmp_path / "mneme.sqlite"
-    ingest_vault(vault, db)
-    thought = generate_proactive_thought(db)
-
-    thought_id = save_thought(db, thought, image_path="thought.png")
-    tasks = list_thought_tasks(db)
-
-    assert tasks[0]["thought_id"] == thought_id
-    assert tasks[0]["status"] == "open"
-    assert tasks[0]["lifecycle_tag"] == thought["contract"]["lifecycle_tag"]
-    assert tasks[0]["done_when"] == thought["contract"]["done_when"]
-
-    updated = update_thought_task(db, tasks[0]["id"], status="resolved", evidence="user dismissed explicitly")
-    assert updated["status"] == "resolved"
-    assert list_thought_tasks(db, status="open") == []
-
-
-def test_thought_task_lifecycle_events_close_loops_explicitly(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "alpha.md").write_text("# Alpha\n\n- [ ] Ask Casey by Apr 15\n", encoding="utf-8")
-    db = tmp_path / "mneme.sqlite"
-    ingest_vault(vault, db)
-
-    task_id = list_thought_tasks(db)[0]["id"] if list_thought_tasks(db) else None
-    if task_id is None:
-        save_thought(db, generate_proactive_thought(db), image_path="thought.png")
-        task_id = list_thought_tasks(db)[0]["id"]
-    acted = record_thought_writeback(db, task_id, target="Projects/alpha.md", evidence="Added next action note")
-    assert acted["status"] == "acted"
-    assert "writeback:Projects/alpha.md" in acted["evidence"]
-
-    save_thought(db, generate_proactive_thought(db), image_path="thought2.png")
-    reminder_task = list_thought_tasks(db, status="open")[0]
-    reminded = record_thought_reminder(db, reminder_task["id"], reminder_id="cal-123", evidence="Calendar reminder created")
-    assert reminded["status"] == "resolved"
-    assert "reminder:cal-123" in reminded["evidence"]
-
-    save_thought(db, generate_proactive_thought(db), image_path="thought3.png")
-    dismiss_task = list_thought_tasks(db, status="open")[0]
-    dismissed = dismiss_thought_task(db, dismiss_task["id"], reason="not relevant after review")
-    assert dismissed["status"] == "dismissed"
-    assert "dismissed:not relevant after review" in dismissed["evidence"]
-    assert list_thought_tasks(db, status="open") == []
 
 
 def test_rebuild_removes_stale_private_content(tmp_path: Path):
@@ -251,6 +160,37 @@ def test_task_checkbox_not_duplicated_as_generic_bullet(tmp_path: Path):
     rows = conn.execute("SELECT text FROM observations").fetchall()
     conn.close()
     assert [row[0] for row in rows] == ["Book movers by Apr 15"]
+
+
+def test_notes_with_same_title_keep_source_specific_identities(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "alpha").mkdir(parents=True)
+    (vault / "beta").mkdir()
+    (vault / "alpha" / "Run Log.md").write_text("# Run Log\n\n- Alpha follow up\n", encoding="utf-8")
+    (vault / "beta" / "Run Log.md").write_text("# Run Log\n\n- Beta follow up\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db)
+
+    conn = sqlite3.connect(db)
+    rows = conn.execute("SELECT name,source_path FROM nodes WHERE type='note' AND name='Run Log' ORDER BY source_path").fetchall()
+    conn.close()
+
+    assert rows == [("Run Log", "alpha/Run Log.md"), ("Run Log", "beta/Run Log.md")]
+
+
+def test_nodes_with_same_entity_name_keep_source_specific_identities(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+
+    alpha = upsert_node(conn, "person", "Alex", "alpha.md")
+    beta = upsert_node(conn, "person", "Alex", "beta.md")
+    conn.commit()
+    rows = conn.execute("SELECT id,source_path FROM nodes WHERE type='person' AND name='Alex' ORDER BY source_path").fetchall()
+    conn.close()
+
+    assert alpha != beta
+    assert rows == [(alpha, "alpha.md"), (beta, "beta.md")]
 
 
 def test_symlink_escape_is_skipped(tmp_path: Path):
@@ -482,15 +422,510 @@ def test_generate_proactive_thought_uses_candidate_why_now(tmp_path: Path):
 
     thought = generate_proactive_thought(db, hints=["deadline", "renewal"])
 
-    assert thought["title"] in {"Unfinished loop with a first move", "Time-sensitive item to verify", "Open loop hiding in the graph", "Deadline path worth checking", "Reasoned graph walk"}
+    assert thought["title"] in {"Open loop hiding in the graph", "Deadline path worth checking", "Reasoned graph walk"}
     assert thought["why_now"]
     assert "Renewal" in thought["insight"]
     assert thought["score"] > 0
     assert thought["evidence"]
     assert thought["insight"].startswith("Why this matters:")
     assert thought["action"] != thought["evidence"][0]
-    assert thought["action"].startswith(("Ask", "Check", "Finish"))
-    assert thought.get("contract", {}).get("mission")
+    assert thought["action"].startswith(("Ask", "Check"))
+
+
+def test_candidates_expose_shared_score_breakdown_for_thoughts(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Project.md").write_text("# Project\n\n- [ ] Waiting for owner by 2026-05-01\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["owner"])
+
+    candidate = list_thought_candidates(db, limit=1, hints=["owner"])[0]
+    thought = generate_proactive_thought(db, hints=["owner"])
+
+    assert candidate["score_breakdown"]["factors"]
+    assert candidate["score_breakdown"]["freshness"]["basis"] == "explicit_date"
+    assert thought["score"] == candidate["score"]
+    assert "Waiting for owner" in thought["evidence"][0]
+
+
+def test_debug_candidates_explains_suppressed_low_quality_sources(tmp_path: Path):
+    vault = tmp_path / "vault"
+    archive = vault / "Project Memory" / "demo" / "Archive" / "Runs"
+    archive.mkdir(parents=True)
+    (archive / "2026-01-01-old.md").write_text("# Old\n\n- [ ] Waiting for archived owner\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["missing"])
+
+    report = debug_candidates(db, include_skipped=True, limit=5)
+
+    assert report["candidates"]
+    first = report["candidates"][0]
+    assert any(p["label"] == "source quality" for p in first["score_breakdown"]["penalties"])
+    assert "Archive/Runs" in first["seed"]["source_path"]
+
+
+def test_retrieve_returns_prompt_context_without_promoting_candidate_synapses(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    child = upsert_node(conn, "person", "Example Child", "research")
+    club = upsert_node(conn, "activity", "Art Club", "research")
+    killed = upsert_node(conn, "activity", "Wrong Club", "research")
+    candidate_edge = upsert_edge(
+        conn,
+        child,
+        club,
+        "requested_activity",
+        "Sources/art.md",
+        "Email asked school to add Art Club if a place opens.",
+        0.76,
+        status="candidate",
+        strength=0.72,
+        source_type="email",
+    )
+    killed_edge = upsert_edge(
+        conn,
+        child,
+        killed,
+        "attends_activity",
+        "Sources/wrong.md",
+        "User correction says this was wrong.",
+        0.0,
+        status="killed",
+        strength=0.0,
+        source_type="user_confirmed",
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "What is going on with Art Club?", max_items=5)
+    edge_items = [item for item in result["items"] if item["kind"] == "edge"]
+
+    assert any(item["id"] == candidate_edge and item["truth_policy"] == "candidate_only" for item in edge_items)
+    assert killed_edge not in {item["id"] for item in edge_items}
+
+
+def test_retrieve_finds_observations_and_budgeted_evidence(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Launch.md").write_text("# Launch\n\n- [ ] Follow up with supplier by 2026-05-20\n- General note\n", encoding="utf-8")
+    (vault / "Noise.md").write_text("# Noise\n\n- [ ] Urgent deadline due 2026-05-18 for unrelated archive\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["supplier"])
+
+    result = retrieve_context(db, "supplier follow up", budget=200, max_items=3, hints=["supplier"])
+
+    assert result["items"]
+    top = result["items"][0]
+    assert top["kind"] == "observation"
+    assert "supplier" in top["snippet"].lower()
+    assert top["score_breakdown"]["freshness"]["basis"] == "explicit_date"
+    assert all(
+        "supplier" in item["snippet"].lower() or item["score"] >= 8
+        for item in result["items"]
+        if item["kind"] == "observation"
+    )
+
+
+def test_retrieve_keeps_high_score_observation_with_low_lexical_overlap(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Signal Note", "Signals/high.md")
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        (
+            "obs-high-score",
+            note,
+            "risk",
+            "Critical renewal deadline due tomorrow.",
+            "Signals/high.md",
+            9.0,
+            "2026-05-18T00:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "calendar rental followup", max_items=3)
+
+    assert any(item["kind"] == "observation" and item["id"] == "obs-high-score" for item in result["items"])
+
+
+def test_consolidate_assigns_procedural_roles_without_name_blacklist(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    center = upsert_node(conn, "note", "Central Switchboard", "Switchboard.md")
+    for index in range(6):
+        project = upsert_node(conn, "project", f"Project {index}", f"Project-{index}.md")
+        detail = upsert_node(conn, "observation", f"Project {index} owner follow up", f"Project-{index}.md")
+        upsert_edge(conn, center, project, "links_to", "Switchboard.md", f"[[Project {index}]]", 0.95, strength=0.95)
+        upsert_edge(conn, project, detail, "has_blocked", f"Project-{index}.md", f"Project {index} owner follow up", 0.95, strength=0.95)
+    conn.commit()
+    conn.close()
+
+    summary = consolidate_graph(db, iterations=8, min_cluster_size=2)
+
+    conn = sqlite3.connect(db)
+    role = conn.execute(
+        "SELECT role FROM cluster_memberships WHERE run_id=? AND node_id=?",
+        (summary["run_id"], center),
+    ).fetchone()[0]
+    hubness = conn.execute(
+        "SELECT hubness FROM cluster_memberships WHERE run_id=? AND node_id=?",
+        (summary["run_id"], center),
+    ).fetchone()[0]
+    conn.close()
+    assert role in {"hub", "bridge"}
+    assert hubness > 1.0
+
+
+def test_retrieve_uses_consolidated_cluster_context(tmp_path: Path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Launch.md").write_text("# Launch\n\n- [ ] Follow up with supplier by 2026-05-20\n\nSupplier plan relates to launch readiness.\n", encoding="utf-8")
+    (vault / "Supplier.md").write_text("# Supplier\n\n- [ ] Waiting for owner confirmation on supplier plan\n", encoding="utf-8")
+    db = tmp_path / "mneme.sqlite"
+    ingest_vault(vault, db, hints=["supplier"])
+    consolidate_graph(db, iterations=8, min_cluster_size=2)
+
+    result = retrieve_context(db, "supplier owner follow up", budget=500, max_items=5, hints=["supplier"])
+
+    assert result["clusters"]
+    assert result["items"]
+    assert any(item.get("cluster") for item in result["items"])
+
+
+def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    blocked = upsert_node(conn, "observation", "Supplier launch owner follow up", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Launch owner owns supplier readiness", 0.9, strength=0.9)
+    upsert_edge(conn, note, blocked, "has_blocked", "Launch.md", "Supplier launch owner follow up", 0.95, strength=0.95)
+    conn.commit()
+    conn.close()
+
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['supplier launch','owner followup'], 'summary':'Supplier launch follow-up cluster.', 'intent':'follow up', 'ignore':False}))",
+    ]
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT label_json,summary_json FROM memory_clusters WHERE run_id=? LIMIT 1", (summary["run_id"],)).fetchone()
+    conn.close()
+    labels = json.loads(row[0])
+    cluster_summary = json.loads(row[1])
+    assert labels == ["supplier launch", "owner followup"]
+    assert cluster_summary["label_meta"]["source"] == "llm"
+    assert summary["labeling"]["clusters_labelled"] == 1
+
+    conn = sqlite3.connect(db)
+    matches = retrieval_cluster_matches(conn, "supplier launch handoff", limit=3)
+    conn.close()
+    assert matches["clusters"]
+    assert matches["clusters"][0]["matched_terms"] == ["launch", "supplier"]
+
+
+def test_consolidate_keeps_unique_runs_and_uses_latest(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Supplier Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+
+    first = consolidate_graph(db, iterations=4, min_cluster_size=2)
+    second = consolidate_graph(db, iterations=4, min_cluster_size=2)
+
+    conn = sqlite3.connect(db)
+    run_count = conn.execute("SELECT COUNT(*) FROM consolidation_runs").fetchone()[0]
+    latest = retrieval_cluster_matches(conn, "supplier owner", limit=3)["run_id"]
+    conn.close()
+
+    assert first["run_id"] != second["run_id"]
+    assert run_count == 2
+    assert latest == second["run_id"]
+
+
+def test_consolidate_ignores_llm_marked_clusters(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Ignored Hub", "ignored.md")
+    child = upsert_node(conn, "person", "Ignored Person", "ignored.md")
+    upsert_edge(conn, note, child, "relates_to", "ignored.md", "Ignored relation", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['ignore me'],'summary':'noise','intent':'ignore','ignore':True}))",
+    ]
+
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    clusters = conn.execute("SELECT COUNT(*) FROM memory_clusters WHERE run_id=?", (summary["run_id"],)).fetchone()[0]
+    memberships = conn.execute("SELECT COUNT(*) FROM cluster_memberships WHERE run_id=?", (summary["run_id"],)).fetchone()[0]
+    conn.close()
+    assert summary["clusters"] == 0
+    assert clusters == 0
+    assert memberships == 0
+
+
+def test_consolidate_ignores_failed_labeler_stdout(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Fallback Supplier Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Fallback Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Fallback supplier owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['bad llm label'],'summary':'should not parse'})); raise SystemExit(2)",
+    ]
+
+    summary = consolidate_graph(
+        db,
+        iterations=4,
+        min_cluster_size=2,
+        labeler=LabelerConfig(provider="test-labeler", command=command, max_clusters=1, timeout=10),
+    )
+
+    conn = sqlite3.connect(db)
+    label_json, summary_json = conn.execute("SELECT label_json,summary_json FROM memory_clusters WHERE run_id=? LIMIT 1", (summary["run_id"],)).fetchone()
+    conn.close()
+    labels = json.loads(label_json)
+    cluster_summary = json.loads(summary_json)
+    assert "bad llm label" not in labels
+    assert cluster_summary["label_meta"]["source"] == "procedural_fallback"
+    assert summary["labeling"]["fallback_labels"] == 1
+
+
+def test_brain_label_pass_covers_nodes_synapses_relationships_and_retrieval(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    edge = upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier launch owner owns readiness", 0.9, strength=0.9)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs-launch", note, "blocked", "Supplier launch owner follow up", "Launch.md", 5, "now"),
+    )
+    conn.commit()
+    conn.close()
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; text=sys.stdin.read().lower(); labels=['supplier launch','owner readiness'] if 'supplier' in text else ['relationship semantics','graph traversal']; print(json.dumps({'labels':labels,'summary':'brain target label','intent':'retrieval routing','ignore':False}))",
+    ]
+    result = label_brain(
+        db,
+        labeler=LabelerConfig(provider="test-labeler", command=command, timeout=10),
+        targets=["node", "synapse", "relationship"],
+        max_nodes=3,
+        max_synapses=3,
+        max_relationships=3,
+    )
+
+    assert result["targets"]["node"] == 2
+    assert result["targets"]["synapse"] == 1
+    assert result["targets"]["relationship"] == 3
+    conn = sqlite3.connect(db)
+    matches = brain_label_matches(conn, "supplier launch readiness", limit=5)
+    conn.close()
+    assert any(item["target_type"] in {"node", "synapse"} for item in matches["matches"])
+
+    retrieved = retrieve_context(db, "supplier launch readiness", max_items=5)
+    assert retrieved["brain_labels"]
+    assert any(item.get("brain_label") for item in retrieved["items"])
+    report = brain_report(db)
+    assert report["counts"]["node"] == 2
+    assert report["coverage"]["node"]["labelled"] == 2
+    assert report["coverage"]["node"]["available"] == 2
+    assert report["coverage"]["node"]["depth"] == "deep"
+    assert report["coverage"]["synapse"]["labelled"] == 1
+
+
+def test_surface_thoughts_uses_retrieval_brain_metadata(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Supplier Launch Plan", "Launch.md")
+    owner = upsert_node(conn, "person", "Launch Owner", "Launch.md")
+    upsert_edge(conn, note, owner, "relates_to", "Launch.md", "Supplier launch owner owns readiness", 0.9, strength=0.9)
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs-surface-launch", note, "blocked", "Supplier launch owner follow up", "Launch.md", 5, "now"),
+    )
+    conn.commit()
+    conn.close()
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'labels':['supplier launch','owner readiness'],'summary':'brain label','intent':'surface routing','ignore':False}))",
+    ]
+    label_brain(db, labeler=LabelerConfig(provider="test-labeler", command=command, timeout=10), targets=["node", "synapse"], max_nodes=3, max_synapses=3)
+
+    result = surface_thoughts(db, "supplier launch readiness", limit=2, hints=["supplier"])
+
+    assert result["count"] >= 1
+    assert result["retrieval"]["brain_labels"]
+    thought = result["thoughts"][0]
+    assert thought["surface"]["prompt"] == "supplier launch readiness"
+    assert thought["surface"]["kind"] in {"observation", "edge"}
+    assert thought["surface"]["brain_label"] or thought["surface"]["cluster"]
+    assert thought["suggested_actions"]
+
+
+def test_remember_graph_adds_and_forgets_scoped_agent_memory(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "source_path": "mneme://test/surface-validation",
+        "nodes": [
+            {"ref": "agent", "type": "agent", "name": "Temporary Surface Agent"},
+            {"ref": "task", "type": "task", "name": "Temporary retrieval validation"},
+        ],
+        "edges": [
+            {
+                "src": "agent",
+                "dst": "task",
+                "relation": "relates_to",
+                "status": "active",
+                "confidence": 0.92,
+                "evidence": "Temporary Surface Agent checks retrieval validation.",
+            }
+        ],
+        "observations": [
+            {"node": "task", "kind": "fact", "text": "Temporary retrieval validation should surface from scoped memory.", "score": 5}
+        ],
+    }
+
+    added = remember_graph(db, payload)
+    surfaced = surface_thoughts(db, "temporary retrieval validation", limit=3)
+    removed = forget_source(db, payload["source_path"])
+
+    conn = sqlite3.connect(db)
+    remaining = {
+        "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+        "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+        "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (payload["source_path"],)).fetchone()[0],
+    }
+    conn.close()
+
+    assert len(added["nodes"]) == 2
+    assert len(added["edges"]) == 1
+    assert len(added["observations"]) == 1
+    assert surfaced["count"] >= 1
+    assert any(thought["surface"]["source_path"] == payload["source_path"] for thought in surfaced["thoughts"])
+    assert any(action["type"] == "graph_memory_review" for thought in surfaced["thoughts"] for action in thought["suggested_actions"])
+    assert removed["removed"] == {"observations": 1, "edges": 1, "nodes": 2}
+    assert remaining == {"nodes": 0, "edges": 0, "observations": 0}
+
+
+def test_brain_report_uses_label_run_consolidation_snapshot(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Snapshot Note", "snapshot.md")
+    owner = upsert_node(conn, "person", "Snapshot Owner", "snapshot.md")
+    upsert_edge(conn, note, owner, "relates_to", "snapshot.md", "Snapshot owner context", 0.9, strength=0.9)
+    conn.commit()
+    conn.close()
+
+    first = consolidate_graph(db, iterations=4, min_cluster_size=2)
+    label_brain(db, targets=["cluster"], max_clusters=1)
+
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
+        ("newer-run", "extra-cluster", 1, "[]", "{}"),
+    )
+    conn.execute(
+        "INSERT INTO consolidation_runs(id,created_at,config_json,summary_json) VALUES(?,?,?,?)",
+        ("newer-run", "9999-01-01 00:00:00", "{}", "{}"),
+    )
+    conn.commit()
+    conn.close()
+
+    report = brain_report(db)
+    assert report["source_consolidation_run_id"] == first["run_id"]
+    assert report["coverage"]["cluster"]["available"] == first["clusters"]
+
+
+def test_retrieval_scoring_handles_hint_and_source_edge_cases():
+    scored = score_observation_candidate(
+        kind="note",
+        text="plain context",
+        base_score=1,
+        hints=["", "   "],
+        observation_created_at=None,
+        node_updated_at="2026-01-01T00:00:00Z",
+    )
+
+    assert all(factor["label"] != "hint match" for factor in scored.factors)
+    freshness = freshness_breakdown("", None, None, "2026-01-01T00:00:00Z")
+    assert freshness["basis"] == "node_updated_at"
+    source = source_quality_breakdown("Archive/Archives/Runs/example.md")
+    assert source["score"] == -2.5
+    assert "archived run note" in source["reasons"]
+
+
+def test_consolidation_does_not_promote_candidate_edges(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    child = upsert_node(conn, "person", "Example Child", "child.md")
+    activity = upsert_node(conn, "project", "Chess Club", "activity.md")
+    candidate_edge = upsert_edge(
+        conn,
+        child,
+        activity,
+        "requested_activity",
+        "email.md",
+        "Email asked about Chess Club availability.",
+        0.72,
+        status="candidate",
+        strength=0.7,
+        source_type="email",
+    )
+    conn.commit()
+    conn.close()
+
+    consolidate_graph(db, iterations=4, min_cluster_size=2)
+    result = retrieve_context(db, "Chess Club availability", max_items=5)
+    edge_items = [item for item in result["items"] if item["id"] == candidate_edge]
+
+    assert edge_items
+    assert edge_items[0]["truth_policy"] == "candidate_only"
+    assert edge_items[0]["status"] == "candidate"
 
 
 def test_init_db_migrates_old_edge_schema(tmp_path: Path):
@@ -600,7 +1035,7 @@ def test_research_resolution_missing_evidence_stays_candidate_and_candidates_do_
 
     conn = sqlite3.connect(db)
     status = conn.execute("SELECT status FROM edges").fetchone()[0]
-    child_id = stable_id("person", "Example Child")
+    child_id = conn.execute("SELECT id FROM nodes WHERE type='person' AND name='Example Child'").fetchone()[0]
     conn.close()
     path = walk_graph(db, seed_id=child_id, hops=2)
     assert status == "candidate"
@@ -742,92 +1177,6 @@ def test_candidate_observation_edges_are_not_used_in_thought_paths(tmp_path: Pat
     candidates = list_thought_candidates(db, limit=1)
     names = [node["name"] for node in candidates[0]["path"]]
     assert names == ["Project"]
-
-
-def test_guardrail_observation_suppresses_stale_open_loop(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "old.md").write_text(
-        "# Old Tracker\n\n- Widget records translation still open and overdue\n",
-        encoding="utf-8",
-    )
-    (vault / "correction.md").write_text(
-        "# Correction\n\n- Correction: Widget records translation was hallucinated. Do not treat old tracker rows as active unless fresh source evidence explicitly reactivates it.\n",
-        encoding="utf-8",
-    )
-    (vault / "fresh.md").write_text(
-        "# Fresh Work\n\n- [ ] Follow up with supplier by 2026-05-01\n",
-        encoding="utf-8",
-    )
-    db = tmp_path / "mneme.sqlite"
-    ingest_vault(vault, db, hints=["translation", "supplier"])
-
-    candidates = list_thought_candidates(db, limit=10, hints=["translation", "supplier"])
-    texts = [candidate["observation"]["text"] for candidate in candidates]
-
-    assert "Widget records translation still open and overdue" not in texts
-    assert all("hallucinated" not in text.lower() for text in texts)
-    assert "Follow up with supplier by 2026-05-01" in texts
-
-
-def test_guardrail_without_topic_overlap_does_not_hide_other_tasks(tmp_path: Path):
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "guardrail.md").write_text(
-        "# Guardrail\n\n- Correction: Widget records translation was hallucinated. Do not treat old tracker rows as active unless fresh evidence exists.\n",
-        encoding="utf-8",
-    )
-    (vault / "ops.md").write_text(
-        "# Ops\n\n- [ ] Renew vendor insurance by 2026-06-01\n",
-        encoding="utf-8",
-    )
-    db = tmp_path / "mneme.sqlite"
-    ingest_vault(vault, db, hints=["insurance", "vendor"])
-
-    candidates = list_thought_candidates(db, limit=5, hints=["insurance", "vendor"])
-    texts = [candidate["observation"]["text"] for candidate in candidates]
-
-    assert "Renew vendor insurance by 2026-06-01" in texts
-
-
-def test_tick_temporal_decay_uses_source_dates_not_rebuild_timestamps(tmp_path: Path):
-    db = tmp_path / "mneme.sqlite"
-    conn = sqlite3.connect(db)
-    init_db(conn)
-    now = dt.datetime.now(dt.timezone.utc)
-    created_at = now.isoformat(timespec="seconds")
-    old_day = (now - dt.timedelta(days=30)).date().isoformat()
-    today = now.date().isoformat()
-    old_source = f"memory/{old_day}.md"
-    current_source = f"memory/{today}.md"
-    old_note = upsert_node(conn, "note", "Old Daily", old_source)
-    current_note = upsert_node(conn, "note", "Current Daily", current_source)
-    conn.execute(
-        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
-        ("old-risk", old_note, "risk", "Blueground move-out TOMORROW deadline", old_source, 10, created_at),
-    )
-    conn.execute(
-        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
-        ("current-risk", current_note, "risk", "Renew vendor insurance by today", current_source, 10, created_at),
-    )
-    conn.commit()
-    conn.close()
-
-    tick(db, hints=["deadline", "insurance"], limit=10)
-
-    conn = sqlite3.connect(db)
-    conn.row_factory = sqlite3.Row
-    rows = {
-        row["seed_observation_id"]: row
-        for row in conn.execute("SELECT seed_observation_id,activation_score,why_now_json FROM thought_candidates")
-    }
-    conn.close()
-    old_why = rows["old-risk"]["why_now_json"]
-
-    assert rows["current-risk"]["activation_score"] > rows["old-risk"]["activation_score"]
-    assert rows["old-risk"]["activation_score"] < 0
-    assert "temporal_age_penalty" in old_why
-    assert "source_path" in old_why
 
 
 def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypatch):

@@ -11,41 +11,15 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-THOUGHT_STATUSES = {"open", "acted", "resolved", "learned", "dismissed"}
-LIFECYCLE_BY_KIND = {
-    "blocked": ("mneme:thought/open_loop", 5.0, "open loop tag"),
-    "risk": ("mneme:thought/time_sensitive", 4.0, "time-sensitive tag"),
-    "done": ("mneme:thought/consolidate", 1.0, "consolidation tag"),
-    "fact": ("mneme:thought/inspect", 0.0, "inspection tag"),
-}
-MISSION_PREFIX_BY_KIND = {
-    "blocked": "Finish this unfinished loop",
-    "risk": "Check and reduce this time-sensitive risk",
-    "done": "Consolidate this completed item",
-    "fact": "Inspect this possible connection",
-}
-FIRST_MOVE_BY_KIND = {
-    "blocked": "Read the newest linked evidence, then choose: draft, schedule, write back, ask, or dismiss.",
-    "risk": "Verify freshness against the source, then choose: act, remind, escalate, or dismiss.",
-    "done": "Write back the durable lesson or archive the loop so it stops resurfacing.",
-    "fact": "Decide whether this connection changes a next action; if not, leave it alone.",
-}
-THOUGHT_DONE_WHEN = "A human-visible next action, note update, scheduled reminder, or explicit dismissal exists."
-ALLOWED_THOUGHT_ACTIONS = ["draft_reply", "write_note", "schedule_reminder", "ask_user", "mark_irrelevant"]
+from .brain import brain_label_matches
+from .consolidate import retrieval_cluster_matches
+from .retrieval import score_observation_candidate
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
 TASK_RE = re.compile(r"^\s*[-*]\s+\[([ xX])]\s+(.+)$", re.M)
 BULLET_RE = re.compile(r"^\s*[-*]\s+(.+)$", re.M)
 DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+20\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2})\b", re.I)
-TEXT_DATE_RE = re.compile(
-    r"\b(?:(?P<month_first>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?P<month_first_day>\d{1,2}),?\s+(?P<month_first_year>20\d{2})|(?P<day_first_day>\d{1,2})\s+(?P<day_first_month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?),?\s+(?P<day_first_year>20\d{2}))\b",
-    re.I,
-)
-MONTH_DAY_RE = re.compile(
-    r"\b(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?P<day>\d{1,2})\b",
-    re.I,
-)
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 RESEARCH_RESOLUTION_RE = re.compile(r"<!--\s*mneme-research-resolution-b64:\s*([A-Za-z0-9_-]+)\s*-->", re.S)
 STATUS_WORDS = {
@@ -55,32 +29,7 @@ STATUS_WORDS = {
 }
 DEFAULT_HINTS = ["deadline", "project", "invoice", "lease", "tax", "school", "move", "certification", "payment"]
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "mneme" / "config.json"
-MONTH_NUMBER = {
-    "jan": 1,
-    "january": 1,
-    "feb": 2,
-    "february": 2,
-    "mar": 3,
-    "march": 3,
-    "apr": 4,
-    "april": 4,
-    "may": 5,
-    "jun": 6,
-    "june": 6,
-    "jul": 7,
-    "july": 7,
-    "aug": 8,
-    "august": 8,
-    "sep": 9,
-    "sept": 9,
-    "september": 9,
-    "oct": 10,
-    "october": 10,
-    "nov": 11,
-    "november": 11,
-    "dec": 12,
-    "december": 12,
-}
+THOUGHT_STATUSES = {"open", "acted", "resolved", "learned", "dismissed"}
 DEFAULT_RELATIONSHIP_TYPES = [
     {
         "id": "links_to",
@@ -293,87 +242,6 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
-def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed
-
-
-def _age_days_from_datetime(value: dt.datetime | None) -> float | None:
-    if not value:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=dt.timezone.utc)
-    return max(0.0, (dt.datetime.now(dt.timezone.utc) - value).total_seconds() / 86400.0)
-
-
-def _extract_date_from_source_path(source_path: str | None) -> dt.datetime | None:
-    """Extract the source note date from paths such as memory/2026-04-16.md."""
-    if not source_path:
-        return None
-    match = re.search(r"(20\d{2}-\d{2}-\d{2})", str(source_path))
-    if not match:
-        return None
-    return _parse_iso_datetime(match.group(1))
-
-
-def _extract_date_from_text(text: str | None) -> dt.datetime | None:
-    """Extract explicit dates from observation text without trusting ingest time."""
-    if not text:
-        return None
-    iso_match = re.search(r"(20\d{2}-\d{2}-\d{2})", str(text))
-    if iso_match:
-        parsed = _parse_iso_datetime(iso_match.group(1))
-        if parsed:
-            return parsed
-    match = TEXT_DATE_RE.search(str(text))
-    try:
-        if match:
-            if match.group("month_first"):
-                month = MONTH_NUMBER[match.group("month_first").lower()]
-                day = int(match.group("month_first_day"))
-                year = int(match.group("month_first_year"))
-            else:
-                month = MONTH_NUMBER[match.group("day_first_month").lower()]
-                day = int(match.group("day_first_day"))
-                year = int(match.group("day_first_year"))
-            return dt.datetime(year, month, day, tzinfo=dt.timezone.utc)
-        month_day = MONTH_DAY_RE.search(str(text))
-        if month_day:
-            month = MONTH_NUMBER[month_day.group("month").lower()]
-            day = int(month_day.group("day"))
-            year = dt.datetime.now(dt.timezone.utc).year
-            return dt.datetime(year, month, day, tzinfo=dt.timezone.utc)
-    except (KeyError, ValueError):
-        return None
-    return None
-
-
-def _observation_temporal_decay(kind: str, text: str | None, source_path: str | None, created_at: str | None) -> tuple[float, dict]:
-    source_date = _extract_date_from_source_path(source_path)
-    date_source = "source_path" if source_date else None
-    if not source_date:
-        source_date = _extract_date_from_text(text)
-        date_source = "text" if source_date else None
-    age_days = _age_days_from_datetime(source_date)
-    if age_days is None:
-        age_days = _age_days_from_datetime(_parse_iso_datetime(created_at)) or 365.0
-        date_source = "created_at_fallback"
-    if kind in {"risk", "done", "blocked"}:
-        if date_source == "created_at_fallback":
-            age_days = max(age_days, 14.0)
-        penalty = min(120.0, age_days * 4.0)
-    else:
-        penalty = min(18.0, age_days * 0.08)
-    return -penalty, {"age_days": round(age_days, 2), "date_source": date_source}
-
-
 def create_config(config_path: Path | None = None, vault: Path | None = None, db: Path | None = None, out: Path | None = None, hints: list[str] | None = None) -> dict:
     path = config_path or DEFAULT_CONFIG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -383,14 +251,6 @@ def create_config(config_path: Path | None = None, vault: Path | None = None, db
         "out": str((out or (Path.home() / ".local" / "share" / "mneme" / "out")).expanduser()),
         "hints": hints or DEFAULT_HINTS,
         "follow_symlinks": False,
-        "senses": [
-            {
-                "id": "vault",
-                "type": "md",
-                "enabled": True,
-                "config": {"path": str((vault or Path.cwd()).expanduser()), "follow_symlinks": False},
-            }
-        ],
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return {"config": str(path), **payload}
@@ -399,25 +259,6 @@ def create_config(config_path: Path | None = None, vault: Path | None = None, db
 def load_config(config_path: Path | None = None) -> dict:
     path = config_path or DEFAULT_CONFIG_PATH
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def configured_senses(config: dict) -> list[dict]:
-    senses = config.get("senses")
-    if isinstance(senses, list) and senses:
-        return senses
-    if config.get("vault"):
-        return [
-            {
-                "id": "vault",
-                "type": "md",
-                "enabled": True,
-                "config": {
-                    "path": config["vault"],
-                    "follow_symlinks": bool(config.get("follow_symlinks", False)),
-                },
-            }
-        ]
-    return []
 
 
 def doctor(config_path: Path | None = None) -> dict:
@@ -457,12 +298,18 @@ def doctor(config_path: Path | None = None) -> dict:
         "config": str(path),
         "settings": {"vault": str(vault), "db": str(db), "out": str(out), "hints": cfg.get("hints", DEFAULT_HINTS)},
         "checks": checks,
-        "next": "Run `mneme update` then `mneme thought`." if ok else "Fix failed checks, or rerun `mneme init --force` with correct paths.",
+        "next": "Run `mneme update`, then `mneme retrieve` or `mneme surface` for agent context; use `mneme thought` when you need a rendered card." if ok else "Fix failed checks, or rerun `mneme init --force` with correct paths.",
     }
 
 
 def stable_id(kind: str, name: str) -> str:
     return hashlib.sha1(f"{kind}:{name.lower()}".encode()).hexdigest()[:16]
+
+
+def node_identity_name(kind: str, name: str, source_path: str | None = None) -> str:
+    if source_path:
+        return f"{source_path}:{name}"
+    return name
 
 
 def relationship_type(relation_id: str) -> dict:
@@ -518,57 +365,36 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS relationship_types(id TEXT PRIMARY KEY,label TEXT NOT NULL,inverse_id TEXT,category TEXT NOT NULL,domain_type TEXT DEFAULT 'any',range_type TEXT DEFAULT 'any',description TEXT DEFAULT '',requires_validation INTEGER DEFAULT 1,symmetric INTEGER DEFAULT 0,transitive INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,status TEXT DEFAULT 'active',strength REAL DEFAULT 1.0,source_type TEXT DEFAULT 'vault',metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS thought_tasks(id TEXT PRIMARY KEY,thought_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',lifecycle_tag TEXT,mission TEXT,done_when TEXT,first_move TEXT,writeback_target TEXT,evidence TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS senses(id TEXT PRIMARY KEY,type TEXT NOT NULL,config_json TEXT DEFAULT '{}',enabled INTEGER DEFAULT 1,last_run_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sense_events(id TEXT PRIMARY KEY,sense_id TEXT NOT NULL,sense_type TEXT NOT NULL,source_id TEXT NOT NULL,source_uri TEXT,event_type TEXT,title TEXT,text_hash TEXT,observed_at TEXT,ingested_at TEXT,metadata_json TEXT DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL,sense_event_id TEXT);
+    CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thought_candidates(id TEXT PRIMARY KEY,seed_id TEXT,seed_observation_id TEXT,activation_score REAL DEFAULT 0,why_now_json TEXT DEFAULT '{}',suggested_action TEXT,action_type TEXT,status TEXT DEFAULT 'candidate',surfaced_count INTEGER DEFAULT 0,last_surfaced_at TEXT,cooldown_until TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thought_feedback(id TEXT PRIMARY KEY,thought_id TEXT NOT NULL,feedback_type TEXT NOT NULL,reason TEXT,strength_delta REAL DEFAULT 0,cooldown_until TEXT,created_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS idx_thought_tasks_status ON thought_tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_thought_tasks_thought ON thought_tasks(thought_id);
-    CREATE INDEX IF NOT EXISTS idx_sense_events_source ON sense_events(source_id);
-    CREATE INDEX IF NOT EXISTS idx_thought_candidates_status ON thought_candidates(status);
-    CREATE INDEX IF NOT EXISTS idx_thought_candidates_score ON thought_candidates(activation_score);
-    CREATE INDEX IF NOT EXISTS idx_thought_feedback_thought ON thought_feedback(thought_id);
     CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id);
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
+    CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
+    CREATE INDEX IF NOT EXISTS idx_obs_sense_event ON observations(sense_event_id);
     """)
     for ddl in [
-        "ALTER TABLE nodes ADD COLUMN confidence REAL DEFAULT 1.0",
-        "ALTER TABLE nodes ADD COLUMN metadata_json TEXT DEFAULT '{}'",
         "ALTER TABLE edges ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE edges ADD COLUMN strength REAL DEFAULT 1.0",
         "ALTER TABLE edges ADD COLUMN source_type TEXT DEFAULT 'vault'",
         "ALTER TABLE edges ADD COLUMN metadata_json TEXT DEFAULT '{}'",
         "ALTER TABLE observations ADD COLUMN sense_event_id TEXT",
-        "ALTER TABLE observations ADD COLUMN metadata_json TEXT DEFAULT '{}'",
     ]:
         try:
             conn.execute(ddl)
         except sqlite3.OperationalError as exc:
             if "duplicate column" not in str(exc).lower():
                 raise
-
-    # Migration: private DBs use `node_id`; public code expects `note_id`.
-    # Add `note_id` if missing, copy from `node_id`, so the public CLI works
-    # against both fresh public DBs and migrated private dogfood DBs.
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(observations)")}
-    if "note_id" not in cols and "node_id" in cols:
-        conn.execute("ALTER TABLE observations ADD COLUMN note_id TEXT")
-        conn.execute(
-            "UPDATE observations SET note_id = node_id WHERE note_id IS NULL AND node_id IS NOT NULL"
-        )
-    # Ensure the idx_obs_note index points at note_id (not the old node_id column)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id)")
-
     seed_relationship_types(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_status ON edges(status)")
 
 
 def upsert_node(conn, kind, name, source_path=None, confidence=1.0, metadata=None):
-    nid = stable_id(kind, name); ts = now_iso()
+    nid = stable_id(kind, node_identity_name(kind, name, source_path))
+    ts = now_iso()
     conn.execute("""INSERT INTO nodes(id,type,name,source_path,created_at,updated_at,confidence,metadata_json) VALUES(?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, source_path=COALESCE(excluded.source_path,nodes.source_path), confidence=max(nodes.confidence, excluded.confidence), metadata_json=excluded.metadata_json""",
     (nid, kind, name.strip(), source_path, ts, ts, confidence, json.dumps(metadata or {}, ensure_ascii=False)))
@@ -621,6 +447,39 @@ def deterministic_ingest_status(relation: str) -> str:
     return "candidate"
 
 
+def extract_observations(text: str, hints: list[str] | None = None) -> list[tuple[str, str, float]]:
+    hints = hints or DEFAULT_HINTS
+    observations: list[tuple[str, str, float]] = []
+    for match in TASK_RE.finditer(text or ""):
+        done, body = match.groups()
+        low = body.lower()
+        kind = "done" if done.lower() == "x" else "blocked"
+        if any(word in low for word in STATUS_WORDS["risk"]):
+            kind = "risk"
+        score = 6.0 if kind == "blocked" else 5.0 if kind == "risk" else 2.0
+        if any(hint.lower() in low for hint in hints):
+            score += 2.0
+        observations.append((kind, body.strip(), score))
+    for match in BULLET_RE.finditer(text or ""):
+        body = match.group(1).strip()
+        low = body.lower()
+        if body.startswith("["):
+            continue
+        kind = None
+        if any(word in low for word in STATUS_WORDS["risk"]):
+            kind = "risk"
+        elif any(word in low for word in STATUS_WORDS["blocked"]):
+            kind = "blocked"
+        if kind:
+            score = 5.0 + (2.0 if any(hint.lower() in low for hint in hints) else 0.0)
+            observations.append((kind, body, score))
+    if not observations and text.strip():
+        low = text.lower()
+        if any(word in low for word in STATUS_WORDS["blocked"] + STATUS_WORDS["risk"] + ["need "]):
+            observations.append(("blocked", text.strip()[:500], 4.0))
+    return observations
+
+
 def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0, status="active", strength=None, source_type="vault", metadata=None):
     eid = hashlib.sha1(f"{src}:{relation}:{dst}:{source_path}:{evidence[:80]}".encode()).hexdigest()[:20]; ts = now_iso()
     inserted = conn.execute("SELECT 1 FROM edges WHERE id=?", (eid,)).fetchone() is None
@@ -634,13 +493,11 @@ def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1
     return eid
 
 
-def add_observation(conn, note_id, kind, text, source_path, score, sense_event_id=None, metadata=None):
+def add_observation(conn, note_id, kind, text, source_path, score, sense_event_id: str | None = None):
     oid = hashlib.sha1(f"{note_id}:{kind}:{text}".encode()).hexdigest()[:20]
     conn.execute(
-        """INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at,sense_event_id,metadata_json)
-           VALUES(?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(id) DO UPDATE SET score=max(observations.score, excluded.score), sense_event_id=COALESCE(excluded.sense_event_id, observations.sense_event_id), metadata_json=excluded.metadata_json""",
-        (oid, note_id, kind, text[:1000], source_path, score, now_iso(), sense_event_id, json.dumps(metadata or {}, ensure_ascii=False)),
+        "INSERT OR IGNORE INTO observations(id,note_id,kind,text,source_path,score,created_at,sense_event_id) VALUES(?,?,?,?,?,?,?,?)",
+        (oid, note_id, kind, text[:1000], source_path, score, now_iso(), sense_event_id),
     )
     return oid
 
@@ -883,133 +740,7 @@ def clear_graph_for_rebuild(conn: sqlite3.Connection, preserve_thoughts: bool = 
     }
 
 
-def _event_node_type(event) -> str:
-    metadata = getattr(event, "metadata", {}) or {}
-    node_type = metadata.get("node_type")
-    if node_type:
-        return str(node_type)
-    if getattr(event, "event_type", "") == "calendar_event":
-        return "event"
-    if getattr(event, "event_type", "") == "task":
-        return "task"
-    if getattr(event, "event_type", "") == "email_message":
-        return "message"
-    return "source"
-
-
-def _event_evidence(text: str, hints: list[str]) -> list[tuple[str, str, float]]:
-    evidence: list[tuple[str, str, float]] = []
-    for m in TASK_RE.finditer(text):
-        done = m.group(1).lower() == "x"
-        evidence.append(("done" if done else "blocked", m.group(2).strip(), 3.0 if not done else 1.5))
-    for m in BULLET_RE.finditer(text):
-        body = re.sub(r"\s+", " ", m.group(1).strip())
-        if re.match(r"^\[[ xX]\]\s+", body):
-            continue
-        if 8 <= len(body) <= 350:
-            kind, score = observation_score(body, hints)
-            if score >= 3 or kind in {"blocked", "risk"}:
-                evidence.append((kind, body, score))
-    if not evidence:
-        compact = re.sub(r"\s+", " ", text).strip()
-        if compact:
-            kind, score = observation_score(compact[:350], hints)
-            if kind in {"blocked", "risk"} or score >= 3:
-                evidence.append((kind, compact[:350], score))
-    return evidence[:40]
-
-
-def ingest_sense_events(conn: sqlite3.Connection, events: Iterable[Any], *, hints: list[str] | None = None) -> dict:
-    """Normalize sensed source events into graph nodes, observations, and candidate links."""
-    init_db(conn)
-    hints = hints or DEFAULT_HINTS
-    stats: dict[str, Any] = {"events": 0, "nodes": 0, "observations": 0, "edges": 0, "by_sense": {}, "by_event_type": {}}
-    for event in events:
-        text = str(getattr(event, "text", "") or "")
-        if not text.strip():
-            continue
-        stats["events"] += 1
-        stats["by_sense"].setdefault(event.sense_id, {"events": 0})
-        stats["by_sense"][event.sense_id]["events"] += 1
-        stats["by_event_type"][event.event_type] = stats["by_event_type"].get(event.event_type, 0) + 1
-        ts = now_iso()
-        text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest()
-        conn.execute(
-            """INSERT INTO senses(id,type,config_json,enabled,last_run_at,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET type=excluded.type,last_run_at=excluded.last_run_at,updated_at=excluded.updated_at""",
-            (event.sense_id, event.sense_type, "{}", 1, ts, ts, ts),
-        )
-        conn.execute(
-            """INSERT INTO sense_events(id,sense_id,sense_type,source_id,source_uri,event_type,title,text_hash,observed_at,ingested_at,metadata_json)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET title=excluded.title,text_hash=excluded.text_hash,observed_at=excluded.observed_at,ingested_at=excluded.ingested_at,metadata_json=excluded.metadata_json""",
-            (
-                event.id,
-                event.sense_id,
-                event.sense_type,
-                event.source_id,
-                event.source_uri,
-                event.event_type,
-                event.title,
-                text_hash,
-                event.observed_at,
-                ts,
-                json.dumps(getattr(event, "metadata", {}) or {}, ensure_ascii=False),
-            ),
-        )
-        event_metadata = getattr(event, "metadata", {}) or {}
-        source_path = str(event_metadata.get("path") or event.source_uri or event.source_id)
-        edge_source_type = "vault" if event.sense_type in {"md", "markdown"} else event.sense_type
-        node_name = (event.title or event.source_id).strip()[:120]
-        nid = upsert_node(
-            conn,
-            _event_node_type(event),
-            node_name,
-            source_path,
-            getattr(event, "confidence", 1.0),
-            {"sense_id": event.sense_id, "sense_type": event.sense_type, "source_id": event.source_id, "event_type": event.event_type, **event_metadata},
-        )
-        stats["nodes"] += 1
-        research_payload = research_payload_from_note(text)
-        if research_payload:
-            written = write_research_edges(conn, source_path, research_payload, actor="ingest")
-            stats["edges"] += len(written)
-        links = set(getattr(event, "links", []) or []) | {target.strip() for target in WIKILINK_RE.findall(text) if target.strip()}
-        for target in sorted(links):
-            tid = upsert_node(conn, "reference", target.strip(), None, 0.8)
-            link_evidence = f"[[{target.strip()}]]" if event.sense_type in {"md", "markdown"} else target.strip()
-            upsert_edge(conn, nid, tid, "links_to", source_path, link_evidence, 0.8, status=deterministic_ingest_status("links_to"), source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id})
-            stats["edges"] += 1
-        for _, heading in HEADING_RE.findall(text):
-            if 2 < len(heading) < 100:
-                hid = upsert_node(conn, "heading", heading.strip(), source_path, 0.7)
-                upsert_edge(conn, nid, hid, "has_heading", source_path, heading.strip(), 0.7, status=deterministic_ingest_status("has_heading"), source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id})
-                stats["edges"] += 1
-        for email in sorted(set(EMAIL_RE.findall(text))):
-            eid = upsert_node(conn, "email", email, source_path, 0.9)
-            upsert_edge(conn, nid, eid, "mentions_email", source_path, email, 0.9, status=deterministic_ingest_status("mentions_email"), source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id})
-            stats["edges"] += 1
-        for entity in sorted(set(getattr(event, "entities", []) or [])):
-            ent_id = upsert_node(conn, "entity", entity, None, 0.6)
-            upsert_edge(conn, nid, ent_id, "co_mentioned_candidate", source_path, entity, 0.5, status="candidate", source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id})
-            stats["edges"] += 1
-        for kind, body, score in _event_evidence(text, hints):
-            oid_value = add_observation(conn, nid, kind, body, source_path, score, sense_event_id=event.id, metadata={"sense_id": event.sense_id, "sense_type": event.sense_type, "source_id": event.source_id, "event_type": event.event_type})
-            stats["observations"] += 1
-            oid = upsert_node(conn, "observation", body[:90], source_path, min(1.0, score / 6), {"kind": kind, "sense_event_id": event.id})
-            upsert_edge(conn, nid, oid, f"has_{kind}", source_path, body, min(1.0, score / 6), status=deterministic_ingest_status(f"has_{kind}"), source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id, "observation_id": oid_value})
-            stats["edges"] += 1
-            for date_text in DATE_RE.findall(body):
-                did = upsert_node(conn, "date", date_text, source_path, 0.75)
-                upsert_edge(conn, oid, did, "mentions_date", source_path, body, 0.75, status=deterministic_ingest_status("mentions_date"), source_type=edge_source_type, metadata={"sense_id": event.sense_id, "sense_event_id": event.id})
-                stats["edges"] += 1
-    return stats
-
-
 def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, rebuild: bool = True, follow_symlinks: bool = False) -> dict:
-    from .senses.markdown import MarkdownSense
-
     hints = hints or DEFAULT_HINTS; db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path); init_db(conn)
     preserved = {}
@@ -1017,9 +748,39 @@ def ingest_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max
         preserved = clear_graph_for_rebuild(conn, preserve_thoughts=False)
     else:
         conn.execute("DELETE FROM observations")
-    stats = ingest_sense_events(conn, MarkdownSense(sense_id="vault", vault=vault, follow_symlinks=follow_symlinks).collect(limit=max_notes), hints=hints)
+    notes=edges=observations=0
+    for index, path in enumerate(iter_markdown(vault, {".git", "node_modules"}, follow_symlinks=follow_symlinks)):
+        if max_notes is not None and index >= max_notes: break
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not text.strip(): continue
+        rel = str(path.relative_to(vault)); nid = upsert_node(conn, note_type(path), title_from_text(path, text), rel, metadata={"path":rel,"chars":len(text)}); notes += 1
+        research_payload = research_payload_from_note(text)
+        if research_payload:
+            edges += len(write_research_edges(conn, rel, research_payload, actor="ingest"))
+        for target in sorted(set(WIKILINK_RE.findall(text))):
+            tid=upsert_node(conn,"wikilink",target.strip(),None,0.8); upsert_edge(conn,nid,tid,"links_to",rel,f"[[{target.strip()}]]",0.9,status=deterministic_ingest_status("links_to")); edges += 1
+        for _, heading in HEADING_RE.findall(text):
+            if 2 < len(heading) < 100:
+                hid=upsert_node(conn,"heading",heading.strip(),rel,0.7); upsert_edge(conn,nid,hid,"has_heading",rel,heading.strip(),0.7,status=deterministic_ingest_status("has_heading")); edges += 1
+        for email in sorted(set(EMAIL_RE.findall(text))):
+            eid=upsert_node(conn,"email",email,rel,0.9); upsert_edge(conn,nid,eid,"mentions_email",rel,email,0.9,status=deterministic_ingest_status("mentions_email")); edges += 1
+        evidence=[]
+        for m in TASK_RE.finditer(text):
+            done=m.group(1).lower()=="x"; evidence.append(("done" if done else "blocked",m.group(2).strip(),3.0 if not done else 1.5))
+        for m in BULLET_RE.finditer(text):
+            body=re.sub(r"\s+"," ",m.group(1).strip())
+            if re.match(r"^\[[ xX]\]\s+", body):
+                continue
+            if 8 <= len(body) <= 350:
+                k,s=observation_score(body,hints)
+                if s >= 3 or k in {"blocked","risk"}: evidence.append((k,body,s))
+        for kind, body, score in evidence[:40]:
+            add_observation(conn,nid,kind,body,rel,score); observations += 1
+            oid=upsert_node(conn,"observation",body[:90],rel,min(1.0,score/6),{"kind":kind}); upsert_edge(conn,nid,oid,f"has_{kind}",rel,body,min(1.0,score/6),status=deterministic_ingest_status(f"has_{kind}")); edges += 1
+            for date_text in DATE_RE.findall(body):
+                did=upsert_node(conn,"date",date_text,rel,0.75); upsert_edge(conn,oid,did,"mentions_date",rel,body,0.75,status=deterministic_ingest_status("mentions_date")); edges += 1
     conn.commit(); counts=dict(conn.execute("SELECT 'nodes', count(*) FROM nodes UNION ALL SELECT 'edges', count(*) FROM edges UNION ALL SELECT 'observations', count(*) FROM observations").fetchall()); conn.close()
-    return {"notes_read":stats["events"],"edges_added":stats["edges"],"observations_added":stats["observations"],**counts,**preserved,"db":str(db_path)}
+    return {"notes_read":notes,"edges_added":edges,"observations_added":observations,**counts,**preserved,"db":str(db_path)}
 
 
 def activate_candidate_edges(db_path: Path, mode: str = "validated-only", dry_run: bool = False) -> dict:
@@ -1193,47 +954,6 @@ def explain_edge(db_path: Path, edge_id: str) -> dict:
     }
 
 
-def weaken_edge(db_path: Path, edge_id: str, reason: str = "User dismissed this proposal", factor: float = 0.5, floor: float = 0.0) -> dict:
-    """Reduce an edge's strength after explicit negative feedback.
-
-    This is gentler than killing: a dismissal means the surfaced proposal was not
-    useful enough now, not necessarily that the underlying relationship is false.
-    Very weak active edges are demoted back to candidate so they stop driving
-    surfaced thoughts as strongly.
-    """
-    factor = max(0.0, min(1.0, float(factor)))
-    floor = max(0.0, float(floor))
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM edges WHERE id=?", (edge_id,)).fetchone()
-    if not row:
-        conn.close()
-        return {"weakened": 0, "id": edge_id, "error": "not_found"}
-    if row["status"] == "killed":
-        conn.close()
-        return {"weakened": 0, "id": edge_id, "error": "already_killed"}
-    previous = float(row["strength"] or 0.0)
-    new_strength = round(max(floor, previous * factor), 6)
-    new_status = row["status"]
-    if row["status"] == "active" and new_strength < 0.10:
-        new_status = "candidate"
-    conn.execute(
-        "UPDATE edges SET strength=?, status=?, updated_at=? WHERE id=? AND status!='killed'",
-        (new_strength, new_status, now_iso(), edge_id),
-    )
-    log_edge_event(conn, edge_id, "weakened", "user_feedback", {
-        "reason": reason,
-        "factor": factor,
-        "previous_strength": previous,
-        "new_strength": new_strength,
-        "previous_status": row["status"],
-        "new_status": new_status,
-    })
-    conn.commit()
-    conn.close()
-    return {"weakened": 1, "id": edge_id, "previous_strength": previous, "strength": new_strength, "status": new_status}
-
-
 def observations_for_seed(db_path: Path, seed_id: str, limit: int = 4):
     conn=sqlite3.connect(db_path); rows=conn.execute("SELECT text FROM observations WHERE note_id=? ORDER BY score DESC LIMIT ?",(seed_id,limit)).fetchall(); conn.close(); return [r[0] for r in rows]
 
@@ -1241,68 +961,6 @@ def observations_for_seed(db_path: Path, seed_id: str, limit: int = 4):
 def _node_by_id(conn: sqlite3.Connection, node_id: str) -> dict:
     node = get_node(conn, node_id)
     return node or {"id": node_id, "type": "unknown", "name": node_id, "source_path": None, "metadata": {}}
-
-
-GUARDRAIL_WORDS = {"hallucinated", "hallucination", "stale", "superseded", "incorrect", "wrong", "tombstone"}
-GUARDRAIL_DIRECTIVES = {"do not", "don't", "must not", "should not", "no longer", "unless fresh", "without fresh"}
-_TOPIC_STOPWORDS = {
-    "about", "active", "after", "again", "already", "before", "candidate", "confirmed", "correction",
-    "could", "current", "daily", "drive", "evidence", "explicitly", "fresh", "from", "guardrail",
-    "hallucinated", "hallucination", "into", "must", "notes", "observation", "only", "open",
-    "overdue", "project", "prompt", "reply", "should", "source", "stale", "status", "still", "task",
-    "that", "the", "this", "treat", "unless", "without", "would",
-}
-
-
-def is_guardrail_text(text: str) -> bool:
-    """Return True when an observation is a correction/tombstone, not an action item."""
-    low = text.lower()
-    return any(word in low for word in GUARDRAIL_WORDS) and any(phrase in low for phrase in GUARDRAIL_DIRECTIVES)
-
-
-def _topic_terms(text: str) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[a-z][a-z0-9-]{3,}", text.lower())
-        if token not in _TOPIC_STOPWORDS and not token.isdigit()
-    }
-
-
-def is_suppressed_by_guardrail(text: str, guardrails: Iterable[str]) -> bool:
-    """Return True when a stale/open-loop candidate overlaps a corrective guardrail.
-
-    Mneme may ingest both old TODOs and later corrections. Proactive surfacing must
-    not resurrect the old TODO when a newer note says that topic was stale, wrong,
-    or hallucinated unless fresh evidence reactivates it. This helper is deliberately
-    lexical and conservative: it requires a corrective directive plus topic overlap.
-    """
-    terms = _topic_terms(text)
-    if not terms:
-        return False
-    for guardrail in guardrails:
-        guard_terms = _topic_terms(guardrail)
-        overlap = terms & guard_terms
-        if len(overlap) >= 2 or (len(overlap) == 1 and len(terms) <= 3):
-            return True
-    return False
-
-
-def _candidate_reasons(kind: str, text: str, score: float, hints: list[str]) -> tuple[float, list[str]]:
-    low = text.lower(); reasons=[]; total = float(score)
-    if is_guardrail_text(text):
-        return -100.0, ["corrective guardrail, not an open task"]
-    if kind == "blocked":
-        total += 5; reasons.append("open loop / unresolved task")
-    if kind == "risk":
-        total += 4; reasons.append("risk or deadline language")
-    if any(word in low for word in ["due", "deadline", "expires", "overdue", "urgent"]):
-        total += 4; reasons.append("deadline pressure")
-    if any(word in low for word in ["waiting", "awaiting", "follow up", "needs", "todo"]):
-        total += 3; reasons.append("follow-up needed")
-    matched = [hint for hint in hints if hint.lower() in low]
-    if matched:
-        total += 2 * len(matched); reasons.append("matches hints: " + ", ".join(matched[:4]))
-    return total, reasons or ["high-signal observation"]
 
 
 def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_text: str, hops: int) -> list[dict]:
@@ -1336,46 +994,354 @@ def _path_from_observation(conn: sqlite3.Connection, note_id: str, observation_t
     return path
 
 
+def _candidate_reasons(kind: str, text: str, score: float, hints: list[str]) -> tuple[float, list[str]]:
+    low = text.lower()
+    reasons: list[str] = []
+    total = float(score or 0)
+    if kind == "blocked":
+        total += 5; reasons.append("open loop / unresolved task")
+    if kind == "risk":
+        total += 4; reasons.append("risk or deadline language")
+    if any(word in low for word in ["due", "deadline", "expires", "overdue", "urgent"]):
+        total += 4; reasons.append("deadline pressure")
+    if any(word in low for word in ["waiting", "awaiting", "follow up", "needs", "todo"]):
+        total += 3; reasons.append("follow-up needed")
+    matched = [hint for hint in hints if hint.lower() in low]
+    if matched:
+        total += 2 * len(matched); reasons.append("matches hints: " + ", ".join(matched[:4]))
+    return total, reasons or ["high-signal observation"]
+
+
 def list_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints: list[str] | None = None) -> list[dict]:
+    return _scored_thought_candidates(db_path, limit=limit, hops=hops, hints=hints, include_skipped=False)
+
+
+def _scored_thought_candidates(db_path: Path, limit: int = 5, hops: int = 5, hints: list[str] | None = None, include_skipped: bool = False) -> list[dict]:
     hints = hints or DEFAULT_HINTS
     conn = sqlite3.connect(db_path)
     recent = {r[0] for r in conn.execute("SELECT seed_id FROM thoughts ORDER BY created_at DESC LIMIT 20").fetchall() if r[0]}
     rows = conn.execute(
-        """SELECT o.note_id,o.kind,o.text,o.source_path,o.score,n.name,n.type,n.updated_at
+        """SELECT o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
            FROM observations o JOIN nodes n ON n.id=o.note_id
            ORDER BY o.score DESC,o.created_at DESC LIMIT 200"""
     ).fetchall()
-    guardrails = [row[2] for row in rows if is_guardrail_text(row[2])]
     candidates=[]
-    for note_id, kind, text, source_path, base_score, name, ntype, updated_at in rows:
-        if is_suppressed_by_guardrail(text, guardrails):
+    for note_id, kind, text, source_path, base_score, observation_created_at, name, ntype, updated_at in rows:
+        breakdown = score_observation_candidate(
+            kind=kind,
+            text=text,
+            base_score=base_score,
+            hints=hints,
+            note_type=ntype,
+            note_name=name,
+            source_path=source_path,
+            recently_surfaced=note_id in recent,
+            observation_created_at=observation_created_at,
+            node_updated_at=updated_at,
+        )
+        if breakdown.skip_reasons and not include_skipped:
             continue
-        score, reasons = _candidate_reasons(kind, text, base_score, hints)
-        if score < 0:
-            continue
-        if note_id in recent:
-            score -= 3; reasons.append("recently surfaced penalty")
-        if ntype in {"project", "finance", "event", "person"}:
-            score += 1.5; reasons.append(f"important {ntype} note")
         path = _path_from_observation(conn, note_id, text, hops)
-        candidate = {
-            "base_score": round(score, 2),
-            "score": round(score, 2),
+        candidates.append({
+            "score": round(breakdown.total, 2),
             "seed": {"id": note_id, "name": name, "type": ntype, "source_path": source_path},
             "observation": {"kind": kind, "text": text, "source_path": source_path, "score": base_score},
             "evidence": [text],
-            "reasons": reasons,
+            "reasons": breakdown.reasons,
+            "score_breakdown": breakdown.to_dict(),
+            "skip_reasons": breakdown.skip_reasons,
             "path": path,
-        }
-        actionability_score, internal_tags, actionability_reasons = actionability_from_candidate(candidate)
-        candidate["score"] = round(actionability_score, 2)
-        candidate["actionability_score"] = round(actionability_score, 2)
-        candidate["internal_tags"] = internal_tags
-        candidate["reasons"] = reasons + [r for r in actionability_reasons if r not in reasons]
-        candidates.append(candidate)
+        })
     conn.close()
     candidates.sort(key=lambda c: (-c["score"], c["seed"]["name"].lower()))
     return candidates[:limit]
+
+
+def debug_candidates(db_path: Path, limit: int = 20, hops: int = 5, hints: list[str] | None = None, include_skipped: bool = False) -> dict:
+    candidates = _scored_thought_candidates(db_path, limit=limit, hops=hops, hints=hints, include_skipped=include_skipped)
+    return {
+        "db": str(db_path),
+        "include_skipped": include_skipped,
+        "count": len(candidates),
+        "candidates": candidates,
+        "empty_reason": None if candidates else "No observations scored above the surfacing threshold. Re-run with --include-skipped to inspect suppressed candidates.",
+    }
+
+
+TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]{2,}", re.I)
+
+
+def _query_tokens(prompt: str) -> set[str]:
+    stop = {"about", "after", "again", "agent", "brain", "could", "from", "have", "into", "make", "need", "next", "that", "this", "what", "when", "where", "with", "work"}
+    return {token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop}
+
+
+def _lexical_overlap(tokens: set[str], *values: str | None) -> tuple[int, list[str]]:
+    haystack = " ".join(value or "" for value in values).lower()
+    matched = sorted(token for token in tokens if token in haystack)
+    return len(matched), matched
+
+
+def _edge_truth_policy(status: str | None, relation: str) -> str:
+    rel = relationship_type(relation)
+    status = status or "candidate"
+    if status == "killed":
+        return "excluded"
+    if status != "active":
+        return "candidate_only"
+    if rel.get("category") in {"semantic", "semantic_pending"} and rel.get("requires_validation"):
+        return "active_validated_claim"
+    if rel.get("category") in {"reference", "structure", "extraction"}:
+        return "provenance_not_fact"
+    return "active_evidence"
+
+
+def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True) -> dict:
+    hints = hints or DEFAULT_HINTS
+    tokens = _query_tokens(prompt)
+    if not tokens:
+        tokens = _query_tokens(" ".join(hints))
+    min_overlap = 2 if len(tokens) >= 3 else 1
+    conn = sqlite3.connect(db_path)
+    observation_rows = conn.execute(
+        """SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
+           FROM observations o JOIN nodes n ON n.id=o.note_id
+           ORDER BY o.score DESC,o.created_at DESC LIMIT 500"""
+    ).fetchall()
+    edge_rows = conn.execute(
+        """SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
+                  s.id,s.type,s.name,s.source_path,
+                  d.id,d.type,d.name,d.source_path
+           FROM edges e
+           JOIN nodes s ON s.id=e.src_id
+           JOIN nodes d ON d.id=e.dst_id
+           WHERE COALESCE(e.status,'candidate') != 'killed'
+           ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
+    ).fetchall()
+    cluster_context = retrieval_cluster_matches(conn, prompt, limit=5)
+    node_boosts = cluster_context.get("node_boosts", {})
+    brain_context = brain_label_matches(conn, prompt, limit=16)
+    brain_matches = brain_context.get("by_target", {})
+
+    def brain_match(*keys: tuple[str, str]) -> dict | None:
+        found = [brain_matches[key] for key in keys if key in brain_matches]
+        if not found:
+            return None
+        return sorted(found, key=lambda item: -float(item.get("score", 0)))[0]
+
+    def cluster_for_text(*values: str | None) -> dict | None:
+        value_tokens = _query_tokens(" ".join(value or "" for value in values))
+        best: dict | None = None
+        best_score = 0
+        for cluster in cluster_context.get("clusters", []):
+            matched = set(cluster.get("matched_terms") or [])
+            score = len(tokens & value_tokens & matched)
+            if score > best_score:
+                best = {
+                    "run_id": cluster_context.get("run_id"),
+                    "cluster_id": cluster.get("cluster_id"),
+                    "cluster_score": cluster.get("score"),
+                    "role": "text_match",
+                    "matched_terms": sorted(tokens & value_tokens & matched),
+                }
+                best_score = score
+        return best
+
+    items: list[dict] = []
+    skipped: list[dict] = []
+    for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at in observation_rows:
+        overlap, matched = _lexical_overlap(tokens, text, source_path, note_name)
+        breakdown = score_observation_candidate(
+            kind=kind,
+            text=text,
+            base_score=base_score,
+            hints=hints,
+            note_type=note_type,
+            note_name=note_name,
+            source_path=source_path,
+            observation_created_at=created_at,
+            node_updated_at=updated_at,
+        )
+        score = breakdown.total + (overlap * 3.0)
+        cluster = node_boosts.get(note_id) or cluster_for_text(note_name, source_path, text)
+        if cluster:
+            score += min(5.0, float(cluster.get("cluster_score", 0)) * 0.2)
+        obs_brain = brain_match(("node", note_id))
+        if obs_brain:
+            score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
+        include_by_score = score >= 8
+        if overlap < min_overlap and not include_by_score and not obs_brain:
+            skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
+            continue
+        item = {
+            "kind": "observation",
+            "id": obs_id,
+            "title": note_name,
+            "source_path": source_path,
+            "snippet": text[:500],
+            "score": round(score, 2),
+            "matched_terms": matched,
+            "status": "active_evidence",
+            "truth_policy": "source_contained_observation",
+            "score_breakdown": breakdown.to_dict(),
+            "path": _path_from_observation(conn, note_id, text, hops=3),
+        }
+        if cluster:
+            item["cluster"] = cluster
+        if obs_brain:
+            item["brain_label"] = {key: obs_brain[key] for key in ("run_id", "target_type", "target_id", "labels", "matched_terms", "score")}
+        if overlap >= min_overlap or include_by_score or obs_brain:
+            items.append(item)
+        else:
+            skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
+
+    for edge_id, relation, status, confidence, strength, source_type, source_path, evidence_text, src_id, src_type, src_name, src_path, dst_id, dst_type, dst_name, dst_path in edge_rows:
+        if status != "active" and not include_candidates:
+            skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["candidate edge excluded"], "status": status})
+            continue
+        overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
+        edge_brain = brain_match(("synapse", edge_id), ("node", src_id), ("node", dst_id), ("relationship", relation))
+        if overlap < min_overlap and not edge_brain:
+            skipped.append({
+                "kind": "edge",
+                "id": edge_id,
+                "source_path": source_path,
+                "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"],
+                "status": status,
+                "overlap": overlap,
+                "min_overlap": min_overlap,
+                "brain_match": False,
+            })
+            continue
+        rel = relationship_type(relation)
+        policy = _edge_truth_policy(status, relation)
+        base = (float(confidence or 0) + float(strength or 0)) * 2.0
+        score = base + overlap * 3.0
+        edge_cluster = node_boosts.get(src_id) or node_boosts.get(dst_id)
+        if edge_cluster:
+            score += min(4.0, float(edge_cluster.get("cluster_score", 0)) * 0.15)
+        if edge_brain:
+            score += min(4.0, float(edge_brain.get("score", 0)) * 0.3)
+        if status != "active":
+            score -= 2.0
+        if rel.get("category") in {"reference", "structure", "extraction"}:
+            score -= 0.8
+        items.append({
+            "kind": "edge",
+            "id": edge_id,
+            "title": f"{src_name} {relation} {dst_name}",
+            "source_path": source_path,
+            "snippet": (evidence_text or "")[:500],
+            "score": round(score, 2),
+            "matched_terms": matched,
+            "relation": relation,
+            "relationship_type": rel,
+            "status": status,
+            "truth_policy": policy,
+            "source_type": source_type,
+            "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
+            "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
+        })
+        if edge_cluster:
+            items[-1]["cluster"] = edge_cluster
+        if edge_brain:
+            items[-1]["brain_label"] = {key: edge_brain[key] for key in ("run_id", "target_type", "target_id", "labels", "matched_terms", "score")}
+
+    conn.close()
+    items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
+    selected: list[dict] = []
+    used = 0
+    for item in items:
+        cost = len(item.get("snippet") or "") + len(item.get("title") or "")
+        if selected and (used + cost) > budget:
+            skipped.append({"kind": item["kind"], "id": item["id"], "source_path": item.get("source_path"), "skip_reasons": ["budget limit"], "score": item.get("score")})
+            continue
+        selected.append(item)
+        used += cost
+        if len(selected) >= max_items:
+            break
+    return {
+        "prompt": prompt,
+        "budget": budget,
+        "used_budget": used,
+        "max_items": max_items,
+        "tokens": sorted(tokens),
+        "clusters": cluster_context.get("clusters", []),
+        "brain_labels": brain_context.get("matches", []),
+        "items": selected,
+        "skipped": skipped[:50],
+        "stats": {
+            "candidate_items_considered": len(items),
+            "items_returned": len(selected),
+            "skipped_reported": min(len(skipped), 50),
+        },
+        "empty_reason": None if selected else "No prompt-relevant context survived scoring and budget limits.",
+    }
+
+
+def _surface_item_to_thought(db_path: Path, item: dict, prompt: str) -> dict:
+    path = item.get("path") or []
+    if not path and item.get("src") and item.get("dst"):
+        path = [item["src"], item["dst"]]
+    if not path:
+        path = [{"id": item.get("id"), "type": item.get("kind", "unknown"), "name": item.get("title") or item.get("id"), "source_path": item.get("source_path")}]
+    evidence = [item.get("snippet", "")] if item.get("snippet") else []
+    reasons = []
+    for key in ("matched_terms",):
+        if item.get(key):
+            reasons.append("matched: " + ", ".join(item[key][:5]))
+    if item.get("cluster"):
+        reasons.append(f"cluster {item['cluster'].get('cluster_id')} activated")
+    if item.get("brain_label"):
+        reasons.append("brain label activated: " + ", ".join(item["brain_label"].get("labels", [])[:3]))
+    if item.get("truth_policy"):
+        reasons.append(f"truth policy: {item['truth_policy']}")
+    candidate = {
+        "score": item.get("score", 0),
+        "evidence": evidence,
+        "reasons": reasons,
+    }
+    thought = generate_thought(db_path, path, candidate)
+    thought["surface"] = {
+        "prompt": prompt,
+        "kind": item.get("kind"),
+        "source_id": item.get("id"),
+        "source_path": item.get("source_path"),
+        "score": item.get("score"),
+        "matched_terms": item.get("matched_terms", []),
+        "truth_policy": item.get("truth_policy"),
+        "cluster": item.get("cluster"),
+        "brain_label": item.get("brain_label"),
+    }
+    thought["suggested_actions"] = _suggest_surface_actions(item)
+    return thought
+
+
+def _suggest_surface_actions(item: dict) -> list[dict]:
+    actions: list[dict] = []
+    source_path = item.get("source_path")
+    if source_path and str(source_path).startswith("mneme://"):
+        actions.append({
+            "type": "graph_memory_review",
+            "source_path": source_path,
+            "action": "keep_or_forget",
+        })
+    elif source_path and item.get("kind") == "observation":
+        actions.append({
+            "type": "vault_append_bullet",
+            "path": source_path,
+            "heading": "Next Actions",
+            "bullet": f"Review surfaced memory: {item.get('title') or item.get('id')}",
+        })
+    if item.get("kind") == "edge" and item.get("status") == "candidate":
+        actions.append({
+            "type": "synapse_review",
+            "edge_id": item.get("id"),
+            "action": "validate_or_kill",
+        })
+    if not actions:
+        actions.append({"type": "inspect", "source_path": source_path, "id": item.get("id")})
+    return actions
 
 
 def _iso_add_duration(duration: str | None) -> str | None:
@@ -1390,77 +1356,57 @@ def _iso_add_duration(duration: str | None) -> str | None:
     return (dt.datetime.now(dt.timezone.utc) + delta).isoformat(timespec="seconds")
 
 
+def actionability_from_candidate(candidate: dict) -> tuple[float, list[str], list[str]]:
+    observation = candidate.get("observation") or {}
+    text = str(observation.get("text") or " ".join(candidate.get("evidence", [])))
+    kind = str(observation.get("kind") or "fact")
+    score = float(candidate.get("score") or candidate.get("base_score") or 0)
+    factors: dict[str, float] = {"base": score}
+    tags: list[str] = []
+    reasons = list(candidate.get("reasons") or [])
+    if kind == "blocked" or any(word in text.lower() for word in ["follow up", "needs", "waiting", "todo"]):
+        score += 3.0; factors["open_loop"] = 3.0; tags.append("mneme:thought/open_loop")
+    if kind == "risk" or any(word in text.lower() for word in ["deadline", "urgent", "due", "overdue"]):
+        score += 2.5; factors["time_sensitive"] = 2.5; tags.append("mneme:thought/time_sensitive")
+    if not tags:
+        tags.append("mneme:thought/inspect")
+    candidate["why_now"] = {"factors": factors, "reasons": reasons}
+    return score, tags, reasons
+
+
+def _topic_terms(text: str) -> set[str]:
+    stop = {"about", "after", "again", "from", "need", "needs", "reply", "soon", "that", "this", "with"}
+    return {token.lower() for token in re.findall(r"[a-z][a-z0-9-]{3,}", text or "", re.I) if token.lower() not in stop}
+
+
 def _candidate_source_provenance(conn: sqlite3.Connection, observation_id: str | None, source_path: str | None) -> dict:
-    event_row = None
     if observation_id:
-        event_row = conn.execute(
+        row = conn.execute(
             """SELECT se.id,se.sense_id,se.sense_type,se.source_id,se.source_uri,se.event_type,se.title,se.observed_at,se.metadata_json
                FROM observations o LEFT JOIN sense_events se ON se.id=o.sense_event_id
                WHERE o.id=?""",
             (observation_id,),
         ).fetchone()
-    if event_row and event_row[0]:
-        return {
-            "sense_event_id": event_row[0],
-            "sense_id": event_row[1],
-            "sense_type": event_row[2],
-            "source_id": event_row[3],
-            "source_uri": event_row[4],
-            "event_type": event_row[5],
-            "title": event_row[6],
-            "observed_at": event_row[7],
-            "metadata": json.loads(event_row[8] or "{}"),
-        }
+        if row and row[0]:
+            return {
+                "sense_event_id": row[0],
+                "sense_id": row[1],
+                "sense_type": row[2],
+                "source_id": row[3],
+                "source_uri": row[4],
+                "event_type": row[5],
+                "title": row[6],
+                "observed_at": row[7],
+                "metadata": json.loads(row[8] or "{}"),
+            }
     return {"source_uri": source_path}
-
-
-def _feedback_penalty(conn: sqlite3.Connection, candidate_id: str) -> tuple[float, list[str]]:
-    rows = conn.execute("SELECT feedback_type FROM thought_feedback WHERE thought_id=?", (candidate_id,)).fetchall()
-    penalty = 0.0
-    reasons: list[str] = []
-    for (feedback_type,) in rows:
-        if feedback_type == "deny":
-            penalty -= 2.0; reasons.append("previously denied")
-        elif feedback_type == "too_obvious":
-            penalty -= 2.5; reasons.append("marked too obvious")
-        elif feedback_type == "already_done":
-            penalty -= 4.0; reasons.append("already done")
-        elif feedback_type == "good_but_later":
-            penalty -= 0.5; reasons.append("good but later")
-        elif feedback_type == "acted":
-            penalty -= 6.0; reasons.append("acted on")
-    return penalty, reasons
-
-
-def _corroboration_bonus(conn: sqlite3.Connection, observation_text: str, observation_id: str) -> tuple[float, dict]:
-    terms = _topic_terms(observation_text)
-    if not terms:
-        return 0.0, {"source_diversity": 0, "overlap_terms": []}
-    rows = conn.execute(
-        """SELECT o.id,o.text,se.sense_id,se.sense_type
-           FROM observations o LEFT JOIN sense_events se ON se.id=o.sense_event_id
-           WHERE o.id != ? LIMIT 500""",
-        (observation_id,),
-    ).fetchall()
-    senses: set[str] = set()
-    overlap_terms: set[str] = set()
-    for oid, text, sense_id, sense_type in rows:
-        del oid
-        overlap = terms & _topic_terms(text or "")
-        if len(overlap) >= 2:
-            senses.add(str(sense_id or sense_type or "unknown"))
-            overlap_terms.update(overlap)
-    if not senses:
-        return 0.0, {"source_diversity": 0, "overlap_terms": []}
-    bonus = min(3.0, 1.0 + 0.75 * max(0, len(senses) - 1))
-    return bonus, {"source_diversity": len(senses), "overlap_terms": sorted(overlap_terms)[:8]}
 
 
 def tick(db_path: Path, *, hints: list[str] | None = None, limit: int = 100) -> dict:
     hints = hints or DEFAULT_HINTS
     conn = sqlite3.connect(db_path)
-    init_db(conn)
     conn.row_factory = sqlite3.Row
+    init_db(conn)
     now = now_iso()
     rows = conn.execute(
         """SELECT o.id observation_id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type
@@ -1468,220 +1414,356 @@ def tick(db_path: Path, *, hints: list[str] | None = None, limit: int = 100) -> 
            ORDER BY o.score DESC,o.created_at DESC LIMIT ?""",
         (limit,),
     ).fetchall()
-    guardrails = [row["text"] for row in rows if is_guardrail_text(row["text"])]
     upserted = 0
-    skipped = 0
     for row in rows:
-        if is_suppressed_by_guardrail(row["text"], guardrails):
-            skipped += 1
-            continue
-        candidate_id = hashlib.sha1(f"thought-candidate:{row['observation_id']}".encode()).hexdigest()[:20]
-        existing = conn.execute("SELECT status,cooldown_until,surfaced_count,last_surfaced_at FROM thought_candidates WHERE id=?", (candidate_id,)).fetchone()
-        if existing and existing["status"] == "killed":
-            skipped += 1
-            continue
-        if existing and existing["cooldown_until"] and existing["cooldown_until"] > now:
-            skipped += 1
-            continue
         score, reasons = _candidate_reasons(row["kind"], row["text"], row["score"], hints)
         if score < 0:
-            skipped += 1
             continue
-        factors: dict[str, float] = {"observation_score": float(row["score"] or 0)}
-        if row["kind"] == "blocked":
-            factors["blocked_observation"] = 3.0
-        elif row["kind"] == "risk":
-            factors["risk_observation"] = 2.5
-        elif row["kind"] == "done":
-            factors["done_observation"] = 0.5
-        matched = [hint for hint in hints if hint.lower() in row["text"].lower()]
-        if matched:
-            factors["hint_match"] = float(2 * len(matched))
-        temporal_decay, temporal_info = _observation_temporal_decay(row["kind"], row["text"], row["source_path"], row["created_at"])
-        if temporal_decay:
-            factors["temporal_age_penalty"] = round(temporal_decay, 3)
-            if row["kind"] in {"risk", "done", "blocked"} and temporal_info["age_days"] >= 7:
-                reasons.append(f"aged {temporal_info['age_days']} days from {temporal_info['date_source']}")
-        corroboration, corroboration_info = _corroboration_bonus(conn, row["text"], row["observation_id"])
-        if corroboration:
-            factors["cross_sense_corroboration"] = corroboration
-            reasons.append("corroborated by related sensed evidence")
-        if existing and existing["surfaced_count"]:
-            factors["recently_surfaced_penalty"] = -0.5 * int(existing["surfaced_count"])
-        feedback_delta, feedback_reasons = _feedback_penalty(conn, candidate_id)
-        if feedback_delta:
-            factors["feedback_penalty"] = feedback_delta
-            reasons.extend(feedback_reasons)
-        activation = round(sum(factors.values()), 3)
-        provenance = _candidate_source_provenance(conn, row["observation_id"], row["source_path"])
-        why_now = {
-            "score": activation,
-            "factors": factors,
-            "reasons": list(dict.fromkeys(reasons))[:8],
-            "temporal": temporal_info,
-            "corroboration": corroboration_info,
-            "evidence": row["text"],
-            "seed": {"id": row["note_id"], "name": row["name"], "type": row["type"]},
-            "observation": {"id": row["observation_id"], "kind": row["kind"], "text": row["text"], "score": row["score"]},
-            "provenance": provenance,
+        candidate = {
+            "score": score,
+            "observation": {"kind": row["kind"], "text": row["text"], "source_path": row["source_path"], "score": row["score"]},
+            "evidence": [row["text"]],
+            "reasons": reasons,
         }
-        action_type = "ask_user" if row["kind"] in {"blocked", "risk"} else "inspect"
-        suggested = FIRST_MOVE_BY_KIND.get(row["kind"], FIRST_MOVE_BY_KIND["fact"])
-        status = existing["status"] if existing and existing["status"] not in {"surfaced"} else "candidate"
+        actionability_score, tags, actionability_reasons = actionability_from_candidate(candidate)
+        provenance = _candidate_source_provenance(conn, row["observation_id"], row["source_path"])
+        factors = dict(candidate.get("why_now", {}).get("factors", {}))
+        if provenance.get("sense_id"):
+            factors["source_provenance"] = 1.0
+        topic_terms = _topic_terms(row["text"])
+        sibling_senses = set()
+        for sibling_text, sibling_event in conn.execute("SELECT text,sense_event_id FROM observations WHERE id != ? AND sense_event_id IS NOT NULL", (row["observation_id"],)).fetchall():
+            if len(topic_terms & _topic_terms(sibling_text or "")) >= 2:
+                sibling_senses.add(sibling_event)
+        if sibling_senses:
+            factors["cross_sense_corroboration"] = 1.0
+            actionability_score += 1.0
+        candidate_id = hashlib.sha1(f"thought-candidate:{row['observation_id']}".encode()).hexdigest()[:20]
+        existing = conn.execute("SELECT status,cooldown_until FROM thought_candidates WHERE id=?", (candidate_id,)).fetchone()
+        if existing and existing["status"] == "killed":
+            continue
+        if existing and existing["cooldown_until"] and existing["cooldown_until"] > now:
+            continue
         conn.execute(
-            """INSERT INTO thought_candidates(id,seed_id,seed_observation_id,activation_score,why_now_json,suggested_action,action_type,status,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET activation_score=excluded.activation_score,why_now_json=excluded.why_now_json,suggested_action=excluded.suggested_action,action_type=excluded.action_type,updated_at=excluded.updated_at,status=CASE WHEN thought_candidates.status IN ('killed','accepted','acted','already_done') THEN thought_candidates.status ELSE excluded.status END""",
-            (candidate_id, row["note_id"], row["observation_id"], activation, json.dumps(why_now, ensure_ascii=False), suggested, action_type, status, now, now),
+            """INSERT INTO thought_candidates(id,seed_id,seed_observation_id,activation_score,why_now_json,suggested_action,action_type,status,surfaced_count,created_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?,COALESCE((SELECT surfaced_count FROM thought_candidates WHERE id=?),0),?,?)
+               ON CONFLICT(id) DO UPDATE SET activation_score=excluded.activation_score,why_now_json=excluded.why_now_json,suggested_action=excluded.suggested_action,action_type=excluded.action_type,updated_at=excluded.updated_at""",
+            (
+                candidate_id,
+                row["note_id"],
+                row["observation_id"],
+                round(actionability_score, 2),
+                json.dumps({"factors": factors, "reasons": reasons + actionability_reasons, "tags": tags, "source": provenance}, ensure_ascii=False),
+                row["text"][:180],
+                tags[0] if tags else "mneme:thought/inspect",
+                "candidate",
+                candidate_id,
+                now,
+                now,
+            ),
         )
         upserted += 1
     conn.commit()
-    total = conn.execute("SELECT count(*) FROM thought_candidates").fetchone()[0]
     conn.close()
-    return {"candidates_updated": upserted, "skipped": skipped, "total_candidates": total, "db": str(db_path)}
+    return {"candidates_updated": upserted, "observations_considered": len(rows)}
 
 
-def surface_thoughts(db_path: Path, *, limit: int = 1, mark_surfaced: bool = True) -> list[dict]:
+def _surface_thought_candidates(db_path: Path, *, limit: int = 5) -> list[dict]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     init_db(conn)
     now = now_iso()
     rows = conn.execute(
-        """SELECT * FROM thought_candidates
-           WHERE status NOT IN ('killed','acted','already_done')
-             AND activation_score > 0
-             AND (cooldown_until IS NULL OR cooldown_until <= ?)
-           ORDER BY activation_score DESC, updated_at DESC
-           LIMIT ?""",
+        """SELECT tc.*,o.text observation_text,o.kind observation_kind,o.source_path,n.name seed_name,n.type seed_type
+           FROM thought_candidates tc
+           LEFT JOIN observations o ON o.id=tc.seed_observation_id
+           LEFT JOIN nodes n ON n.id=tc.seed_id
+           WHERE tc.status='candidate' AND (tc.cooldown_until IS NULL OR tc.cooldown_until <= ?)
+           ORDER BY tc.activation_score DESC,tc.updated_at DESC LIMIT ?""",
         (now, limit),
     ).fetchall()
-    results: list[dict] = []
+    items: list[dict] = []
     for row in rows:
-        why = json.loads(row["why_now_json"] or "{}")
-        observation = why.get("observation") or {}
-        seed = why.get("seed") or {}
-        result = {
+        why_now = json.loads(row["why_now_json"] or "{}")
+        conn.execute("UPDATE thought_candidates SET surfaced_count=surfaced_count+1,last_surfaced_at=? WHERE id=?", (now, row["id"]))
+        items.append({
             "id": row["id"],
-            "title": _surface_title(observation),
-            "seed": seed,
+            "seed_id": row["seed_id"],
             "seed_observation_id": row["seed_observation_id"],
-            "activation_score": row["activation_score"],
-            "why_now": why,
+            "title": row["seed_name"] or row["suggested_action"],
             "suggested_action": row["suggested_action"],
-            "action_type": row["action_type"],
-            "evidence": [observation.get("text")] if observation.get("text") else [],
-            "source": why.get("provenance") or {},
-            "sense_provenance": why.get("provenance") or {},
-            "feedback_options": ["accept", "deny", "snooze", "kill", "acted", "already_done", "too_obvious", "good_but_later"],
-        }
-        results.append(result)
-        if mark_surfaced:
-            conn.execute(
-                "UPDATE thought_candidates SET surfaced_count=surfaced_count+1,last_surfaced_at=?,status=CASE WHEN status='candidate' THEN 'surfaced' ELSE status END,updated_at=? WHERE id=?",
-                (now, now, row["id"]),
-            )
+            "activation_score": row["activation_score"],
+            "why_now": why_now,
+            "source_path": row["source_path"],
+            "observation": {"kind": row["observation_kind"], "text": row["observation_text"], "source_path": row["source_path"]},
+        })
     conn.commit()
     conn.close()
-    return results
+    return items
 
 
-def _surface_title(observation: dict) -> str:
-    kind = observation.get("kind") or "fact"
-    text = str(observation.get("text") or "Thought candidate")
-    prefix = {"blocked": "Unfinished loop", "risk": "Risk to check", "done": "Completed item to consolidate", "fact": "Possible connection"}.get(kind, "Thought candidate")
-    return f"{prefix}: {text[:90]}"
+def surface_thoughts(
+    db_path: Path,
+    prompt: str | None = None,
+    *,
+    limit: int = 5,
+    hops: int = 5,
+    hints: list[str] | None = None,
+    include_candidates: bool = True,
+) -> dict | list[dict]:
+    if prompt is None:
+        return _surface_thought_candidates(db_path, limit=limit)
+    hints = hints or DEFAULT_HINTS
+    query = prompt
+    context = retrieve_context(
+        db_path,
+        query,
+        budget=5000,
+        max_items=max(limit * 2, limit),
+        hints=hints,
+        include_candidates=include_candidates,
+    )
+    thoughts = [_surface_item_to_thought(db_path, item, query) for item in context.get("items", [])[:limit]]
+    if not thoughts and not prompt:
+        candidates = list_thought_candidates(db_path, limit=limit, hops=hops, hints=hints)
+        thoughts = [generate_thought(db_path, candidate["path"], candidate) for candidate in candidates]
+    return {
+        "prompt": query,
+        "count": len(thoughts),
+        "thoughts": thoughts,
+        "retrieval": {
+            "clusters": context.get("clusters", []),
+            "brain_labels": context.get("brain_labels", []),
+            "stats": context.get("stats", {}),
+            "empty_reason": context.get("empty_reason"),
+        },
+        "empty_reason": None if thoughts else "No retrievable items or thought candidates surfaced.",
+    }
 
 
 def record_feedback(db_path: Path, thought_id: str, feedback_type: str, *, reason: str | None = None, snooze: str | None = None) -> dict:
-    allowed = {"accept", "deny", "snooze", "kill", "acted", "already_done", "too_obvious", "good_but_later"}
-    if feedback_type not in allowed:
-        raise ValueError(f"feedback_type must be one of {sorted(allowed)}")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    init_db(conn)
-    row = conn.execute("SELECT * FROM thought_candidates WHERE id=?", (thought_id,)).fetchone()
-    if row is None:
-        conn.close()
-        raise KeyError(f"thought candidate not found: {thought_id}")
+    status_map = {
+        "accept": "candidate",
+        "deny": "dismissed",
+        "kill": "killed",
+        "acted": "acted",
+        "already_done": "resolved",
+        "too_obvious": "dismissed",
+        "good_but_later": "candidate",
+        "snooze": "candidate",
+    }
+    if feedback_type not in status_map:
+        raise ValueError(f"unknown feedback type: {feedback_type}")
     cooldown_until = _iso_add_duration(snooze) if snooze else None
-    status = row["status"]
-    strength_delta = 0.0
-    if feedback_type == "accept":
-        status = "accepted"; strength_delta = 1.0
-    elif feedback_type == "deny":
-        status = "dismissed"; strength_delta = -1.0
-    elif feedback_type == "kill":
-        status = "killed"; strength_delta = -10.0
-    elif feedback_type == "snooze":
-        status = "snoozed"; cooldown_until = cooldown_until or _iso_add_duration("1d")
-    elif feedback_type == "acted":
-        status = "acted"; strength_delta = 2.0
-    elif feedback_type == "already_done":
-        status = "already_done"; strength_delta = -2.0
-    elif feedback_type == "too_obvious":
-        status = "candidate"; strength_delta = -1.5
-    elif feedback_type == "good_but_later":
-        status = "candidate"; cooldown_until = cooldown_until or _iso_add_duration("7d"); strength_delta = 0.25
-    feedback_id = hashlib.sha1(f"{thought_id}:{feedback_type}:{reason}:{now_iso()}".encode()).hexdigest()[:20]
-    now = now_iso()
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    row = conn.execute("SELECT id FROM thought_candidates WHERE id=?", (thought_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "id": thought_id, "error": "not_found"}
+    feedback_id = uuid.uuid4().hex
     conn.execute(
-        "INSERT INTO thought_feedback(id,thought_id,feedback_type,reason,strength_delta,cooldown_until,created_at) VALUES(?,?,?,?,?,?,?)",
-        (feedback_id, thought_id, feedback_type, reason, strength_delta, cooldown_until, now),
+        "INSERT INTO thought_feedback(id,thought_id,feedback_type,reason,cooldown_until,created_at) VALUES(?,?,?,?,?,?)",
+        (feedback_id, thought_id, feedback_type, reason, cooldown_until, now_iso()),
     )
-    conn.execute(
-        "UPDATE thought_candidates SET status=?, cooldown_until=COALESCE(?, cooldown_until), activation_score=max(0, activation_score + ?), updated_at=? WHERE id=?",
-        (status, cooldown_until, strength_delta, now, thought_id),
-    )
+    status = status_map[feedback_type]
+    conn.execute("UPDATE thought_candidates SET status=?, cooldown_until=?, updated_at=? WHERE id=?", (status, cooldown_until, now_iso(), thought_id))
     conn.commit()
-    updated = conn.execute("SELECT id,status,activation_score,cooldown_until FROM thought_candidates WHERE id=?", (thought_id,)).fetchone()
     conn.close()
-    return dict(updated) | {"feedback_id": feedback_id, "feedback_type": feedback_type}
+    return {"ok": True, "id": thought_id, "feedback_type": feedback_type, "status": status, "cooldown_until": cooldown_until}
 
 
 def explain_thought(db_path: Path, thought_id: str) -> dict:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     init_db(conn)
-    row = conn.execute("SELECT * FROM thought_candidates WHERE id=?", (thought_id,)).fetchone()
-    if row is None:
-        conn.close()
-        raise KeyError(f"thought candidate not found: {thought_id}")
-    why = json.loads(row["why_now_json"] or "{}")
-    edge_rows = conn.execute(
-        """SELECT e.id,e.relation,e.status,e.strength,e.confidence,e.evidence_text,s.name src,d.name dst
-           FROM edges e JOIN nodes s ON s.id=e.src_id JOIN nodes d ON d.id=e.dst_id
-           WHERE e.src_id=? OR e.dst_id=? OR e.metadata_json LIKE ?
-           ORDER BY e.status,e.strength DESC LIMIT 20""",
-        (row["seed_id"], row["seed_id"], f"%{row['seed_observation_id']}%"),
-    ).fetchall()
-    feedback_rows = conn.execute(
-        "SELECT feedback_type,reason,strength_delta,cooldown_until,created_at FROM thought_feedback WHERE thought_id=? ORDER BY created_at",
+    row = conn.execute(
+        """SELECT tc.*,o.id observation_id,o.text observation_text,o.kind observation_kind,o.source_path,n.name seed_name,n.type seed_type
+           FROM thought_candidates tc
+           LEFT JOIN observations o ON o.id=tc.seed_observation_id
+           LEFT JOIN nodes n ON n.id=tc.seed_id
+           WHERE tc.id=?""",
         (thought_id,),
-    ).fetchall()
+    ).fetchone()
+    if not row:
+        conn.close()
+        return {"id": thought_id, "error": "not_found"}
+    feedback = [dict(item) for item in conn.execute("SELECT feedback_type,reason,cooldown_until,created_at FROM thought_feedback WHERE thought_id=? ORDER BY created_at", (thought_id,)).fetchall()]
+    provenance = _candidate_source_provenance(conn, row["observation_id"], row["source_path"])
     conn.close()
     return {
-        "id": row["id"],
-        "status": row["status"],
+        "id": thought_id,
         "activation_score": row["activation_score"],
-        "why_this_surfaced": why.get("reasons") or [],
-        "activation_breakdown": why.get("factors") or {},
-        "seed": why.get("seed") or {"id": row["seed_id"]},
-        "seed_observation": why.get("observation") or {"id": row["seed_observation_id"]},
-        "evidence": [why.get("evidence")] if why.get("evidence") else [],
-        "sense_provenance": why.get("provenance") or {},
-        "relationship_path": [dict(edge) for edge in edge_rows],
-        "relationship_statuses": [{"id": edge["id"], "relation": edge["relation"], "status": edge["status"], "strength": edge["strength"]} for edge in edge_rows],
-        "feedback_history": [dict(item) for item in feedback_rows],
-        "feedback_effects": {
-            "accept": "reinforces this candidate and keeps it inspectable",
-            "deny": "weakens/dismisses without marking evidence false",
-            "kill": "tombstones this candidate so it is not surfaced",
-            "snooze": "sets a cooldown before resurfacing",
-        },
-        "suggested_action": row["suggested_action"],
-        "action_type": row["action_type"],
-        "cooldown_until": row["cooldown_until"],
+        "status": row["status"],
+        "why_now": json.loads(row["why_now_json"] or "{}"),
+        "seed": {"id": row["seed_id"], "name": row["seed_name"], "type": row["seed_type"]},
+        "seed_observation": {"id": row["observation_id"], "kind": row["observation_kind"], "text": row["observation_text"], "source_path": row["source_path"]},
+        "sense_provenance": provenance,
+        "feedback_history": feedback,
     }
+
+
+def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False) -> dict:
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    source_path = str(payload.get("source_path") or "").strip()
+    if not source_path:
+        raise ValueError("remember payload requires source_path")
+    if not source_path.startswith("mneme://"):
+        raise ValueError("remember source_path must use the mneme:// namespace")
+    nodes_in = payload.get("nodes") or []
+    edges_in = payload.get("edges") or []
+    observations_in = payload.get("observations") or []
+    created_nodes: dict[str, str] = {}
+    out_nodes = []
+    out_edges = []
+    out_observations = []
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    try:
+        for index, node in enumerate(nodes_in):
+            ref = str(node.get("ref") or node.get("id") or f"node{index + 1}")
+            node_type = str(node.get("type") or "entity")
+            name = str(node.get("name") or "").strip()
+            if not name:
+                raise ValueError(f"remember node {ref} requires name")
+            node_id = upsert_node(conn, node_type, name, source_path, float(node.get("confidence", 1.0)), node.get("metadata") or {})
+            created_nodes[ref] = node_id
+            out_nodes.append({"ref": ref, "id": node_id, "type": node_type, "name": name, "source_path": source_path})
+        for edge in edges_in:
+            src_ref = str(edge.get("src") or "")
+            dst_ref = str(edge.get("dst") or "")
+            if src_ref not in created_nodes or dst_ref not in created_nodes:
+                raise ValueError("remember edges must reference nodes from the same payload")
+            relation = str(edge.get("relation") or "relates_to")
+            status = str(edge.get("status") or "candidate")
+            confidence = float(edge.get("confidence", 0.7))
+            strength = float(edge.get("strength", confidence))
+            edge_id = upsert_edge(
+                conn,
+                created_nodes[src_ref],
+                created_nodes[dst_ref],
+                relation,
+                source_path,
+                str(edge.get("evidence") or ""),
+                confidence,
+                status=status,
+                strength=strength,
+                source_type=str(edge.get("source_type") or "remember"),
+                metadata=edge.get("metadata") or {},
+            )
+            out_edges.append({"id": edge_id, "src": created_nodes[src_ref], "dst": created_nodes[dst_ref], "relation": relation, "status": status})
+        for obs in observations_in:
+            node_ref = str(obs.get("node") or "")
+            if node_ref not in created_nodes:
+                raise ValueError("remember observations must reference nodes from the same payload")
+            text = str(obs.get("text") or "").strip()
+            if not text:
+                raise ValueError("remember observation requires text")
+            kind = str(obs.get("kind") or "fact")
+            out_observations.append({"node": created_nodes[node_ref], "kind": kind, "text": text[:1000]})
+            if not dry_run:
+                add_observation(conn, created_nodes[node_ref], kind, text, source_path, float(obs.get("score", 3.0)))
+        if dry_run:
+            conn.rollback()
+        else:
+            conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "source_path": source_path,
+        "nodes": out_nodes,
+        "edges": out_edges,
+        "observations": out_observations,
+    }
+
+
+def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> dict:
+    if not source_path.startswith("mneme://"):
+        raise ValueError("forget_source only removes mneme:// scoped test or agent memory sources")
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    counts = {
+        "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (source_path,)).fetchone()[0],
+        "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
+        "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (source_path,)).fetchone()[0],
+    }
+    if not dry_run:
+        conn.execute("DELETE FROM observations WHERE source_path=?", (source_path,))
+        conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))
+        conn.execute("DELETE FROM edges WHERE source_path=?", (source_path,))
+        conn.execute("DELETE FROM nodes WHERE source_path=?", (source_path,))
+        conn.commit()
+    conn.close()
+    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts}
+
+
+def configured_senses(config: dict | None) -> list[dict]:
+    senses = (config or {}).get("senses")
+    if isinstance(senses, list):
+        return senses
+    vault = (config or {}).get("vault")
+    return [{"id": "vault", "type": "md", "enabled": True, "config": {"path": vault}}] if vault else []
+
+
+def ingest_sense_events(conn: sqlite3.Connection, events: Iterable[Any], *, hints: list[str] | None = None) -> dict:
+    init_db(conn)
+    hints = hints or DEFAULT_HINTS
+    stats = {"events": 0, "nodes": 0, "observations": 0, "edges": 0, "by_sense": {}, "by_event_type": {}}
+    for event in events:
+        event_id = str(getattr(event, "id", "") or uuid.uuid4().hex)
+        sense_id = str(getattr(event, "sense_id", "unknown"))
+        sense_type = str(getattr(event, "sense_type", "unknown"))
+        source_id = str(getattr(event, "source_id", event_id))
+        source_uri = getattr(event, "source_uri", None)
+        event_type = str(getattr(event, "event_type", "event") or "event")
+        title = str(getattr(event, "title", source_id) or source_id)
+        text = str(getattr(event, "text", "") or "")
+        observed_at = str(getattr(event, "observed_at", "") or now_iso())
+        metadata = getattr(event, "metadata", None) or {}
+        text_hash = hashlib.sha1(text.encode()).hexdigest()
+        conn.execute(
+            """INSERT OR REPLACE INTO sense_events(id,sense_id,sense_type,source_id,source_uri,event_type,title,text_hash,observed_at,ingested_at,metadata_json)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (event_id, sense_id, sense_type, source_id, source_uri, event_type, title, text_hash, observed_at, now_iso(), json.dumps(metadata, ensure_ascii=False)),
+        )
+        source_path = source_uri or metadata.get("path") or source_id
+        node_id = upsert_node(conn, "note", title, source_path, metadata={"sense_event_id": event_id, "sense_type": sense_type})
+        stats["nodes"] += 1
+        for link in getattr(event, "links", None) or []:
+            dst = upsert_node(conn, "wikilink", str(link), source_path)
+            upsert_edge(conn, node_id, dst, "links_to", source_path, f"[[{link}]]", 0.7, status="candidate", strength=0.7, source_type=sense_type)
+            stats["edges"] += 1
+        for kind, obs_text, score in extract_observations(text, hints):
+            add_observation(conn, node_id, kind, obs_text, source_path, score, sense_event_id=event_id)
+            stats["observations"] += 1
+        stats["events"] += 1
+        stats["by_sense"][sense_id] = stats["by_sense"].get(sense_id, 0) + 1
+        stats["by_event_type"][event_type] = stats["by_event_type"].get(event_type, 0) + 1
+    return stats
+
+
+def weaken_edge(db_path: Path, edge_id: str, reason: str = "User dismissed this proposal", factor: float = 0.5, floor: float = 0.0) -> dict:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    row = conn.execute("SELECT id,strength,status FROM edges WHERE id=?", (edge_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"weakened": 0, "id": edge_id, "error": "not_found"}
+    if row["status"] == "killed":
+        conn.close()
+        return {"weakened": 0, "id": edge_id, "status": "killed"}
+    previous = float(row["strength"] or 0)
+    new_strength = round(max(float(floor), previous * float(factor)), 6)
+    new_status = "candidate" if row["status"] == "active" and new_strength < 0.10 else row["status"]
+    conn.execute("UPDATE edges SET strength=?, status=?, updated_at=? WHERE id=? AND status!='killed'", (new_strength, new_status, now_iso(), edge_id))
+    log_edge_event(conn, edge_id, "weakened", "user_feedback", {"reason": reason, "factor": factor, "previous_strength": previous, "new_strength": new_strength, "previous_status": row["status"], "new_status": new_status})
+    conn.commit()
+    conn.close()
+    return {"weakened": 1, "id": edge_id, "previous_strength": previous, "strength": new_strength, "status": new_status}
 
 
 def _evidence_seed(obs: list[str]) -> str:
@@ -1698,94 +1780,12 @@ def _reasoned_next(prefix: str, evidence: str, fallback: str) -> str:
     return fallback
 
 
-def _safe_thought_slug(text: str) -> str:
-    return slugify(text)[:64] or "thought"
-
-
-def actionability_from_candidate(candidate: dict) -> tuple[float, list[str], list[str]]:
-    """Return a cheap actionability score using internal tags, not closure words.
-
-    This is intentionally not a generic "pressure" metric and it does not try to
-    decide whether something is resolved by scanning for words like done/closed.
-    Closure should come from explicit writeback/dismissal tags in a later lifecycle
-    layer. Here we only ask: can this surfaced object be turned into a useful next
-    move?
-    """
-    score = float(candidate.get("base_score", candidate.get("score", 0)) or 0)
-    kind = (candidate.get("observation") or {}).get("kind") or "fact"
-    path = candidate.get("path") or []
-    tags: list[str] = []
-    reasons: list[str] = []
-
-    lifecycle_tag, bonus, reason = LIFECYCLE_BY_KIND.get(kind, LIFECYCLE_BY_KIND["fact"])
-    score += bonus
-    tags.append(lifecycle_tag)
-    reasons.append(reason)
-
-    node_types = {str(node.get("type") or "").lower() for node in path}
-    if node_types & {"person", "email"}:
-        score += 2
-        tags.append("mneme:near_human")
-        reasons.append("human context nearby")
-    if node_types & {"project", "event", "finance"}:
-        score += 1.5
-        tags.append("mneme:domain_anchor")
-        reasons.append("anchored to an actionable domain")
-    if any(str(node.get("type") or "").lower() == "date" for node in path):
-        score += 1
-        tags.append("mneme:has_date_anchor")
-        reasons.append("date anchor nearby")
-
-    return score, list(dict.fromkeys(tags)), reasons
-
-
-def contract_from_candidate(candidate: dict) -> dict:
-    observation = candidate.get("observation") or {}
-    kind = observation.get("kind") or "fact"
-    text = str(observation.get("text") or "").strip()
-    path = candidate.get("path") or []
-    score = float(candidate.get("actionability_score", candidate.get("score", 0)) or 0)
-    tags = list(candidate.get("internal_tags") or [])
-    actionability_reasons = []
-    if not tags:
-        score, tags, actionability_reasons = actionability_from_candidate(candidate)
-    lifecycle_tag = tags[0] if tags else "mneme:thought/inspect"
-    mission_prefix = MISSION_PREFIX_BY_KIND.get(kind, "Inspect this surfaced item")
-    first_move = FIRST_MOVE_BY_KIND.get(kind, "Inspect the evidence and decide whether a next action exists.")
-    source = observation.get("source_path") or (candidate.get("seed") or {}).get("source_path") or "unknown"
-    target_seed = text or (candidate.get("seed") or {}).get("name") or "thought"
-    return {
-        "mission": f"{mission_prefix}: {target_seed[:180]}",
-        "why_now": "; ".join((candidate.get("reasons") or actionability_reasons)[:4]),
-        "done_when": THOUGHT_DONE_WHEN,
-        "first_move": first_move,
-        "needed_context": [node.get("name") for node in path if node.get("name")][:6],
-        "evidence": candidate.get("evidence") or ([text] if text else []),
-        "allowed_actions": ALLOWED_THOUGHT_ACTIONS,
-        "writeback_target": f"Thoughts/{dt.datetime.now(dt.timezone.utc).date().isoformat()}_{_safe_thought_slug(target_seed)}.md",
-        "writeback_required": kind in {"blocked", "risk"},
-        "lifecycle_tag": lifecycle_tag,
-        "internal_tags": tags,
-        "actionability_score": round(score, 2),
-        "source_path": source,
-    }
-
-
 def generate_thought(db_path: Path, path, candidate: dict | None = None):
     seed=path[0]; names=[n.get("name","?") for n in path]; obs=(candidate.get("evidence", []) if candidate else observations_for_seed(db_path, seed["id"], 4)); low=" ".join(names+obs).lower()
-    contract = contract_from_candidate(candidate) if candidate else None
-    why_now = (contract or {}).get("why_now") or ("; ".join(candidate.get("reasons", [])[:3]) if candidate else "weighted random graph traversal surfaced this path")
+    why_now = "; ".join(candidate.get("reasons", [])[:3]) if candidate else "weighted random graph traversal surfaced this path"
     chain = _path_chain(path)
     evidence = _evidence_seed(obs)
-    if contract and contract.get("lifecycle_tag") == "mneme:thought/open_loop":
-        title="Unfinished loop with a first move"
-        insight=f"Why this matters: {names[0]} has an actionable open-loop tag along {chain}. Treat this as a small mission, not just context."
-        action=_reasoned_next(f"Finish the contract first move: {contract['first_move']}", evidence, contract["first_move"])
-    elif contract and contract.get("lifecycle_tag") == "mneme:thought/time_sensitive":
-        title="Time-sensitive item to verify"
-        insight=f"Why this matters: {chain} has a time-sensitive internal tag. Verify freshness before acting."
-        action=_reasoned_next(f"Finish the contract first move: {contract['first_move']}", evidence, contract["first_move"])
-    elif any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
+    if any(w in low for w in ["blocked","needs","awaiting","unresolved","todo","follow up","waiting"]):
         title="Open loop hiding in the graph"
         insight=f"Why this matters: {names[0]} is connected to unresolved language along {chain}. Mneme is surfacing it as a possible open loop, not as a resolved fact."
         action=_reasoned_next("Ask whether this is still pending, then choose the smallest next action.", evidence, "Pick the smallest next action and attach it to the source note.")
@@ -1797,10 +1797,7 @@ def generate_thought(db_path: Path, path, candidate: dict | None = None):
         title="Reasoned graph walk"
         insight=f"Why this matters: Mneme explored {chain}. This may be useful, or it may be true-but-boring; the point is to test whether the bridge deserves promotion."
         action=_reasoned_next("Ask whether this connection changes what to do next.", evidence, "If this still matters, promote it to an explicit next action; otherwise let future walks drift elsewhere.")
-    result={"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
-    if contract:
-        result["contract"] = contract
-    return result
+    return {"title":title,"insight":insight,"action":action,"path":path,"observations":obs,"evidence":obs,"why_now":why_now,"score": candidate.get("score", 0) if candidate else 0}
 
 
 def _weighted_candidate_choice(candidates: list[dict]) -> dict | None:
@@ -1819,58 +1816,6 @@ def generate_proactive_thought(db_path: Path, hints: list[str] | None = None, ho
 
 
 def save_thought(db_path: Path, thought: dict, image_path: str | None = None):
-    conn=sqlite3.connect(db_path); init_db(conn); tid=uuid.uuid4().hex[:16]
-    created=now_iso()
-    conn.execute("INSERT INTO thoughts(id,seed_id,path_json,title,insight,action,image_path,created_at) VALUES(?,?,?,?,?,?,?,?)",(tid,thought["path"][0].get("id"),json.dumps(thought["path"],ensure_ascii=False),thought["title"],thought["insight"],thought["action"],image_path,created))
-    contract=thought.get("contract") or {}
-    if contract:
-        task_id=hashlib.sha1((tid+contract.get("mission","")).encode()).hexdigest()[:16]
-        conn.execute("""INSERT INTO thought_tasks(id,thought_id,status,lifecycle_tag,mission,done_when,first_move,writeback_target,evidence,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(
-            task_id,tid,"open",contract.get("lifecycle_tag"),contract.get("mission"),contract.get("done_when"),contract.get("first_move"),contract.get("writeback_target"),json.dumps(contract.get("evidence") or [],ensure_ascii=False),created,created))
+    conn=sqlite3.connect(db_path); tid=hashlib.sha1((thought["title"]+json.dumps([n["id"] for n in thought["path"]])+now_iso()).encode()).hexdigest()[:16]
+    conn.execute("INSERT INTO thoughts(id,seed_id,path_json,title,insight,action,image_path,created_at) VALUES(?,?,?,?,?,?,?,?)",(tid,thought["path"][0].get("id"),json.dumps(thought["path"],ensure_ascii=False),thought["title"],thought["insight"],thought["action"],image_path,now_iso()))
     conn.commit(); conn.close(); return tid
-
-
-def list_thought_tasks(db_path: Path, status: str | None = None) -> list[dict]:
-    conn=sqlite3.connect(db_path); conn.row_factory=sqlite3.Row; init_db(conn)
-    if status:
-        rows=conn.execute("SELECT * FROM thought_tasks WHERE status=? ORDER BY created_at DESC",(status,)).fetchall()
-    else:
-        rows=conn.execute("SELECT * FROM thought_tasks ORDER BY created_at DESC").fetchall()
-    conn.close(); return [dict(r) for r in rows]
-
-
-def update_thought_task(db_path: Path, task_id: str, status: str, evidence: str = "") -> dict:
-    allowed=THOUGHT_STATUSES
-    if status not in allowed:
-        raise ValueError(f"status must be one of {sorted(allowed)}")
-    conn=sqlite3.connect(db_path); conn.row_factory=sqlite3.Row; init_db(conn)
-    row=conn.execute("SELECT * FROM thought_tasks WHERE id=?",(task_id,)).fetchone()
-    if row is None:
-        conn.close(); raise KeyError(task_id)
-    existing=[]
-    try:
-        existing=json.loads(row["evidence"] or "[]")
-    except Exception:
-        existing=[row["evidence"]] if row["evidence"] else []
-    if evidence:
-        existing.append(evidence)
-    conn.execute("UPDATE thought_tasks SET status=?, evidence=?, updated_at=? WHERE id=?",(status,json.dumps(existing,ensure_ascii=False),now_iso(),task_id))
-    conn.commit(); updated=conn.execute("SELECT * FROM thought_tasks WHERE id=?",(task_id,)).fetchone(); conn.close(); return dict(updated)
-
-
-def record_thought_writeback(db_path: Path, task_id: str, target: str, evidence: str = "") -> dict:
-    """Mark that a thought produced a human-visible note/writeback artifact."""
-    marker = f"writeback:{target}"
-    return update_thought_task(db_path, task_id, "acted", "; ".join(p for p in [marker, evidence] if p))
-
-
-def record_thought_reminder(db_path: Path, task_id: str, reminder_id: str, evidence: str = "") -> dict:
-    """Close a thought loop because a concrete reminder/task/calendar item exists."""
-    marker = f"reminder:{reminder_id}"
-    return update_thought_task(db_path, task_id, "resolved", "; ".join(p for p in [marker, evidence] if p))
-
-
-def dismiss_thought_task(db_path: Path, task_id: str, reason: str) -> dict:
-    """Explicitly dismiss a thought so it is not closed by lexical guessing."""
-    return update_thought_task(db_path, task_id, "dismissed", f"dismissed:{reason}")

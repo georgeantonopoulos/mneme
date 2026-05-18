@@ -1,10 +1,10 @@
 # Mneme
 
-![Mneme — proactive thought surfacing for AI agents](assets/mneme-header_v002.png)
+![Mneme — graph memory for AI agents](assets/mneme-header_v002.png)
 
-**Mneme** is a local-first proactive thought-surfacing system.
+**Mneme** is a local-first graph memory layer for AI agents.
 
-It treats sources as senses, converts bounded evidence into observations and synaptic links, applies activation/decay/reinforcement, and surfaces useful next actions before the user asks.
+It turns Markdown notes into an inspectable SQLite memory graph: notes become nodes, links/tasks/bullets become evidence-backed edges and observations, and agents can use the graph to generate thought paths, audit why relationships exist, or build prompt-time context packs.
 
 > Mneme (Μνήμη) means memory.
 
@@ -12,66 +12,56 @@ It treats sources as senses, converts bounded evidence into observations and syn
 
 Mneme is an **alpha** public package. The public repository contains the sanitized, reusable core:
 
-- Markdown vault sense and normalized evidence ingestion
-- optional Google Workspace sense through the local `gws` command
+- Markdown vault ingestion
 - SQLite graph storage
 - relationship ontology seeding
 - edge evidence + debug/audit logs
-- deterministic activation, thought candidate generation, and feedback
+- retrieval-backed context and thought surfacing
+- thought-path generation and rendered cards
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for senses, ticks, surfacing, feedback, inspectability, research resolution writeback, and edge explanation
+- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, and edge explanation
 
-The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and later prompt-time context selection. Those patterns are documented below as design direction, but the public CLI is centered on the sense -> evidence -> activation -> surface -> feedback loop.
+The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
-The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules. When private dogfood lessons should be upstreamed, use [docs/PRIVATE_PUBLIC_DIVERGENCE.md](docs/PRIVATE_PUBLIC_DIVERGENCE.md) to extract reusable mechanics without leaking private data.
+The shared public/private graph semantics are documented in [GRAPH_CONTRACT.md](GRAPH_CONTRACT.md), including edge/synapse status mapping and promotion rules.
+
+The repo also includes a Hermes-compatible skill bundle at
+`skills/mneme-agent-brain/`. Install or point Hermes at that
+directory when an agent should operate Mneme as a working brain. The skill
+contains the `SKILL.md` entrypoint, a detailed operator runbook, and a smoke
+helper that delegates to `scripts/hermes_brain_ready.sh`.
 
 ## What it does
 
-- Ingests source events from senses. Markdown vaults are one sense; Hermes/Google Workspace users can optionally use `gws` for Gmail, Calendar, and Tasks.
-- Extracts notes, wikilinks, headings, tasks, dates, email-like strings, workspace items, and high-signal observations.
+- Ingests Markdown notes from a vault/folder.
+- Extracts notes, wikilinks, headings, tasks, dates, email-like strings, and high-signal observations.
 - Stores nodes, edges, observations, generated thoughts, relationship types, and edge debug logs in SQLite.
 - Distinguishes **reference/structural edges** from **semantic claims** through a seeded relationship ontology.
 - Records why an edge exists: source path, evidence text, confidence, extraction rule, and later validation/audit events.
-- Scores activation over unresolved, risky, recent, corroborated, or connected items.
-- Surfaces current thought candidates and accepts feedback: accept, deny, snooze, kill, acted, already done, too obvious, or good but later.
-- Explains why a thought surfaced, including evidence, provenance, relationship statuses, activation factors, and feedback history.
+- Performs biased graph walks over unresolved, risky, recent, or connected items.
 - Renders compact thought cards as SVG, with optional PNG conversion via ImageMagick.
-- Provides a CLI nervous-system control surface suitable for cron jobs, local agent runtimes, and private graph workbenches.
+- Provides a CLI suitable for cron jobs, local agent runtimes, and private graph workbenches.
 
 ## Mental model
 
-Mneme treats cognition as an auditable graph loop:
+Mneme treats memory as an auditable graph:
 
 ```text
-Senses
-  -> bounded evidence
-  -> observations
-  -> synaptic links
-  -> activation / decay / reinforcement / weakening
-  -> thought candidates
-  -> surfaced next action
-  -> user feedback
+Markdown notes
+  -> nodes / observations / evidence-backed edges
+  -> SQLite graph + audit log
+  -> graph walks, explanations, workbench APIs, or prompt context
 ```
 
 A line between two nodes is not automatically a fact. Mneme separates:
 
-- **Reference edges** — e.g. `links_to`, created from explicit Markdown wikilinks or sensed source links. Useful for navigation, but not proof of a real-world relationship.
+- **Reference edges** — e.g. `links_to`, created from explicit Markdown wikilinks. Useful for navigation, but not proof of a real-world relationship.
 - **Extraction edges** — e.g. `mentions_date`, `mentions_email`, created from text patterns.
 - **Observation edges** — e.g. `has_fact`, `has_risk`, `has_blocked`, created from scored bullets/tasks.
 - **Semantic relationships** — e.g. `belongs_to`, `located_in`, `part_of`, `father_of`. These are marked as requiring validation before an agent treats them as real-world claims.
 
 This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
-
-Mneme has no Obsidian dependency. Wikilinks/backlinks are connection hints, not semantic truth. Google Workspace support is optional and shells out to `gws`; Mneme does not include Google OAuth code or direct Google API client dependencies.
-
-Mneme also treats later corrections as **guardrails**. If a newer note says an old
-tracker row was stale, wrong, hallucinated, or must not be used without fresh
-evidence, proactive candidate selection suppresses matching stale open-loop
-observations. In other words, “this TODO once appeared in a daily note” is not the
-same as “this TODO is currently live”. Agents should validate old tasks against a
-fresh source before telling a user that something is still open, overdue, requested,
-or stalled.
 
 ## Privacy model
 
@@ -103,7 +93,7 @@ Public Mneme remains local-first and does not make cloud calls by default. For a
 3. Compress and encrypt the backup before it leaves the machine.
 4. Verify decryptability and `PRAGMA integrity_check` before considering the backup valid.
 5. Keep local encrypted backups and a restore script that makes a safety copy before replacing the live DB.
-6. If the user wants Google Drive backup, use Google Workspace/Drive tooling such as `gws drive files create --upload /path/file --params '{"fields":"id,name,size"}'` first. Use rclone or other remotes only as fallback.
+6. If the user wants Google Drive backup, use Google Workspace/Drive tooling such as `gws drive +upload` first. Use rclone or other remotes only as fallback.
 7. Never print, commit, or send the backup passphrase. If the encrypted backup is stored off-box, the passphrase must be stored separately somewhere safe or cloud restore will be impossible after machine loss.
 
 A private deployment can schedule this as: snapshot -> manifest/checksum -> encrypt -> verify -> upload to Drive -> periodically test restore verification.
@@ -139,90 +129,19 @@ mneme note --help
 
 The package includes the graph memory engine and a small path-safe Markdown editor; there is no separate editor plugin to install.
 
-## Prompt path classifier for agent hooks
-
-Mneme includes a small helper for prompt-time routing in agent integrations. It classifies the raw user message as:
-
-- `retrieval` — normal recall/search/help/planning.
-- `correction` — the user corrects, contradicts, resolves, dismisses, or marks memory/assistant state stale.
-- `both` — the user corrects something and also asks for help/search/action.
-
-This is intentionally optional: the public Mneme core remains local-first and makes **no network calls by default**. Agent hooks can opt in to a model-backed classifier and keep a conservative regex fallback.
-
-### Choosing a classifier model during onboarding
-
-For Hermes/Ollama Cloud deployments, the tested default is:
-
-```bash
-export MNEME_PATH_CLASSIFIER_ENABLED=1
-export MNEME_PATH_CLASSIFIER_PROVIDER=ollama-cloud
-export MNEME_PATH_CLASSIFIER_MODEL=gemma4:31b
-export MNEME_PATH_CLASSIFIER_TIMEOUT=2.0
-export OLLAMA_BASE_URL=https://ollama.com/v1
-export OLLAMA_API_KEY=...   # keep this in your agent's private .env, never in the repo
-```
-
-Why this default: in private dogfood testing, `gemma4:31b` via Ollama Cloud correctly classified `retrieval`, `correction`, and `both` examples in under ~1 second through the OpenAI-compatible `/chat/completions` route. Local tiny models can work, but on small CPU-only VPSes they may be slower than cloud inference or need more prompting.
-
-Alternative local choices to try when you need zero network calls:
-
-- `qwen3.5:0.8b` — good accuracy with few-shot prompting, but can be slow on 2-vCPU machines.
-- `qwen2.5:0.5b-instruct` — smaller/faster, lower expected accuracy.
-- `smollm2:360m-instruct-q4_K_M` — ultra-small, useful as an experiment but may miss subtle corrections.
-
-Integration rule: always strip injected context and generated hook text before classification. The classifier must see only the user message, not blocks like `[Prompt-time retrieved context]` or `MNEME RETRIEVAL PATH ...`, otherwise it can be contaminated by its own previous routing instructions.
-
-Python integration sketch:
-
-```python
-from mneme.path_classifier import classify_path
-
-route = classify_path(
-    user_message,
-    model=os.getenv("MNEME_PATH_CLASSIFIER_MODEL", "gemma4:31b"),
-    timeout=float(os.getenv("MNEME_PATH_CLASSIFIER_TIMEOUT", "2.0")),
-)
-if route["path"] in {"correction", "both"}:
-    # run correction/writeback path
-    ...
-else:
-    # run retrieval path
-    ...
-```
-
 ## Quick start
 
 Configure Mneme once, validate it, then use short commands:
 
 ```bash
-mneme setup
-```
-
-This opens a friendly terminal onboarding menu that asks for:
-
-- Markdown vault path
-- SQLite database path
-- output/cards directory
-- whether to enable Google Workspace (`gws`) as a sense
-- whether to enable the Hermes prompt path classifier
-- classifier provider/model choice (`gemma4:31b` on Ollama Cloud is the tested default)
-- Hermes `.env` location for private API keys
-
-For non-interactive setups you can still use:
-
-```bash
 mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
-```
-
-Then validate and run:
-
-```bash
 mneme doctor
-mneme sense run md
-mneme tick --surface
-mneme surface
-mneme feedback <thought_id> --deny --reason "not useful right now"
-mneme explain <thought_id>
+mneme update
+mneme candidates
+mneme promote-candidates --dry-run
+mneme retrieve --prompt "what should the agent remember here?"
+mneme surface --prompt "what should surface now?"
+mneme thought
 ```
 
 Research results can be written back as evidence packs plus weighted graph edges:
@@ -230,19 +149,6 @@ Research results can be written back as evidence packs plus weighted graph edges
 ```bash
 mneme resolve --file research-resolution.json
 ```
-
-Agent runtimes can also run a deterministic post-response safety net after a final answer. It does **not** trust the model blindly: it only writes when the response includes an explicit `mneme-resolution` JSON block or matches a narrow source-backed pattern (for example a property purchase/completion date answer that cites solicitor/SDLT/email evidence). This is intended for `post_llm_call` / post-response hooks so durable facts do not depend on the model remembering to call `mneme resolve` manually:
-
-```bash
-mneme post-response \
-  --user-message-file /tmp/user.txt \
-  --assistant-response-file /tmp/assistant.txt \
-  --vault ./examples/vault \
-  --db /tmp/mneme.sqlite \
-  --json
-```
-
-Use `--dry-run` while wiring hooks.
 
 You can keep multiple configs if needed:
 
@@ -257,7 +163,7 @@ Or run one-off commands with explicit paths:
 mneme run-once --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 ```
 
-The older `ingest`, `update`, `thought`, and `run-once` commands remain available. Newer automation should prefer `sense run`, `tick`, `surface`, `feedback`, and `explain`.
+The command prints JSON with the generated title, thought path, and image path. Agent runtimes can use that image as a proactive visual memory nudge.
 
 ## CLI
 
@@ -268,30 +174,13 @@ mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme_out
 mneme doctor
 ```
 
-Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config, or set `MNEME_CONFIG`. Runtime paths resolve in this order: CLI argument, environment variable, config file. The generic environment variables are `MNEME_DB`, `MNEME_VAULT`, `MNEME_OUT`, and `MNEME_HINTS`. Once configured, CLI commands can read missing `--vault`, `--db`, or `--out` values from those defaults.
-
-Example config for sense-first automation:
-
-```json
-{
-  "db": "/path/to/mneme.sqlite",
-  "vault": "/path/to/markdown-vault",
-  "out": "/path/to/mneme-out",
-  "hints": ["deadline", "reminder", "invoice"],
-  "senses": [
-    {"id": "vault", "type": "md", "enabled": true, "config": {"path": "/path/to/markdown-vault"}},
-    {"id": "gws", "type": "gws", "enabled": true, "config": {"email": true, "calendar": true, "tasks": true}}
-  ]
-}
-```
+Default config path is `~/.config/mneme/config.json`. Pass `--config /path/to/config.json` before the subcommand to use another config. Once configured, `ingest`, `update`, `retrieve`, `surface`, `thought`, `run-once`, and `write` can read missing `--vault`, `--db`, or `--out` values from config when that command needs them.
 
 ### Ingest a Markdown vault
 
 ```bash
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite
 ```
-
-`ingest` remains as a compatibility shortcut. Internally, Markdown is now handled as `MarkdownSense -> SenseEvent -> ingest_sense_events`, the same normalized path used by other senses.
 
 By default this rebuilds graph tables to avoid stale data and keeps deterministic navigation/extraction edges as `candidate` rather than making every parsed link active. Source-contained observation edges can be active; durable validated active edges and killed tombstones are preserved across rebuilds.
 
@@ -306,46 +195,6 @@ If you explicitly want append-only behaviour:
 ```bash
 mneme ingest --vault ./examples/vault --db /tmp/mneme.sqlite --append
 ```
-
-### Senses and cognition pulse
-
-The CLI is the nervous-system control surface:
-
-```bash
-mneme sense list
-mneme sense run md --vault ./examples/vault --db /tmp/mneme.sqlite
-mneme sense run gws --email --calendar --tasks --db /tmp/mneme.sqlite
-mneme sense run gws --dry-run
-mneme sense run hermes_sessions --db /tmp/mneme.sqlite --limit 10
-mneme tick --db /tmp/mneme.sqlite
-mneme tick --surface --db /tmp/mneme.sqlite
-mneme tick --sense hermes_sessions --db /tmp/mneme.sqlite
-mneme surface --limit 3 --db /tmp/mneme.sqlite
-mneme feedback <thought_id> --accept
-mneme feedback <thought_id> --snooze 7d
-mneme feedback <thought_id> --kill --reason "false assumption"
-mneme explain <thought_id> --db /tmp/mneme.sqlite
-```
-
-`mneme tick` is not search. It updates deterministic activation scores, applies cooldowns and feedback penalties, suppresses killed candidates, and generates current thought candidates from normalized evidence. `mneme surface` returns the highest-activation candidates with evidence, source/sense provenance, suggested action, and feedback options. Every new command supports `--json` for agent use.
-
-The optional `gws` sense is for Google Workspace environments where a `gws` command already exists and is already authenticated. Mneme shells out to the current resource-style CLI forms (`gws gmail users messages list`, `gws calendar events list`, and `gws tasks tasks list`) with JSON `--params`; it does not manage OAuth or include Google API client dependencies. Tests use fake command runners and do not require Gmail, Calendar, Tasks, network access, or OAuth.
-
-### Source Packets
-
-Sensor crons and integrations should hand Mneme bounded source packets instead of pasting raw source text into prompts. Raw email bodies, attachments, and extracted document text are untrusted data. Mneme packet helpers store raw bytes on disk and persist only metadata, hashes, extraction status, and short sanitized excerpts labelled `UNTRUSTED DATA`.
-
-```bash
-pdftotext ./notice.pdf /tmp/notice.txt
-mneme packet create \
-  --packet-dir /tmp/mneme_packets \
-  --source email \
-  --kind attachment \
-  --raw-path ./notice.pdf \
-  --text-path /tmp/notice.txt
-```
-
-For automation, prefer `--text-path` or stdin instead of embedding raw external text in prompts or shell command strings. Sanitization removes invisible Unicode such as zero-width joiners/non-joiners, combining grapheme joiners, soft hyphens, and HTML zero-width entities, then redacts common prompt-injection markers from prompt-facing excerpts. Packet metadata is appended to `manifest.jsonl` and indexed in `source_packets.sqlite`.
 
 ### Candidate promotion
 
@@ -435,70 +284,9 @@ Safety rule: only sourced, confirmed/certain claims at or above `--active-thresh
 
 The command accepts JSON via `--file` or stdin, which keeps the interface simple for future Node/npm wrappers.
 
-### Vault deduplication
+### Generate one thought from an existing DB
 
-Mneme can detect and merge duplicate notes in your vault based on title similarity and content overlap, using synapse strength from the graph to decide which duplicate to keep.
-
-```bash
-mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --dry-run
-mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --auto
-mneme dedup --vault ./examples/vault --db /tmp/mneme.sqlite --json
-```
-
-Options:
-
-- `--dry-run` — scan and report duplicate groups without making changes
-- `--auto` — automatically merge duplicates (content from weaker nodes is merged into the stronger winner, then weaker files are deleted)
-- `--json` — output results as JSON for programmatic use
-- `--backup-dir` — custom backup directory (default: `~/.hermes/vault_backups`)
-- `--title-threshold` — similarity threshold for title matching (default: 0.85)
-- `--content-threshold` — content overlap threshold (default: 0.6)
-
-The dedup command:
-
-1. Scans the vault for files with similar titles or high content overlap
-2. Queries the Mneme graph for synapse strength of each duplicate
-3. Merges all content into the strongest node (by synapse score)
-4. Tags the winner with `merged:` metadata listing merged sources
-5. Backs up deleted files with timestamps before removal
-6. Preserves daily notes — files with different dates are never merged together
-
-After deduplication, run `mneme update` to refresh the graph:
-
-```bash
-mneme update --vault ./examples/vault --db /tmp/mneme.sqlite
-```
-
-### Hermes Sessions sense (chat history)
-
-Mneme can ingest Hermes Agent conversation transcripts as a sense source, enabling retrieval to blend vault content with chat history.
-
-```bash
-mneme sense run hermes_sessions --db /tmp/mneme.sqlite --limit 10
-mneme tick --sense hermes_sessions --db /tmp/mneme.sqlite
-```
-
-The `hermes_sessions` sense:
-
-- Reads JSONL session files from `~/.hermes/sessions` (or custom path via config)
-- Extracts user/assistant messages as text evidence
-- Creates `SenseEvent`s with `event_type="conversation"`
-- Enables cross-session knowledge retrieval and corroboration
-
-Config example:
-
-```json
-{
-  "senses": [
-    {"id": "vault", "type": "md", "enabled": true, "config": {"path": "/path/to/vault"}},
-    {"id": "hermes_sessions", "type": "hermes_sessions", "enabled": true, "config": {"path": "~/.hermes/sessions", "limit": 50}}
-  ]
-}
-```
-
-Chat sessions are now included in `mneme retrieve` results, `mneme surface` candidates, and `mneme explain` evidence chains.
-
-`mneme thought` remains for backward compatibility and SVG/PNG card generation. For current proactive workflows, use `mneme tick --surface` and `mneme surface`; those commands persist inspectable thought candidates and feed the feedback loop.
+`mneme thought` now uses the proactive scorer by default: it ranks high-signal observations, open loops, deadlines, hint matches, important note types, and recently-surfaced penalties before rendering a card.
 
 Inspect candidates before generating:
 
@@ -506,11 +294,150 @@ Inspect candidates before generating:
 mneme candidates --db /tmp/mneme.sqlite --limit 5
 ```
 
+Explain scored and suppressed candidates:
+
+```bash
+mneme debug-candidates --db /tmp/mneme.sqlite --include-skipped
+```
+
 Generate the top thought card:
 
 ```bash
 mneme thought --db /tmp/mneme.sqlite --out /tmp/mneme_out
 ```
+
+### Retrieve prompt-time context
+
+Build a deterministic local context pack for an agent prompt:
+
+```bash
+mneme retrieve --db /tmp/mneme.sqlite --prompt "What needs follow-up for the supplier?" --budget 2500 --max-items 8
+```
+
+`retrieve` uses the same scoring core as `candidates` and `thought`. It returns
+source-backed observations, relevant edges, score factors, freshness/source
+quality notes, skipped-item reasons, and a `truth_policy` for every edge. Killed
+edges are excluded. Candidate semantic edges may be shown as `candidate_only`,
+but they are not phrased as facts.
+
+### Surface thoughts from retrieval
+
+Use `surface` when an agent wants thought cards from the same cluster-aware,
+brain-labelled retrieval path instead of a random walk:
+
+```bash
+mneme surface --db /tmp/mneme.sqlite --prompt "what should I remember about supplier launch readiness?" --limit 5
+```
+
+Each surfaced thought keeps the generated `title`, `insight`, `action`, and
+graph `path`, plus a `surface` block with the retrieval item, matched terms,
+cluster, brain label, and truth policy that caused it to appear. The response
+also includes `suggested_actions`. For example, a source-contained observation
+may suggest appending a bullet under `Next Actions`; a candidate synapse may
+suggest explicit validation or deletion before it is trusted.
+
+### Add and remove scoped agent memory
+
+Agents can add working memory to the graph without editing Markdown notes by
+using a `mneme://` source namespace:
+
+```bash
+mneme remember add --db /tmp/mneme.sqlite --file /tmp/agent-memory.json
+mneme surface --db /tmp/mneme.sqlite --prompt "temporary validation memory"
+mneme remember remove --db /tmp/mneme.sqlite --source-path mneme://test/validation
+```
+
+Payloads may contain `nodes`, `edges`, and `observations`. Edges and
+observations must reference nodes from the same payload, which keeps temporary
+memory removable as a unit:
+
+```json
+{
+  "source_path": "mneme://test/validation",
+  "nodes": [
+    {"ref": "agent", "type": "agent", "name": "Test agent"},
+    {"ref": "task", "type": "task", "name": "Validate retrieval"}
+  ],
+  "edges": [
+    {"src": "agent", "dst": "task", "relation": "relates_to", "status": "active"}
+  ],
+  "observations": [
+    {"node": "task", "kind": "fact", "text": "Validate retrieval before trusting output.", "score": 5}
+  ]
+}
+```
+
+`remember remove` only accepts `mneme://` sources. That keeps vault-ingested
+notes and user-authored Markdown outside the deletion path.
+
+### Build the Hermes-ready working brain
+
+The working-brain pipeline keeps graph structure deterministic and runs model
+labelling as a replaceable harness step. A local Ollama model is useful for
+dogfooding, while Hermes can pass its own command through the same interface.
+
+```bash
+mneme consolidate \
+  --db /tmp/mneme.sqlite \
+  --label-provider ollama \
+  --label-model gemma4:e4b \
+  --label-max-clusters 25
+
+mneme brain label \
+  --db /tmp/mneme.sqlite \
+  --targets cluster,node,synapse,relationship \
+  --max-clusters 25 \
+  --max-nodes 50 \
+  --max-synapses 50 \
+  --max-relationships 25 \
+  --label-provider ollama \
+  --label-model gemma4:e4b
+
+mneme brain report --db /tmp/mneme.sqlite
+mneme retrieve --db /tmp/mneme.sqlite --prompt "what should the agent remember here?"
+```
+
+Hermes can swap the model runner without changing Mneme's graph logic:
+
+```bash
+mneme brain label \
+  --db /tmp/mneme.sqlite \
+  --targets cluster,node,synapse,relationship \
+  --label-provider hermes \
+  --label-command "hermes label --json"
+```
+
+For a single smoke script:
+
+```bash
+MNEME_LABEL_PROVIDER=ollama MNEME_LABEL_MODEL=gemma4:e4b \
+  scripts/hermes_brain_ready.sh /tmp/mneme.sqlite "retrieval prompt"
+```
+
+The script runs the full harness path Hermes needs before trusting the DB:
+`consolidate`, `brain label`, `brain report`, `retrieve`, and `surface`. Set
+`MNEME_SURFACE_LIMIT` to change how many retrieval-backed thoughts the final
+surface check returns.
+
+Set `MNEME_BRAIN_DEPTH` when the agent needs a different pass size:
+
+```bash
+MNEME_BRAIN_DEPTH=smoke scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=default scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=deep scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+MNEME_BRAIN_DEPTH=full scripts/hermes_brain_ready.sh /tmp/mneme.sqlite
+```
+
+`smoke` labels a tiny proof set, `default` labels the largest clusters plus top
+nodes and synapses, `deep` labels every discovered cluster plus a broader active
+frontier, and `full` attempts to label every eligible target. Individual
+`MNEME_LABEL_MAX_*` values still override the preset. `mneme brain report`
+returns per-target coverage so Hermes can tell whether the latest brain is
+shallow, moderate, or deep before trusting retrieval.
+
+`retrieve` includes `clusters` and `brain_labels` in its JSON response, and
+returned items may include `cluster` and `brain_label` metadata showing why a
+node or synapse entered the context pack.
 
 ### Ingest and generate in one command
 
@@ -541,14 +468,6 @@ This prints:
 - debug/audit timeline entries
 
 Example use case: a graph workbench can show why two nodes are connected instead of merely drawing a line.
-
-For surfaced thought candidates, use:
-
-```bash
-mneme explain <thought-id> --db /tmp/mneme.sqlite
-```
-
-This explains why the thought surfaced now, including the seed observation/node, bounded evidence, sense provenance, source path or URI, relationship statuses, activation score breakdown, feedback history, and what accept/deny/kill/snooze would do.
 
 ## Relationship ontology
 
@@ -585,11 +504,13 @@ Mneme's graph-building layer is intentionally location-agnostic: callers pass `-
 Recommended public packaging shape:
 
 ```bash
-mneme ingest --vault /path/to/markdown --db /private/path/mneme.sqlite
-mneme serve --db /private/path/mneme.sqlite --host 127.0.0.1 --port 8002 --mount /mneme
+mneme ingest --vault /path/to/markdown --db /path/to/mneme.sqlite
+mneme retrieve --db /path/to/mneme.sqlite --prompt "what should the agent remember here?"
 ```
 
-`mneme serve` is a design target, not yet part of the public CLI. A served workbench should be optional, read-only by default, and configurable for:
+The prompt-time retrieval layer is available through the public `mneme retrieve`
+CLI command. A future served workbench should be optional, read-only by default,
+and configurable for:
 
 - graph DB path
 - host/port
@@ -607,18 +528,18 @@ For large graphs, workbench implementations should:
 - cap physics simulation work
 - display relationship type, evidence, source path, and audit status in the details panel
 
-## Future context selection direction
+## Agent / prompt-time retrieval direction
 
-Mneme's primary loop is proactive thought surfacing. A later agent-facing layer can reuse the same active/high-confidence graph as a fast context selector:
+Mneme's long-term role is not just thought cards. It should also act as a fast context selector for agents:
 
 ```text
 user prompt
-  -> local Mneme context selection over active/high-confidence graph context
+  -> local Mneme retrieval over active/high-confidence graph context
   -> compact evidence pack
   -> model response grounded in source-backed memory
 ```
 
-Recommended context-selection scoring direction:
+Recommended retrieval scoring direction:
 
 1. active semantic relationships
 2. strong active provenance/reference relationships
@@ -631,7 +552,7 @@ Recommended context-selection scoring direction:
 
 Killed/rejected edges should be excluded, and stale/low-strength/noisy observations should be demoted even when they lexically match the prompt.
 
-This prompt-time layer is under private dogfood and is not yet included as a public CLI command.
+This prompt-time retrieval layer is available through the public `mneme retrieve` CLI command.
 
 ## How it works today
 

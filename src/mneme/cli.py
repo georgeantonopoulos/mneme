@@ -3,48 +3,16 @@ from __future__ import annotations
 import argparse, json, os, sys
 from pathlib import Path
 from . import md_edit
-from .core import (
-    DEFAULT_CONFIG_PATH,
-    DEFAULT_HINTS,
-    activate_candidate_edges,
-    configured_senses,
-    create_config,
-    dismiss_thought_task,
-    doctor,
-    explain_edge,
-    explain_thought,
-    generate_proactive_thought,
-    ingest_sense_events,
-    ingest_vault,
-    list_thought_candidates,
-    list_thought_tasks,
-    load_config,
-    record_feedback,
-    record_thought_reminder,
-    record_thought_writeback,
-    save_thought,
-    surface_thoughts,
-    tick,
-    update_thought_task,
-    update_vault,
-    weaken_edge,
-    write_note,
-    write_research_resolution,
-)
-from .dedup import run_dedup
+from .brain import brain_report, label_brain
+from .consolidate import LabelerConfig, consolidate_graph
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, record_feedback, remember_graph, retrieve_context, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
+from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
+from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
-from .onboarding import run_onboarding
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
 from .senses.gws import GwsSense
-from .senses.markdown import MarkdownSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
-from .post_response import process_post_response
-
-
-# Dedup command defaults
-SIMILARITY_THRESHOLD = 0.75
-CONTENT_OVERLAP_THRESHOLD = 0.6
 
 
 def parse_hints(value: str | None):
@@ -59,28 +27,6 @@ def hints_from_args(args):
     return resolve_hints(args)
 
 
-def emit(result, *, as_json: bool = True) -> None:
-    if as_json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    else:
-        if isinstance(result, list):
-            for item in result:
-                print(_human_line(item))
-        elif isinstance(result, dict):
-            for key, value in result.items():
-                print(f"{key}: {value}")
-        else:
-            print(result)
-
-
-def _human_line(item: dict) -> str:
-    if "activation_score" in item:
-        return f"{item['id']}  score={item['activation_score']:.2f}  {item.get('title') or item.get('suggested_action')}"
-    if {"id", "type", "enabled"} <= set(item):
-        return f"{item['id']}  {item['type']}  enabled={item['enabled']}  configured={item.get('configured', True)}  last_run={item.get('last_run_at') or '-'}"
-    return json.dumps(item, ensure_ascii=False)
-
-
 def sense_entries_from_args(args) -> list[dict]:
     if args.sense_type == "md":
         vault = args.vault or path_from_config(args, "vault")
@@ -89,15 +35,14 @@ def sense_entries_from_args(args) -> list[dict]:
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
     if args.sense_type == "hermes_sessions":
         return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": os.path.expanduser("~/.hermes/sessions"), "limit": args.limit}}]
-    cfg_path = getattr(args, "config", None) or DEFAULT_CONFIG_PATH
-    cfg = load_runtime_config(Path(cfg_path))
+    cfg = load_runtime_config(getattr(args, "config", None) or DEFAULT_CONFIG_PATH)
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
 
 
 def run_sense_entries(args, entries: list[dict]) -> dict:
-    db_path = path_from_config(args, "db", required=not args.dry_run)
     import sqlite3
 
+    db_path = path_from_config(args, "db", required=not args.dry_run)
     conn = None if args.dry_run else sqlite3.connect(db_path)
     all_stats = {"events": 0, "nodes": 0, "observations": 0, "edges": 0, "by_sense": {}, "by_event_type": {}, "dry_run": bool(args.dry_run), "db": str(db_path) if db_path else None}
     for entry in entries:
@@ -120,64 +65,272 @@ def run_sense_entries(args, entries: list[dict]) -> dict:
     return all_stats
 
 
+def labeler_from_args(args) -> LabelerConfig:
+    return LabelerConfig(
+        provider=getattr(args, "label_provider", None),
+        model=getattr(args, "label_model", None),
+        command=getattr(args, "label_command", None),
+        timeout=getattr(args, "label_timeout", DEFAULT_TIMEOUT_SECONDS),
+        max_clusters=getattr(args, "label_max_clusters", 25),
+    )
+
+
+def add_labeler_args(p) -> None:
+    p.add_argument("--label-provider",help="Optional label provider, for example 'ollama' or any label used with --label-command")
+    p.add_argument("--label-model",help="Model name for provider-backed labelling, for example qwen3:1.7b")
+    p.add_argument("--label-command",help="Custom command used by the harness for labelling; prompt is sent on stdin unless {prompt} is present")
+    p.add_argument("--label-timeout",type=int,default=DEFAULT_TIMEOUT_SECONDS)
+
+
 def main(argv: list[str] | None = None) -> None:
-    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents"); parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)"); sub=parser.add_subparsers(dest="cmd", required=True)
-    p=sub.add_parser("init", help="Create a Mneme config file"); p.add_argument("--vault",required=True,type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
-    p=sub.add_parser("setup", help="Interactive onboarding: vault, senses, classifier model, and Hermes env hints"); p.add_argument("--force",action="store_true",help="Overwrite an existing config")
+    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents")
+    parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)")
+    sub=parser.add_subparsers(dest="cmd", required=True)
+    p=sub.add_parser("init", help="Create a Mneme config file")
+    p.add_argument("--vault",required=True,type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--out",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--force",action="store_true",help="Overwrite an existing config")
     sub.add_parser("doctor", help="Validate config, vault, and output paths")
-    p=sub.add_parser("ingest"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
-    p=sub.add_parser("update", help="Synchronize graph tables from the current vault while preserving thought history"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--max-notes",type=int); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
-    p=sub.add_parser("write", help="Safely create, append, or overwrite a Markdown note inside a vault"); p.add_argument("--vault",type=Path); p.add_argument("--path",required=True,help="Relative .md path inside the vault"); p.add_argument("--mode",choices=["create","append","overwrite"],default="create"); p.add_argument("--content",help="Markdown content; omit to read from stdin")
-    note=sub.add_parser("note", help="Path-safe Markdown note editor"); note_sub=note.add_subparsers(dest="note_cmd", required=True)
-    p=note_sub.add_parser("read", help="Read a note, optionally limited to one heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading"); p.add_argument("--force",action="store_true")
-    p=note_sub.add_parser("write", help="Create, append, or overwrite a note atomically"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--mode",choices=["create","append","overwrite"],default="append"); p.add_argument("--content",help="Markdown content; omit to read from stdin"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
-    p=note_sub.add_parser("replace", help="Exact string replacement with optional dry-run diff"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--find",required=True); p.add_argument("--replace",required=True); p.add_argument("--all",action="store_true",dest="replace_all"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
-    p=note_sub.add_parser("upsert-section", help="Replace or append a Markdown heading section"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--content",required=True); p.add_argument("--level",type=int,default=2); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
-    p=note_sub.add_parser("add-bullet", help="Add a deduped bullet under a heading"); p.add_argument("path"); p.add_argument("--vault",type=Path); p.add_argument("--heading",required=True); p.add_argument("--bullet",required=True); p.add_argument("--dry-run",action="store_true"); p.add_argument("--force",action="store_true")
-    p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin"); p.add_argument("--active-threshold",type=float,default=0.9)
-    p=sub.add_parser("post-response", help="Post-response safety net: detect source-backed durable facts and write research-resolution edges"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--user-message"); p.add_argument("--user-message-file",type=Path); p.add_argument("--assistant-response"); p.add_argument("--assistant-response-file",type=Path); p.add_argument("--active-threshold",type=float,default=0.9); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json",action="store_true")
-    p=sub.add_parser("candidates", help="List scored proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--limit",type=int,default=5)
-    p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates"); p.add_argument("--db",type=Path); p.add_argument("--mode",choices=["validated-only","all"],default="validated-only"); p.add_argument("--dry-run",action="store_true")
-    packet=sub.add_parser("packet", help="Create sanitized untrusted source packets"); packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
-    p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata"); p.add_argument("--packet-dir",type=Path,default=Path(os.environ.get("MNEME_PACKET_DIR", ".mneme/source_packets"))); p.add_argument("--source",required=True); p.add_argument("--kind",default="source"); p.add_argument("--raw-path",type=Path); p.add_argument("--text"); p.add_argument("--text-path",type=Path,help="Read extracted untrusted text from a file instead of argv"); p.add_argument("--metadata-json",default="{}"); p.add_argument("--json",action="store_true")
-    sense=sub.add_parser("sense", help="List and run source senses"); sense_sub=sense.add_subparsers(dest="sense_cmd", required=True)
-    p=sense_sub.add_parser("list", help="List configured and available senses"); p.add_argument("--json", action="store_true")
-    p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events"); p.add_argument("sense_type", choices=["md","gws","hermes_sessions","all"]); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--limit",type=int); p.add_argument("--follow-symlinks",action="store_true"); p.add_argument("--email",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True); p.add_argument("--query"); p.add_argument("--dry-run",action="store_true"); p.add_argument("--json", action="store_true")
-    p=sub.add_parser("tick", help="Run the cognition pulse and update thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--hints"); p.add_argument("--sense",choices=["all","md","gws","hermes_sessions"]); p.add_argument("--surface",action="store_true"); p.add_argument("--limit",type=int,default=100); p.add_argument("--json", action="store_true")
-    p=sub.add_parser("surface", help="Surface current proactive thought candidates"); p.add_argument("--db",type=Path); p.add_argument("--limit",type=int,default=1); p.add_argument("--json", action="store_true")
-    p=sub.add_parser("feedback", help="Record feedback for a surfaced thought candidate"); p.add_argument("thought_id"); p.add_argument("--db",type=Path); group=p.add_mutually_exclusive_group(required=True); group.add_argument("--accept",action="store_true"); group.add_argument("--deny",action="store_true"); group.add_argument("--snooze"); group.add_argument("--kill",action="store_true"); group.add_argument("--acted",action="store_true"); group.add_argument("--already-done",action="store_true"); group.add_argument("--too-obvious",action="store_true"); group.add_argument("--good-but-later",action="store_true"); p.add_argument("--reason"); p.add_argument("--json", action="store_true")
-    p=sub.add_parser("explain", help="Explain why a thought candidate surfaced"); p.add_argument("thought_id"); p.add_argument("--db",type=Path); p.add_argument("--json", action="store_true")
-    task=sub.add_parser("task", help="List or explicitly update thought lifecycle tasks"); task_sub=task.add_subparsers(dest="task_cmd", required=True)
-    p=task_sub.add_parser("list", help="List thought lifecycle tasks"); p.add_argument("--db",type=Path); p.add_argument("--status")
-    p=task_sub.add_parser("update", help="Explicitly set a thought task status"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--status",required=True,choices=["open","acted","resolved","learned","dismissed"]); p.add_argument("--evidence",default="")
-    p=task_sub.add_parser("writeback", help="Mark a thought task acted via note/writeback"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--target",required=True); p.add_argument("--evidence",default="")
-    p=task_sub.add_parser("reminder", help="Mark a thought task resolved by a reminder/task/calendar item"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--reminder-id",required=True); p.add_argument("--evidence",default="")
-    p=task_sub.add_parser("dismiss", help="Explicitly dismiss a thought task"); p.add_argument("task_id"); p.add_argument("--db",type=Path); p.add_argument("--reason",required=True)
-    p=sub.add_parser("thought"); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5)
-    p=sub.add_parser("explain-edge"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path)
-    p=sub.add_parser("weaken-edge", help="Reduce edge strength after negative feedback without killing"); p.add_argument("edge_id"); p.add_argument("--db",required=True,type=Path); p.add_argument("--reason",default="User dismissed surfaced proposal"); p.add_argument("--factor",type=float,default=0.5); p.add_argument("--floor",type=float,default=0.0)
-    p=sub.add_parser("run-once"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--out",type=Path); p.add_argument("--hints"); p.add_argument("--hops",type=int,default=5); p.add_argument("--max-notes",type=int); p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data"); p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
-    p=sub.add_parser("dedup", help="Merge duplicate vault nodes by synapse strength"); p.add_argument("--vault",type=Path); p.add_argument("--db",type=Path); p.add_argument("--backup-dir",type=Path); p.add_argument("--title-threshold",type=float,default=SIMILARITY_THRESHOLD); p.add_argument("--content-threshold",type=float,default=CONTENT_OVERLAP_THRESHOLD); p.add_argument("--dry-run",action="store_true"); p.add_argument("--auto",action="store_true"); p.add_argument("--json",action="store_true")
+    p=sub.add_parser("ingest")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--max-notes",type=int)
+    p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data")
+    p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
+    p=sub.add_parser("update", help="Synchronize graph tables from the current vault while preserving thought history")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--max-notes",type=int)
+    p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked Markdown files that resolve inside the vault")
+    p=sub.add_parser("write", help="Safely create, append, or overwrite a Markdown note inside a vault")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--path",required=True,help="Relative .md path inside the vault")
+    p.add_argument("--mode",choices=["create","append","overwrite"],default="create")
+    p.add_argument("--content",help="Markdown content; omit to read from stdin")
+    note=sub.add_parser("note", help="Path-safe Markdown note editor")
+    note_sub=note.add_subparsers(dest="note_cmd", required=True)
+    p=note_sub.add_parser("read", help="Read a note, optionally limited to one heading")
+    p.add_argument("path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--heading")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("write", help="Create, append, or overwrite a note atomically")
+    p.add_argument("path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--mode",choices=["create","append","overwrite"],default="append")
+    p.add_argument("--content",help="Markdown content; omit to read from stdin")
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("replace", help="Exact string replacement with optional dry-run diff")
+    p.add_argument("path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--find",required=True)
+    p.add_argument("--replace",required=True)
+    p.add_argument("--all",action="store_true",dest="replace_all")
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("upsert-section", help="Replace or append a Markdown heading section")
+    p.add_argument("path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--heading",required=True)
+    p.add_argument("--content",required=True)
+    p.add_argument("--level",type=int,default=2)
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("add-bullet", help="Add a deduped bullet under a heading")
+    p.add_argument("path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--heading",required=True)
+    p.add_argument("--bullet",required=True)
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--force",action="store_true")
+    p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin")
+    p.add_argument("--active-threshold",type=float,default=0.9)
+    p=sub.add_parser("candidates", help="List scored proactive thought candidates")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--limit",type=int,default=5)
+    p=sub.add_parser("debug-candidates", help="Explain scored candidates, including suppressed items when requested")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--limit",type=int,default=20)
+    p.add_argument("--include-skipped",action="store_true")
+    p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prompt",help="Prompt text; omit to read from stdin")
+    p.add_argument("--budget",type=int,default=2500)
+    p.add_argument("--max-items",type=int,default=8)
+    p.add_argument("--hints")
+    p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    packet=sub.add_parser("packet", help="Create sanitized untrusted source packets")
+    packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
+    p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata")
+    p.add_argument("--packet-dir",type=Path,default=Path(os.environ.get("MNEME_PACKET_DIR", ".mneme/source_packets")))
+    p.add_argument("--source",required=True)
+    p.add_argument("--kind",default="source")
+    p.add_argument("--raw-path",type=Path)
+    p.add_argument("--text")
+    p.add_argument("--text-path",type=Path,help="Read extracted untrusted text from a file instead of argv")
+    p.add_argument("--metadata-json",default="{}")
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("surface", help="Surface thought cards from the same scored retrieval and brain labels")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prompt",help="Prompt text; omit for hint-led surfacing")
+    p.add_argument("--limit",type=int,default=5)
+    p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--hints")
+    p.add_argument("--no-candidates",action="store_true",help="Exclude candidate synapses from thought surfacing")
+    p.add_argument("--json",action="store_true")
+    sense=sub.add_parser("sense", help="List and run source senses")
+    sense_sub=sense.add_subparsers(dest="sense_cmd", required=True)
+    p=sense_sub.add_parser("list", help="List configured and available senses")
+    p.add_argument("--json",action="store_true")
+    p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events")
+    p.add_argument("sense_type", choices=["md","gws","hermes_sessions","all"])
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--limit",type=int)
+    p.add_argument("--follow-symlinks",action="store_true")
+    p.add_argument("--email",action=argparse.BooleanOptionalAction,default=True)
+    p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True)
+    p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True)
+    p.add_argument("--query")
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("tick", help="Run the cognition pulse and update thought candidates")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--sense",choices=["all","md","gws","hermes_sessions"])
+    p.add_argument("--surface",action="store_true")
+    p.add_argument("--limit",type=int,default=100)
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("feedback", help="Record feedback for a surfaced thought candidate")
+    p.add_argument("thought_id")
+    p.add_argument("--db",type=Path)
+    group=p.add_mutually_exclusive_group(required=True)
+    group.add_argument("--accept",action="store_true")
+    group.add_argument("--deny",action="store_true")
+    group.add_argument("--snooze")
+    group.add_argument("--kill",action="store_true")
+    group.add_argument("--acted",action="store_true")
+    group.add_argument("--already-done",action="store_true")
+    group.add_argument("--too-obvious",action="store_true")
+    group.add_argument("--good-but-later",action="store_true")
+    p.add_argument("--reason")
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("explain", help="Explain why a thought candidate surfaced")
+    p.add_argument("thought_id")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("consolidate", help="Create graph clusters and node roles for retrieval")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--iterations",type=int,default=12)
+    p.add_argument("--min-cluster-size",type=int,default=2)
+    add_labeler_args(p)
+    p.add_argument("--label-max-clusters",type=int,default=25)
+    brain=sub.add_parser("brain", help="Hermes-ready working-brain labelling and reports")
+    brain_sub=brain.add_subparsers(dest="brain_cmd", required=True)
+    p=brain_sub.add_parser("label", help="Label clusters, nodes, synapses, and relationship types through the harness")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--targets",default="cluster,node,synapse,relationship")
+    p.add_argument("--max-clusters",type=int,default=25)
+    p.add_argument("--max-nodes",type=int,default=50)
+    p.add_argument("--max-synapses",type=int,default=50)
+    p.add_argument("--max-relationships",type=int,default=25)
+    add_labeler_args(p)
+    p=brain_sub.add_parser("report", help="Summarize latest brain labels and obvious quality risks")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--limit",type=int,default=20)
+    p=sub.add_parser("promote-candidates", help="Explicitly activate candidate edges after review; default only promotes validated research candidates")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--mode",choices=["validated-only","all"],default="validated-only")
+    p.add_argument("--dry-run",action="store_true")
+    remember=sub.add_parser("remember", help="Add or remove scoped agent memory without editing vault notes")
+    remember_sub=remember.add_subparsers(dest="remember_cmd", required=True)
+    p=remember_sub.add_parser("add", help="Add a mneme:// scoped memory payload to the graph")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin")
+    p.add_argument("--dry-run",action="store_true")
+    p=remember_sub.add_parser("remove", help="Remove all graph rows for a mneme:// scoped memory source")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--source-path",required=True)
+    p.add_argument("--dry-run",action="store_true")
+    p=sub.add_parser("thought")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--out",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--hops",type=int,default=5)
+    p=sub.add_parser("explain-edge")
+    p.add_argument("edge_id")
+    p.add_argument("--db",required=True,type=Path)
+    p=sub.add_parser("weaken-edge", help="Reduce edge strength after negative feedback without killing")
+    p.add_argument("edge_id")
+    p.add_argument("--db",required=True,type=Path)
+    p.add_argument("--reason",default="User dismissed surfaced proposal")
+    p.add_argument("--factor",type=float,default=0.5)
+    p.add_argument("--floor",type=float,default=0.0)
+    harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
+    harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
+    p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
+    p.add_argument("prompt", nargs="?", help="Prompt text; omit to read from stdin")
+    p.add_argument("--provider", default="echo", help="Built-in provider name, or any label when --command is supplied")
+    p.add_argument("--command", help="Command to run; use {prompt} for argv prompts, otherwise stdin is used")
+    p.add_argument("--cwd", type=Path, help="Working directory for the provider command")
+    p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    physarum=sub.add_parser("physarum", help="Run structure-only Physarum-style graph-flow experiments")
+    physarum_sub=physarum.add_subparsers(dest="physarum_cmd", required=True)
+    p=physarum_sub.add_parser("run", help="Run a Physarum-style flow over the graph without changing edge status")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--iterations",type=int,default=80)
+    p.add_argument("--terminals",type=int,default=24)
+    p.add_argument("--paths-per-iteration",type=int,default=12)
+    p.add_argument("--decay",type=float,default=0.92)
+    p.add_argument("--reinforcement",type=float,default=1.0)
+    p.add_argument("--relation-penalty",type=float,default=1.0)
+    p.add_argument("--hub-penalty",type=float,default=0.35)
+    p.add_argument("--seed",type=int,default=13)
+    p=physarum_sub.add_parser("top", help="Show top reinforced edges from a Physarum run")
+    p.add_argument("run_id")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--limit",type=int,default=20)
+    p=sub.add_parser("run-once")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--db",type=Path)
+    p.add_argument("--out",type=Path)
+    p.add_argument("--hints")
+    p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--max-notes",type=int)
+    p.add_argument("--append",action="store_true",help="Append/update instead of rebuilding the graph; can retain stale private data")
+    p.add_argument("--follow-symlinks",action="store_true",help="Follow symlinked markdown files that resolve inside the vault")
     args=parser.parse_args(argv)
     if args.cmd == "init":
         if args.config.exists() and not args.force:
             raise SystemExit(f"config already exists: {args.config}; pass --force to overwrite")
-        print(json.dumps(create_config(args.config,args.vault,args.db,args.out,parse_hints(args.hints) if args.hints else None), indent=2, ensure_ascii=False)); return
-    if args.cmd == "setup":
-        try:
-            result = run_onboarding(args.config, force=args.force)
-        except FileExistsError as exc:
-            raise SystemExit(str(exc)) from None
-        print(result["summary"]); return
+        print(json.dumps(create_config(args.config,args.vault,args.db,args.out,parse_hints(args.hints) if args.hints else None), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "doctor":
-        print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False)); return
+        print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "ingest":
-        print(json.dumps(ingest_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False)); return
+        print(json.dumps(ingest_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "update":
-        print(json.dumps(update_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False)); return
+        print(json.dumps(update_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "write":
         content = args.content if args.content is not None else sys.stdin.read()
-        print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False)); return
+        print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "note":
         try:
             vault = path_from_config(args,"vault")
@@ -197,36 +350,39 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:
             print(json.dumps({"ok": False, "error": str(exc), "command": "note"}, indent=2, ensure_ascii=False), file=sys.stderr)
             raise SystemExit(1) from None
-        print(json.dumps(result, indent=2, ensure_ascii=False)); return
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
     if args.cmd == "resolve":
         payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
-        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False)); return
-    if args.cmd == "post-response":
-        if args.user_message and args.user_message_file:
-            raise SystemExit("provide only one of --user-message or --user-message-file")
-        if args.assistant_response and args.assistant_response_file:
-            raise SystemExit("provide only one of --assistant-response or --assistant-response-file")
-        user_message = args.user_message if args.user_message is not None else (args.user_message_file.read_text(encoding="utf-8", errors="replace") if args.user_message_file else "")
-        assistant_response = args.assistant_response if args.assistant_response is not None else (args.assistant_response_file.read_text(encoding="utf-8", errors="replace") if args.assistant_response_file else sys.stdin.read())
-        result = process_post_response(user_message, assistant_response, vault=path_from_config(args,"vault"), db=path_from_config(args,"db"), active_threshold=args.active_threshold, dry_run=args.dry_run)
-        emit(result, as_json=args.json or True); return
+        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "explain-edge":
-        print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False)); return
+        print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "weaken-edge":
-        print(json.dumps(weaken_edge(args.db, args.edge_id, reason=args.reason, factor=args.factor, floor=args.floor), indent=2, ensure_ascii=False)); return
+        print(json.dumps(weaken_edge(args.db, args.edge_id, reason=args.reason, factor=args.factor, floor=args.floor), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "candidates":
-        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False)); return
-    if args.cmd == "promote-candidates":
-        print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False)); return
+        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "debug-candidates":
+        print(json.dumps(debug_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "retrieve":
+        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "packet":
         if args.packet_cmd == "create":
             metadata = json.loads(args.metadata_json)
             if args.text is not None and args.text_path is not None:
                 raise SystemExit("provide only one of --text or --text-path")
             text = args.text if args.text is not None else (args.text_path.read_text(encoding="utf-8", errors="replace") if args.text_path else (args.raw_path.read_text(encoding="utf-8", errors="replace") if args.raw_path else sys.stdin.read()))
-            result = store_packet(packet_dir=args.packet_dir, source=args.source, kind=args.kind, raw_path=args.raw_path, text=text, metadata=metadata)
-            emit(result, as_json=args.json)
+            print(json.dumps(store_packet(packet_dir=args.packet_dir, source=args.source, kind=args.kind, raw_path=args.raw_path, text=text, metadata=metadata), indent=2, ensure_ascii=False))
             return
+    if args.cmd == "surface":
+        print(json.dumps(surface_thoughts(path_from_config(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "sense":
         if args.sense_cmd == "list":
             cfg = load_runtime_config(args.config)
@@ -239,11 +395,14 @@ def main(argv: list[str] | None = None) -> None:
             for sense_type in available_senses():
                 if sense_type not in configured_ids and not any(entry.get("type") == sense_type for entry in configured):
                     result.append({"id": sense_type, "type": sense_type, "enabled": False, "configured": False, "last_run_at": None})
-            emit(result, as_json=args.json); return
-        emit(run_sense_entries(args, sense_entries_from_args(args)), as_json=args.json); return
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return
+        print(json.dumps(run_sense_entries(args, sense_entries_from_args(args)), indent=2, ensure_ascii=False))
+        return
     if args.cmd == "tick":
         if args.sense:
-            class SenseArgs: pass
+            class SenseArgs:
+                pass
             sense_args = SenseArgs()
             sense_args.sense_type = args.sense
             sense_args.vault = None
@@ -259,49 +418,75 @@ def main(argv: list[str] | None = None) -> None:
         result = tick(path_from_config(args,"db"), hints=hints_from_args(args), limit=args.limit)
         if args.surface:
             result["surface"] = surface_thoughts(path_from_config(args,"db"), limit=1)
-        emit(result, as_json=args.json); return
-    if args.cmd == "surface":
-        emit(surface_thoughts(path_from_config(args,"db"), limit=args.limit), as_json=args.json); return
-    if args.cmd == "feedback":
-        if args.accept: feedback_type = "accept"; snooze = None
-        elif args.deny: feedback_type = "deny"; snooze = None
-        elif args.snooze: feedback_type = "snooze"; snooze = args.snooze
-        elif args.kill: feedback_type = "kill"; snooze = None
-        elif args.acted: feedback_type = "acted"; snooze = None
-        elif args.already_done: feedback_type = "already_done"; snooze = None
-        elif args.too_obvious: feedback_type = "too_obvious"; snooze = None
-        else: feedback_type = "good_but_later"; snooze = None
-        emit(record_feedback(path_from_config(args,"db"), args.thought_id, feedback_type, reason=args.reason, snooze=snooze), as_json=args.json); return
-    if args.cmd == "explain":
-        emit(explain_thought(path_from_config(args,"db"), args.thought_id), as_json=args.json); return
-    if args.cmd == "task":
-        db_path = path_from_config(args,"db")
-        try:
-            if args.task_cmd == "list":
-                result = list_thought_tasks(db_path, status=args.status)
-            elif args.task_cmd == "update":
-                result = update_thought_task(db_path, args.task_id, args.status, evidence=args.evidence)
-            elif args.task_cmd == "writeback":
-                result = record_thought_writeback(db_path, args.task_id, target=args.target, evidence=args.evidence)
-            elif args.task_cmd == "reminder":
-                result = record_thought_reminder(db_path, args.task_id, reminder_id=args.reminder_id, evidence=args.evidence)
-            elif args.task_cmd == "dismiss":
-                result = dismiss_thought_task(db_path, args.task_id, reason=args.reason)
-            else:
-                raise ValueError(f"unknown task command: {args.task_cmd}")
-        except Exception as exc:
-            print(json.dumps({"ok": False, "error": str(exc), "command": "task"}, indent=2, ensure_ascii=False), file=sys.stderr)
-            raise SystemExit(1) from None
-        print(json.dumps(result, indent=2, ensure_ascii=False)); return
-    if args.cmd == "dedup":
-        result = run_dedup(args)
-        if not result.get("ok", False):
-            raise SystemExit(1)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
+    if args.cmd == "feedback":
+        if args.accept:
+            feedback_type = "accept"; snooze = None
+        elif args.deny:
+            feedback_type = "deny"; snooze = None
+        elif args.snooze:
+            feedback_type = "snooze"; snooze = args.snooze
+        elif args.kill:
+            feedback_type = "kill"; snooze = None
+        elif args.acted:
+            feedback_type = "acted"; snooze = None
+        elif args.already_done:
+            feedback_type = "already_done"; snooze = None
+        elif args.too_obvious:
+            feedback_type = "too_obvious"; snooze = None
+        else:
+            feedback_type = "good_but_later"; snooze = None
+        print(json.dumps(record_feedback(path_from_config(args,"db"), args.thought_id, feedback_type, reason=args.reason, snooze=snooze), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "explain":
+        print(json.dumps(explain_thought(path_from_config(args,"db"), args.thought_id), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "consolidate":
+        labeler = labeler_from_args(args)
+        print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "brain":
+        db_path = path_from_config(args,"db")
+        if args.brain_cmd == "label":
+            targets = [part.strip() for part in args.targets.split(",") if part.strip()]
+            print(json.dumps(label_brain(db_path, labeler=labeler_from_args(args), targets=targets, max_clusters=args.max_clusters, max_nodes=args.max_nodes, max_synapses=args.max_synapses, max_relationships=args.max_relationships), indent=2, ensure_ascii=False))
+            return
+        if args.brain_cmd == "report":
+            print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "promote-candidates":
+        print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "remember":
+        db_path = path_from_config(args,"db")
+        if args.remember_cmd == "add":
+            payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
+            print(json.dumps(remember_graph(db_path, payload, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+        if args.remember_cmd == "remove":
+            print(json.dumps(forget_source(db_path, args.source_path, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "harness":
+        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        result = run_llm(prompt, provider=args.provider, command=args.command, cwd=args.cwd, timeout=args.timeout)
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "physarum":
+        db_path = path_from_config(args,"db")
+        if args.physarum_cmd == "run":
+            cfg = PhysarumRunConfig(iterations=args.iterations, terminals=args.terminals, paths_per_iteration=args.paths_per_iteration, decay=args.decay, reinforcement=args.reinforcement, relation_penalty=args.relation_penalty, hub_penalty=args.hub_penalty, seed=args.seed)
+            print(json.dumps(run_physarum(db_path, cfg), indent=2, ensure_ascii=False))
+            return
+        if args.physarum_cmd == "top":
+            print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False))
+            return
     db_path = path_from_config(args,"db")
     out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
     stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
-    generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops); image=render_card(generated,out_path); thought_id=save_thought(db_path,generated,str(image))
-    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"contract":generated.get("contract"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
+    generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops)
+    image=render_card(generated,out_path)
+    thought_id=save_thought(db_path,generated,str(image))
+    print(json.dumps({"id":thought_id,"stats":stats,"title":generated["title"],"insight":generated["insight"],"action":generated["action"],"why_now":generated.get("why_now"),"score":generated.get("score"),"path":[n.get("name") for n in generated["path"]],"image":str(image),"db":str(db_path)}, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__": main()

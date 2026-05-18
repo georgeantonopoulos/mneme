@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_PARTS = {".git", "__pycache__", ".pytest_cache", ".hermes-synced-skills", "dist", "build"}
+SKIP_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".hermes-synced-skills", "dist", "build"}
 SKIP_SUFFIXES = {".pyc"}
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".sqlite", ".db"}
 ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
@@ -20,7 +20,24 @@ ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
 ARTIFACT_PATTERNS = ["*.sqlite", "*.sqlite-*", "*.db", "*.pyc", "__pycache__", "thought_*.svg", "thought_*.png", "out"]
 BASE_PATTERNS = [
     ("email", re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)),
-    ("absolute_private_path", re.compile(r"(/root/|/home/[^/]+/|C:\\\\Users\\\\)", re.I)),
+    ("absolute_private_path", re.compile(r"(/Users/[^/\s`\"']+/|/root/|/home/[^/]+/|[A-Za-z]:[\\/]+Users[\\/]+)", re.I)),
+    (
+        "private_vault_reference",
+        re.compile(
+            r"\b("
+            + "|".join(
+                [
+                    "DEV" + "_Vault",
+                    "mneme_" + "dev_" + "vault",
+                    "Obs" + r"idian[/\s]",
+                    "Project" + r"\s+Memory[/\s]",
+                ]
+            )
+            + r")",
+            re.I,
+        ),
+    ),
+    ("private_temp_path", re.compile("/" + "private" + r"/tmp/[^\s`\"']+", re.I)),
     ("secret_like_assignment", re.compile(r"(api[_-]?key|secret|token|password|credential)\s*[:=]\s*[\"']?[^\"'\s]{6,}", re.I)),
     ("private_key_block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     ("common_token_prefix", re.compile(r"\b(ghp|gho|ghu|ghs|github_pat|sk-[A-Za-z0-9]|xox[baprs]-)[A-Za-z0-9_\-]{12,}", re.I)),
@@ -65,7 +82,14 @@ def scan_text() -> list[str]:
                 rel = path.relative_to(ROOT)
                 snippet = match.group(0)[:120].replace("\n", " ")
                 # Allow the scanner to describe its own generic regex categories.
-                if rel == Path("scripts/privacy_scan.py") and label in {"absolute_private_path", "secret_like_assignment", "private_key_block", "common_token_prefix"}:
+                if rel == Path("scripts/privacy_scan.py") and label in {
+                    "absolute_private_path",
+                    "private_vault_reference",
+                    "private_temp_path",
+                    "secret_like_assignment",
+                    "private_key_block",
+                    "common_token_prefix",
+                }:
                     continue
                 failures.append(f"{label}: {rel}: {snippet}")
     return failures
