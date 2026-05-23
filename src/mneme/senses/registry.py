@@ -7,18 +7,20 @@ from typing import Any
 from .gws import GwsSense
 from .hermes_sessions import HermesSessionSense
 from .markdown import MarkdownSense
+from .notion import NotionSense
 
 SENSE_TYPES = {
     "md": MarkdownSense,
     "markdown": MarkdownSense,
     "gws": GwsSense,
+    "notion": NotionSense,
     "hermes_sessions": HermesSessionSense,
     "sessions": HermesSessionSense,
 }
 
 
 def available_senses() -> list[str]:
-    return sorted({"md", "gws", "hermes_sessions"})
+    return sorted({"md", "gws", "notion", "hermes_sessions"})
 
 
 def get_sense_class(sense_type: str):
@@ -46,6 +48,12 @@ def build_sense_from_config(entry: dict[str, Any]):
             query=config.get("query"),
             calendar_window_days=int(config.get("calendar_window_days", 14)),
             task_filter=config.get("task_filter"),
+        )
+    if sense_type == "notion":
+        return NotionSense(
+            sense_id=sense_id,
+            database_id=config.get("database_id"),
+            access=config.get("token"),
         )
     if sense_type in {"hermes_sessions", "sessions"}:
         sessions_dir = config.get("path") or config.get("sessions_dir") or os.path.expanduser("~/.hermes/sessions")

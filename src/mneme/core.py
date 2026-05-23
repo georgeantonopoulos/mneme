@@ -370,6 +370,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS thoughts(id TEXT PRIMARY KEY,seed_id TEXT,path_json TEXT NOT NULL,title TEXT NOT NULL,insight TEXT NOT NULL,action TEXT,image_path TEXT,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thought_candidates(id TEXT PRIMARY KEY,seed_id TEXT,seed_observation_id TEXT,activation_score REAL DEFAULT 0,why_now_json TEXT DEFAULT '{}',suggested_action TEXT,action_type TEXT,status TEXT DEFAULT 'candidate',surfaced_count INTEGER DEFAULT 0,last_surfaced_at TEXT,cooldown_until TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS thought_feedback(id TEXT PRIMARY KEY,thought_id TEXT NOT NULL,feedback_type TEXT NOT NULL,reason TEXT,strength_delta REAL DEFAULT 0,cooldown_until TEXT,created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS meditations(id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_at TEXT,model TEXT,seed_strategy TEXT,status TEXT,final_summary TEXT,final_score REAL,surfaced_thought_id TEXT,metadata_json TEXT DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS meditation_iterations(id TEXT PRIMARY KEY,meditation_id TEXT NOT NULL,iteration_index INTEGER NOT NULL,prompt TEXT,output_json TEXT,hypothesis TEXT,supporting_evidence_json TEXT,contradicting_evidence_json TEXT,next_question TEXT,score REAL,decision TEXT,created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS hypotheses(id TEXT PRIMARY KEY,meditation_id TEXT,claim TEXT NOT NULL,entities_json TEXT,relation TEXT,confidence REAL,novelty REAL,usefulness REAL,evidence_count INTEGER,contradiction_count INTEGER,status TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS thought_fingerprints(id TEXT PRIMARY KEY,fingerprint TEXT UNIQUE,topic_entities_json TEXT,last_seen_at TEXT,surfaced_count INTEGER DEFAULT 0,dismissed_count INTEGER DEFAULT 0,accepted_count INTEGER DEFAULT 0);
     CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_id);
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
@@ -1678,6 +1682,593 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
         "edges": out_edges,
         "observations": out_observations,
     }
+
+
+def _edge_row_payload(row: sqlite3.Row) -> dict:
+    metadata = {}
+    try:
+        metadata = json.loads(row["metadata_json"] or "{}")
+    except Exception:
+        metadata = {}
+    return {
+        "id": row["id"],
+        "src": row["src_name"],
+        "dst": row["dst_name"],
+        "relation": row["relation"],
+        "status": row["status"],
+        "strength": float(row["strength"] or 0.0),
+        "confidence": float(row["confidence"] or 0.0),
+        "evidence": row["evidence_text"] or "",
+        "source_path": row["source_path"],
+        "metadata": metadata,
+    }
+
+
+MEDITATION_PLUMBING_RELATIONS = {"links_to", "has_heading", "mentions_date", "mentions_email"}
+MEDITATION_LOW_SIGNAL_TERMS = {
+    "oauth", "invalid_grant", "token", "traceback", "cron", "status board", "debug", "log", "heartbeat",
+    "index", "heading", "calendar event", "daily note", "yesterday", "tomorrow", "old blocker",
+}
+MEDITATION_HIGH_VALUE_TERMS = {
+    "school", "deadline", "lease", "rent", "tax", "move", "property", "family", "payment", "invoice",
+    "meeting", "doctor", "passport", "visa", "citizenship", "contract", "notice", "evidence", "confirmed",
+}
+MEDITATION_OPEN_LOOP_TERMS = {
+    "needs", "need to", "todo", "to do", "follow up", "waiting", "awaiting", "unresolved", "blocked",
+    "stalled", "open", "draft", "unsent", "relist", "transfer", "chase", "call", "email", "reply",
+}
+MEDITATION_RESOLVED_TERMS = {
+    "done", "resolved", "paid", "sent", "completed", "closed", "cancelled", "moot", "not urgent",
+}
+
+
+def _meditation_has_term(text: str, terms: set[str]) -> bool:
+    for term in terms:
+        if " " in term:
+            if term in text:
+                return True
+        elif re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text):
+            return True
+    return False
+
+
+def _meditation_path_penalty(source_path: str | None) -> float:
+    path = (source_path or "").lower()
+    if not path:
+        return 1.0
+    if "/memory/" in f"/{path}" or path.startswith("memory/"):
+        return 0.18
+    if "/archive/" in f"/{path}" or "daily" in path:
+        return 0.12
+    if any(part in path for part in ["logs/", "cron/", "out/", "debug", "heartbeat"]):
+        return 0.08
+    if path.startswith("projects/") or path.startswith("people/") or path.startswith("vendors/") or path.startswith("events/"):
+        return 1.35
+    return 1.0
+
+
+def _meditation_parse_date(value: str) -> dt.date | None:
+    value = value.strip()
+    formats = ["%Y-%m-%d", "%d %b %Y", "%d %B %Y", "%b %d %Y", "%B %d %Y"]
+    for fmt in formats:
+        try:
+            return dt.datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _meditation_extract_dates(text: str) -> list[dt.date]:
+    dates: list[dt.date] = []
+    current_year = dt.datetime.now(dt.timezone.utc).year
+    for match in re.finditer(r"\b(20\d{2}-\d{2}-\d{2})\b", text or ""):
+        parsed = _meditation_parse_date(match.group(1))
+        if parsed:
+            dates.append(parsed)
+    for match in re.finditer(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(20\d{2})\b", text or "", re.I):
+        day, month, year = match.groups()
+        parsed = _meditation_parse_date(f"{int(day):02d} {month[:3]} {year}")
+        if parsed:
+            dates.append(parsed)
+    for match in re.finditer(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,)?(?:\s+(20\d{2}))?\b", text or "", re.I):
+        month, day, year = match.groups()
+        parsed = _meditation_parse_date(f"{month[:3]} {int(day):02d} {year or current_year}")
+        if parsed:
+            dates.append(parsed)
+    return dates
+
+
+def _meditation_source_date(source_path: str | None) -> dt.date | None:
+    path = source_path or ""
+    match = re.search(r"(20\d{2})[-_/](\d{2})[-_/](\d{2})", path)
+    if not match:
+        return None
+    return _meditation_parse_date("-".join(match.groups()))
+
+
+def _meditation_staleness_penalty(text: str, source_path: str | None) -> float:
+    evidence = (text or "").lower()
+    dates = []
+    dates.extend(_meditation_extract_dates(text or ""))
+    source_date = _meditation_source_date(source_path or "")
+    if source_date:
+        dates.append(source_date)
+    if not dates:
+        return 1.0
+    today = dt.datetime.now(dt.timezone.utc).date()
+    newest = max(dates)
+    age = (today - newest).days
+    unresolved = _meditation_has_term(evidence, MEDITATION_OPEN_LOOP_TERMS)
+    resolved = _meditation_has_term(evidence, MEDITATION_RESOLVED_TERMS)
+    # Old resolved items should go quiet. Old unresolved/open-loop items should
+    # not be forgotten: make them dormant and revalidation-worthy rather than
+    # deleting/suppressing them entirely.
+    if age > 60:
+        return 0.02 if resolved else (0.35 if unresolved else 0.05)
+    if age > 30:
+        return 0.05 if resolved else (0.50 if unresolved else 0.12)
+    if age > 14:
+        return 0.12 if resolved else (0.70 if unresolved else 0.30)
+    if age > 7:
+        return 0.30 if resolved else (0.85 if unresolved else 0.55)
+    return 1.0
+
+
+def _meditation_seed_weight(row: sqlite3.Row) -> float:
+    evidence = (row["evidence_text"] or "").lower()
+    relation = row["relation"] or ""
+    status = row["status"] or "candidate"
+    strength = float(row["strength"] or 0.1)
+    base = max(0.05, strength + 0.2)
+    novelty = 2.0 if status == "candidate" else 1.0
+    relation_weight = 0.08 if relation in MEDITATION_PLUMBING_RELATIONS else 1.4
+    contradiction = 4.0 if any(w in evidence for w in ["contradiction", " not connected", "not related", "false", "wrong"]) else 1.0
+    high_value = 1.6 if _meditation_has_term(evidence, MEDITATION_HIGH_VALUE_TERMS) else 1.0
+    open_loop = 2.2 if _meditation_has_term(evidence, MEDITATION_OPEN_LOOP_TERMS) else 1.0
+    resolved = 0.10 if _meditation_has_term(evidence, MEDITATION_RESOLVED_TERMS) else 1.0
+    low_signal = 0.12 if _meditation_has_term(evidence, MEDITATION_LOW_SIGNAL_TERMS) else 1.0
+    source_penalty = _meditation_path_penalty(row["source_path"])
+    stale_penalty = _meditation_staleness_penalty(row["evidence_text"] or "", row["source_path"])
+    semantic_node_bonus = 1.25 if row["src_type"] in {"project", "person", "place", "event", "finance", "vendor"} or row["dst_type"] in {"project", "person", "place", "event", "finance", "vendor"} else 1.0
+    return max(0.001, base * novelty * relation_weight * contradiction * high_value * open_loop * resolved * low_signal * source_penalty * stale_penalty * semantic_node_bonus)
+
+
+def _meditation_seed_edges(conn: sqlite3.Connection, *, rng: random.Random, walks: int) -> list[sqlite3.Row]:
+    rows = conn.execute(
+        """SELECT e.*,a.name src_name,b.name dst_name,a.type src_type,b.type dst_type
+           FROM edges e JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+           WHERE e.status != 'killed' AND COALESCE(e.strength,0) >= 0
+           ORDER BY e.updated_at DESC LIMIT 1000"""
+    ).fetchall()
+    if not rows:
+        return []
+    weighted = []
+    for row in rows:
+        weight = _meditation_seed_weight(row)
+        weighted.append((row, weight))
+    chosen = []
+    pool = weighted[:]
+    for _ in range(min(max(walks, 1), len(pool))):
+        total = sum(w for _, w in pool)
+        pick = rng.random() * total
+        upto = 0.0
+        for idx, (row, weight) in enumerate(pool):
+            upto += weight
+            if upto >= pick:
+                chosen.append(row)
+                pool.pop(idx)
+                break
+    return chosen
+
+
+def _edge_meditation_signal(edge: dict) -> tuple[str, float, str]:
+    evidence = (edge.get("evidence") or "").lower()
+    metadata = edge.get("metadata") or {}
+    if metadata.get("contradicted") or any(w in evidence for w in ["contradiction", "not connected", "not related", "false", "wrong"]):
+        return "weaken", 0.84, "current connection has explicit contradictory evidence"
+    if metadata.get("validated") or any(w in evidence for w in ["explicit evidence", "confirmed", "receipt", "validated", "source-backed"]):
+        return "strengthen", 0.82, "candidate connection has explicit supporting evidence"
+    if _meditation_has_term(evidence, MEDITATION_OPEN_LOOP_TERMS):
+        return "inspect", 0.68, "old or current open loop should be revalidated and converted into a concrete next action if still unresolved"
+    return "inspect", 0.48, "interesting random walk but not enough evidence to adjust graph"
+
+
+def _extract_json_object(text: str) -> dict:
+    raw = (text or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.I).strip()
+        raw = re.sub(r"\s*```$", "", raw).strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(raw[start:end + 1])
+        raise
+
+
+def _meditation_reflection_prompt(edge: dict, *, iteration: int, previous: list[dict], deterministic_signal: tuple[str, float, str]) -> str:
+    action, score, reason = deterministic_signal
+    prior = previous[-3:]
+    return json.dumps({
+        "role": "Mneme dream/reflection engine",
+        "instruction": (
+            "Think creatively but sceptically. This is private inner monologue, not user output. "
+            "Given one graph edge, produce exactly one JSON object. Make a surprising hypothesis if warranted, "
+            "then attack it. Prefer silence over vague cleverness. Generated ideas are hypotheses, not truth."
+        ),
+        "required_json_schema": {
+            "hypothesis": "one sentence",
+            "supporting_evidence": ["quotes from supplied edge only"],
+            "contradicting_evidence": ["quotes from supplied edge only"],
+            "next_question": "what should be checked next",
+            "action": "strengthen|weaken|inspect|discard|act",
+            "confidence": "0..1",
+            "novelty": "0..1",
+            "usefulness": "0..1",
+            "surface_score": "0..1",
+            "reason": "brief explanation",
+            "action_intent": "concrete next step if action is act or inspect finds an open loop"
+        },
+        "hard_rules": [
+            "Do not invent evidence not supplied here.",
+            "If evidence is old but describes an unresolved/open loop, do not discard because of age alone: choose inspect or act and ask for live-source revalidation.",
+            "If evidence is old and also says done/resolved/sent/paid/completed, choose discard.",
+            "If evidence is stale, generic, or merely structural with no open loop, choose inspect or discard.",
+            "Choose act when the edge describes a still-open useful next step; action_intent must be concrete and source-checkable.",
+            "Choose strengthen only for explicit supporting evidence.",
+            "Choose weaken only for explicit contradictory evidence.",
+            "Surface score should be high only if useful, timely, evidence-backed, and actionable."
+        ],
+        "edge": edge,
+        "deterministic_hint": {"action": action, "score": score, "reason": reason},
+        "recent_private_iterations": prior,
+    }, ensure_ascii=False, indent=2)
+
+
+def _run_meditation_reflection(
+    edge: dict,
+    *,
+    iteration: int,
+    previous: list[dict],
+    deterministic_signal: tuple[str, float, str],
+    provider: str | None,
+    command: str | list[str] | None,
+    timeout: int,
+) -> dict | None:
+    if not provider and not command:
+        return None
+    from .harness import run_llm
+
+    prompt = _meditation_reflection_prompt(edge, iteration=iteration, previous=previous, deterministic_signal=deterministic_signal)
+    result = run_llm(prompt, provider=provider or "custom", command=command, timeout=timeout)
+    if not result.ok:
+        return {"ok": False, "error": result.error or result.stderr or f"exit {result.exit_code}", "raw": result.stdout[:2000]}
+    try:
+        payload = _extract_json_object(result.stdout)
+    except Exception as exc:
+        return {"ok": False, "error": f"invalid_json: {exc}", "raw": result.stdout[:2000]}
+    action = str(payload.get("action") or "inspect").lower().strip()
+    if action not in {"strengthen", "weaken", "inspect", "discard", "act"}:
+        action = "inspect"
+    def clamp(name: str, default: float) -> float:
+        try:
+            return max(0.0, min(1.0, float(payload.get(name, default))))
+        except Exception:
+            return default
+    return {
+        "ok": True,
+        "hypothesis": str(payload.get("hypothesis") or "").strip()[:500],
+        "supporting_evidence": [str(x)[:500] for x in (payload.get("supporting_evidence") or [])][:5],
+        "contradicting_evidence": [str(x)[:500] for x in (payload.get("contradicting_evidence") or [])][:5],
+        "next_question": str(payload.get("next_question") or "").strip()[:300],
+        "action": action,
+        "confidence": clamp("confidence", 0.4),
+        "novelty": clamp("novelty", 0.5),
+        "usefulness": clamp("usefulness", 0.4),
+        "surface_score": clamp("surface_score", 0.0),
+        "reason": str(payload.get("reason") or "").strip()[:500],
+        "action_intent": str(payload.get("action_intent") or "").strip()[:500],
+    }
+
+
+def meditate_graph(
+    db_path: Path,
+    *,
+    iterations: int = 10,
+    walks: int = 6,
+    random_seed: int | None = None,
+    model: str | None = None,
+    creative: bool = True,
+    min_surface_score: float = 0.72,
+    dry_run: bool = False,
+    reflection_provider: str | None = None,
+    reflection_command: str | list[str] | None = None,
+    reflection_timeout: int = 120,
+) -> dict:
+    """Run a slow, creative graph meditation.
+
+    This is intentionally evidence-conservative: it can strengthen supported
+    links and weaken contradicted links, but generated ideas begin as hypotheses
+    and only surface if their final score clears a high threshold. Randomized
+    seed walks are part of the contract so the system can make non-obvious
+    associations instead of always retrieving the top-ranked item.
+    """
+    rng = random.Random(random_seed)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    started = now_iso()
+    meditation_id = uuid.uuid4().hex[:20]
+    seed_strategy = {
+        "randomness": "weighted_random_walk",
+        "walks": walks,
+        "seed": random_seed,
+        "creative_instruction": "Dream: wander, associate, doubt yourself, cross-check, and keep quiet unless useful.",
+        "reflection": "llm" if (reflection_provider or reflection_command) else "deterministic_fallback",
+    }
+    seed_rows = _meditation_seed_edges(conn, rng=rng, walks=walks)
+    seed_edges = [_edge_row_payload(row) for row in seed_rows]
+    if not seed_edges:
+        conn.close()
+        return {"ok": True, "dry_run": dry_run, "decision": "silent", "reason": "empty_graph", "iterations": [], "edge_changes": [], "creative_mode": creative, "seed_strategy": seed_strategy}
+    if not dry_run:
+        conn.execute(
+            "INSERT INTO meditations(id,started_at,model,seed_strategy,status,metadata_json) VALUES(?,?,?,?,?,?)",
+            (meditation_id, started, model, json.dumps(seed_strategy, ensure_ascii=False), "running", json.dumps({"seed_edges": seed_edges}, ensure_ascii=False)),
+        )
+    iteration_outputs: list[dict] = []
+    hypotheses: list[dict] = []
+    for idx in range(1, max(iterations, 1) + 1):
+        edge = seed_edges[(idx - 1) % len(seed_edges)]
+        deterministic = _edge_meditation_signal(edge)
+        action, score, reason = deterministic
+        reflection = _run_meditation_reflection(
+            edge,
+            iteration=idx,
+            previous=iteration_outputs,
+            deterministic_signal=deterministic,
+            provider=reflection_provider,
+            command=reflection_command,
+            timeout=reflection_timeout,
+        )
+        if reflection and reflection.get("ok"):
+            action = str(reflection.get("action") or action)
+            score = float(reflection.get("surface_score", reflection.get("confidence", score)))
+            reason = str(reflection.get("reason") or reason)
+            claim = str(reflection.get("hypothesis") or f"{edge['src']} {edge['relation']} {edge['dst']} may need {action}")
+            supporting = list(reflection.get("supporting_evidence") or [])
+            contradicting = list(reflection.get("contradicting_evidence") or [])
+            next_question = str(reflection.get("next_question") or "What source evidence would falsify this?")
+            action_intent = str(reflection.get("action_intent") or "")
+        else:
+            jitter = rng.uniform(-0.04, 0.04)
+            score = max(0.0, min(1.0, score + jitter))
+            claim = f"{edge['src']} {edge['relation']} {edge['dst']} may need {action}"
+            supporting = [edge["evidence"]] if action == "strengthen" else []
+            contradicting = [edge["evidence"]] if action == "weaken" else []
+            next_question = "What would live senses or source evidence show that would falsify this?"
+            action_intent = "Revalidate this open loop against live sources, then perform or draft the smallest safe next step." if action == "inspect" and _meditation_has_term((edge.get("evidence") or "").lower(), MEDITATION_OPEN_LOOP_TERMS) else ""
+        decision = "cross_check" if action in {"strengthen", "weaken"} else ("actionable" if action == "act" else ("discard" if action == "discard" else "continue"))
+        out = {
+            "iteration": idx,
+            "edge_id": edge["id"],
+            "dream_prompt": "creative random graph walk; form a hypothesis, then attack it",
+            "reflection_used": bool(reflection and reflection.get("ok")),
+            "reflection_error": None if (not reflection or reflection.get("ok")) else reflection.get("error"),
+            "hypothesis": claim,
+            "supporting_evidence": supporting,
+            "contradicting_evidence": contradicting,
+            "score": round(score, 3),
+            "decision": decision,
+            "next_question": next_question,
+            "action_intent": action_intent,
+            "reason": reason,
+        }
+        iteration_outputs.append(out)
+        if action in {"strengthen", "weaken", "act"}:
+            hypotheses.append({"edge": edge, "action": action, "score": score, "claim": claim, "reason": reason, "action_intent": action_intent})
+        if not dry_run:
+            iter_id = hashlib.sha1(f"{meditation_id}:{idx}:{edge['id']}".encode()).hexdigest()[:20]
+            conn.execute(
+                """INSERT INTO meditation_iterations(id,meditation_id,iteration_index,prompt,output_json,hypothesis,supporting_evidence_json,contradicting_evidence_json,next_question,score,decision,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    iter_id,
+                    meditation_id,
+                    idx,
+                    out["dream_prompt"],
+                    json.dumps(out, ensure_ascii=False),
+                    claim,
+                    json.dumps(out["supporting_evidence"], ensure_ascii=False),
+                    json.dumps(out["contradicting_evidence"], ensure_ascii=False),
+                    out["next_question"],
+                    score,
+                    decision,
+                    now_iso(),
+                ),
+            )
+            hyp_id = hashlib.sha1(f"{meditation_id}:{edge['id']}:{action}".encode()).hexdigest()[:20]
+            conn.execute(
+                """INSERT OR REPLACE INTO hypotheses(id,meditation_id,claim,entities_json,relation,confidence,novelty,usefulness,evidence_count,contradiction_count,status,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    hyp_id,
+                    meditation_id,
+                    claim,
+                    json.dumps([edge["src"], edge["dst"]], ensure_ascii=False),
+                    edge["relation"],
+                    score,
+                    0.75 if creative else 0.45,
+                    score,
+                    len(out["supporting_evidence"]),
+                    len(out["contradicting_evidence"]),
+                    "cross_checked" if action in {"strengthen", "weaken"} else ("actionable" if action == "act" else "proposed"),
+                    now_iso(),
+                    now_iso(),
+                ),
+            )
+    changes = []
+    applied_edges = set()
+    for hyp in sorted(hypotheses, key=lambda h: h["score"], reverse=True):
+        edge = hyp["edge"]
+        if edge["id"] in applied_edges:
+            continue
+        applied_edges.add(edge["id"])
+        old_strength = float(edge["strength"] or 0.0)
+        if hyp["action"] == "strengthen":
+            new_strength = min(1.0, old_strength + 0.25)
+            new_status = "active" if hyp["score"] >= 0.7 else edge["status"]
+            event = "meditation_strengthened"
+        elif hyp["action"] == "act":
+            new_strength = min(1.0, old_strength + 0.10)
+            new_status = edge["status"]
+            event = "meditation_actionable"
+        else:
+            new_strength = max(0.0, old_strength * 0.35)
+            new_status = edge["status"]
+            event = "meditation_weakened"
+        changes.append({"edge_id": edge["id"], "action": hyp["action"], "old_strength": old_strength, "new_strength": new_strength, "status": new_status, "reason": hyp["reason"], "action_intent": hyp.get("action_intent", "")})
+        if not dry_run:
+            conn.execute("UPDATE edges SET strength=?, status=?, updated_at=? WHERE id=?", (new_strength, new_status, now_iso(), edge["id"]))
+            log_edge_event(conn, edge["id"], event, "meditation", {"hypothesis": hyp["claim"], "reason": hyp["reason"], "old_strength": old_strength, "new_strength": new_strength})
+    final_score = max([h["score"] for h in hypotheses], default=0.0)
+    # Action candidates from old/open evidence are useful private cognition, but
+    # they are not user-surfaceable until a live-source/action layer revalidates
+    # the loop. Meditation may propose action; it must not notify the user on old
+    # evidence alone.
+    surfaceable_scores = [h["score"] for h in hypotheses if h["action"] in {"strengthen", "weaken"}]
+    surfaceable_score = max(surfaceable_scores, default=0.0)
+    decision = "surface" if surfaceable_score >= min_surface_score else "silent"
+    summary = "Meditation adjusted graph evidence silently." if changes else "Meditation found no evidence-backed graph adjustments."
+    fingerprint = hashlib.sha1(summary.encode()).hexdigest()[:20]
+    if not dry_run:
+        conn.execute(
+            "UPDATE meditations SET completed_at=?,status=?,final_summary=?,final_score=?,metadata_json=? WHERE id=?",
+            (now_iso(), "surfaced" if decision == "surface" else "distilled", summary, final_score, json.dumps({"seed_edges": seed_edges, "edge_changes": changes}, ensure_ascii=False), meditation_id),
+        )
+        conn.execute(
+            "INSERT INTO thought_fingerprints(id,fingerprint,topic_entities_json,last_seen_at,surfaced_count) VALUES(?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET last_seen_at=excluded.last_seen_at,surfaced_count=thought_fingerprints.surfaced_count+excluded.surfaced_count",
+            (fingerprint, fingerprint, json.dumps([e["src"] for e in seed_edges], ensure_ascii=False), now_iso(), 1 if decision == "surface" else 0),
+        )
+        conn.commit()
+    else:
+        conn.rollback()
+    conn.close()
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "id": meditation_id,
+        "decision": decision,
+        "creative_mode": creative,
+        "seed_strategy": seed_strategy,
+        "seed_edges": seed_edges,
+        "iterations": iteration_outputs,
+        "hypotheses": [{"claim": h["claim"], "action": h["action"], "score": round(h["score"], 3), "action_intent": h.get("action_intent", "")} for h in hypotheses],
+        "edge_changes": changes,
+        "surface_score": round(surfaceable_score, 3),
+        "user_message": summary if decision == "surface" else "[SILENT]",
+    }
+
+
+def _sense_bridge_terms(*parts: str) -> set[str]:
+    text = " ".join(p or "" for p in parts).lower()
+    words = re.findall(r"[a-z0-9][a-z0-9_-]{2,}", text)
+    stop = {"the", "and", "for", "with", "that", "this", "from", "into", "still", "needs", "need", "follow", "update", "task", "event", "email", "calendar", "notion", "open"}
+    return {w for w in words if w not in stop}
+
+
+def _event_payload(event: Any) -> dict:
+    return {
+        "id": str(getattr(event, "id", "") or uuid.uuid4().hex),
+        "sense_id": str(getattr(event, "sense_id", "unknown")),
+        "sense_type": str(getattr(event, "sense_type", "unknown")),
+        "source_id": str(getattr(event, "source_id", "")),
+        "source_uri": getattr(event, "source_uri", None),
+        "observed_at": str(getattr(event, "observed_at", "") or now_iso()),
+        "title": str(getattr(event, "title", "") or ""),
+        "text": str(getattr(event, "text", "") or ""),
+        "event_type": str(getattr(event, "event_type", "event") or "event"),
+        "metadata": getattr(event, "metadata", None) or {},
+    }
+
+
+def _bridge_match_score(candidate_terms: set[str], event_terms: set[str]) -> float:
+    if not candidate_terms or not event_terms:
+        return 0.0
+    overlap = candidate_terms & event_terms
+    return len(overlap) / max(3, min(len(candidate_terms), 12))
+
+
+def revalidate_action_candidates(
+    db_path: Path,
+    *,
+    events: Iterable[Any] | None = None,
+    candidate_limit: int = 20,
+    min_match_score: float = 0.34,
+    dry_run: bool = False,
+) -> dict:
+    """Bridge private action candidates to live source senses.
+
+    Meditation may propose an action from old graph evidence, but it cannot
+    surface that action by itself. This bridge ingests fresh sense events
+    (Gmail/calendar/tasks/Notion/etc.), checks whether any event overlaps the
+    candidate's entities/claim/connected nodes, and writes explicit
+    ``revalidated_by`` evidence edges only for matched live source packets.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    event_payloads = [_event_payload(e) for e in (events or [])]
+    if event_payloads and not dry_run:
+        from .senses.base import SenseEvent
+        sense_events = [SenseEvent(
+            id=e["id"], sense_id=e["sense_id"], sense_type=e["sense_type"], source_id=e["source_id"], source_uri=e["source_uri"], observed_at=e["observed_at"], title=e["title"], text=e["text"], event_type=e["event_type"], metadata=e["metadata"],
+        ) for e in event_payloads]
+        ingest_sense_events(conn, sense_events)
+    candidates = conn.execute(
+        """SELECT h.* FROM hypotheses h
+           WHERE h.status='actionable'
+           ORDER BY COALESCE(h.updated_at,h.created_at) DESC LIMIT ?""",
+        (candidate_limit,),
+    ).fetchall()
+    revalidated = []
+    for hyp in candidates:
+        entities = []
+        try:
+            entities = json.loads(hyp["entities_json"] or "[]")
+        except Exception:
+            entities = []
+        connected = conn.execute(
+            """SELECT a.name src,b.name dst,e.evidence_text,e.source_path FROM edges e
+               JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+               WHERE a.name IN (%s) OR b.name IN (%s) LIMIT 20""" % (",".join("?" for _ in entities) or "''", ",".join("?" for _ in entities) or "''"),
+            tuple(entities) + tuple(entities),
+        ).fetchall() if entities else []
+        candidate_text = " ".join([str(hyp["claim"] or ""), " ".join(map(str, entities))] + [f"{r['src']} {r['dst']} {r['evidence_text']}" for r in connected])
+        c_terms = _sense_bridge_terms(candidate_text)
+        matches = []
+        for ev in event_payloads:
+            e_terms = _sense_bridge_terms(ev["title"], ev["text"], ev["event_type"], ev["source_id"])
+            score = _bridge_match_score(c_terms, e_terms)
+            if score >= min_match_score:
+                matches.append({"event": ev, "score": round(score, 3), "overlap": sorted(c_terms & e_terms)[:12]})
+        if not matches:
+            continue
+        best = sorted(matches, key=lambda m: m["score"], reverse=True)[0]
+        revalidated.append({"hypothesis_id": hyp["id"], "claim": hyp["claim"], "sense_event_id": best["event"]["id"], "sense_type": best["event"]["sense_type"], "score": best["score"], "overlap": best["overlap"]})
+        if not dry_run:
+            hyp_node = upsert_node(conn, "hypothesis", str(hyp["claim"])[:120], f"mneme://hypothesis/{hyp['id']}", confidence=float(hyp["confidence"] or 0.7), metadata={"hypothesis_id": hyp["id"], "status": hyp["status"]})
+            source_node = upsert_node(conn, "source_event", best["event"]["title"] or best["event"]["source_id"], best["event"]["source_uri"] or best["event"]["source_id"], confidence=0.9, metadata={"sense_event_id": best["event"]["id"], "sense_type": best["event"]["sense_type"], "event_type": best["event"]["event_type"]})
+            eid = upsert_edge(conn, hyp_node, source_node, "revalidated_by", best["event"]["source_uri"] or best["event"]["source_id"], best["event"]["text"], 0.92, status="active", strength=0.92, source_type="sense_bridge", metadata={"hypothesis_id": hyp["id"], "match_score": best["score"], "overlap": best["overlap"]})
+            log_edge_event(conn, eid, "sense_revalidated", "sense_bridge", {"hypothesis_id": hyp["id"], "sense_event_id": best["event"]["id"], "match_score": best["score"], "overlap": best["overlap"]})
+    if not dry_run:
+        conn.commit()
+    else:
+        conn.rollback()
+    conn.close()
+    return {"ok": True, "dry_run": dry_run, "checked_candidates": len(candidates), "events_checked": len(event_payloads), "revalidated": len(revalidated), "matches": revalidated}
 
 
 def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> dict:
