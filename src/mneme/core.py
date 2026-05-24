@@ -1072,7 +1072,7 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]{2,}", re.I)
 
 
 def _query_tokens(prompt: str) -> set[str]:
-    stop = {"about", "after", "again", "agent", "brain", "could", "from", "have", "into", "make", "need", "next", "that", "this", "what", "when", "where", "with", "work"}
+    stop = {"about", "after", "again", "agent", "brain", "could", "from", "have", "into", "make", "need", "next", "should", "surface", "that", "this", "what", "when", "where", "with", "work"}
     return {token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop}
 
 
@@ -1080,6 +1080,111 @@ def _lexical_overlap(tokens: set[str], *values: str | None) -> tuple[int, list[s
     haystack = " ".join(value or "" for value in values).lower()
     matched = sorted(token for token in tokens if token in haystack)
     return len(matched), matched
+
+
+def _rrf_score(ranks: Iterable[int | None], k: int = 60) -> float:
+    return sum(1.0 / (k + rank) for rank in ranks if rank is not None)
+
+
+def _rank_map(scores: dict[str, float]) -> dict[str, int]:
+    ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    return {item_id: index + 1 for index, (item_id, _score) in enumerate(ordered) if _score > 0}
+
+
+def _memory_frequency_by_source(conn: sqlite3.Connection) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for source_path, count in conn.execute("SELECT source_path,COUNT(*) FROM observations GROUP BY source_path"):
+        if source_path:
+            counts[str(source_path)] = counts.get(str(source_path), 0) + int(count or 0)
+    for source_path, count in conn.execute("SELECT source_path,COUNT(*) FROM edges WHERE COALESCE(status,'candidate') != 'killed' GROUP BY source_path"):
+        if source_path:
+            counts[str(source_path)] = counts.get(str(source_path), 0) + int(count or 0)
+    return counts
+
+
+def _query_seed_nodes(conn: sqlite3.Connection, tokens: set[str], limit: int = 24) -> set[str]:
+    if not tokens:
+        return set()
+    seeds: set[str] = set()
+    rows = conn.execute("SELECT id,name,source_path FROM nodes ORDER BY updated_at DESC LIMIT 1000").fetchall()
+    for node_id, name, source_path in rows:
+        overlap, _matched = _lexical_overlap(tokens, name, source_path)
+        if overlap:
+            seeds.add(node_id)
+        if len(seeds) >= limit:
+            break
+    return seeds
+
+
+def _graph_distance_scores(conn: sqlite3.Connection, seed_nodes: set[str], max_hops: int = 2) -> dict[str, float]:
+    if not seed_nodes:
+        return {}
+    scores: dict[str, float] = {node_id: 1.0 for node_id in seed_nodes}
+    frontier = set(seed_nodes)
+    seen = set(seed_nodes)
+    for depth in range(1, max_hops + 1):
+        placeholders = ",".join("?" for _ in frontier)
+        if not placeholders:
+            break
+        rows = conn.execute(
+            f"""SELECT id,src_id,dst_id,status,strength,confidence
+                FROM edges
+                WHERE COALESCE(status,'candidate') != 'killed'
+                  AND (src_id IN ({placeholders}) OR dst_id IN ({placeholders}))""",
+            tuple(frontier) + tuple(frontier),
+        ).fetchall()
+        next_frontier: set[str] = set()
+        for edge_id, src_id, dst_id, status, strength, confidence in rows:
+            status_factor = 1.0 if status == "active" else 0.55
+            edge_score = (float(strength or 0) + float(confidence or 0)) * status_factor / depth
+            scores[edge_id] = max(scores.get(edge_id, 0.0), edge_score)
+            for node_id in (src_id, dst_id):
+                scores[node_id] = max(scores.get(node_id, 0.0), edge_score * 0.85)
+                if node_id not in seen:
+                    seen.add(node_id)
+                    next_frontier.add(node_id)
+        frontier = next_frontier
+    return scores
+
+
+def _retrieval_signals(
+    item_id: str,
+    *,
+    lexical_score: float,
+    graph_score: float,
+    memory_score: float,
+    lexical_ranks: dict[str, int],
+    graph_ranks: dict[str, int],
+    memory_ranks: dict[str, int],
+) -> dict:
+    ranks = {
+        "lexical": lexical_ranks.get(item_id),
+        "graph": graph_ranks.get(item_id),
+        "memory": memory_ranks.get(item_id),
+    }
+    return {
+        "method": "hybrid_memory_graph_rrf",
+        "rrf": round(_rrf_score(ranks.values()), 5),
+        "ranks": ranks,
+        "scores": {
+            "lexical": round(lexical_score, 3),
+            "graph": round(graph_score, 3),
+            "memory": round(memory_score, 3),
+        },
+    }
+
+
+def _memory_boost(memory_score: float, *, overlap: int, graph_score: float, has_context_signal: bool) -> float:
+    if overlap <= 0 and graph_score <= 0 and not has_context_signal:
+        return 0.0
+    return min(1.2, memory_score * 0.08)
+
+
+def _hybrid_rrf_boost(hybrid: dict, *, overlap: int, graph_score: float, has_context_signal: bool) -> float:
+    ranks = (hybrid.get("ranks") or {}).copy()
+    if overlap <= 0 and graph_score <= 0 and not has_context_signal:
+        ranks["memory"] = None
+    return _rrf_score(ranks.values()) * 25.0
 
 
 def _edge_truth_policy(status: str | None, relation: str) -> str:
@@ -1118,6 +1223,22 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
            WHERE COALESCE(e.status,'candidate') != 'killed'
            ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
     ).fetchall()
+    memory_counts = _memory_frequency_by_source(conn)
+    query_seed_nodes = _query_seed_nodes(conn, tokens)
+    graph_scores = _graph_distance_scores(conn, query_seed_nodes)
+    lexical_scores: dict[str, float] = {}
+    memory_scores: dict[str, float] = {}
+    for obs_id, _note_id, _kind, text, source_path, _base_score, _created_at, note_name, _note_type, _updated_at in observation_rows:
+        overlap, _matched = _lexical_overlap(tokens, text, source_path, note_name)
+        lexical_scores[obs_id] = float(overlap)
+        memory_scores[obs_id] = float(memory_counts.get(source_path or "", 0))
+    for edge_id, relation, _status, _confidence, _strength, _source_type, source_path, evidence_text, _src_id, _src_type, src_name, _src_path, _dst_id, _dst_type, dst_name, _dst_path in edge_rows:
+        overlap, _matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
+        lexical_scores[edge_id] = float(overlap)
+        memory_scores[edge_id] = float(memory_counts.get(source_path or "", 0))
+    lexical_ranks = _rank_map(lexical_scores)
+    graph_ranks = _rank_map(graph_scores)
+    memory_ranks = _rank_map(memory_scores)
     cluster_context = retrieval_cluster_matches(conn, prompt, limit=5)
     node_boosts = cluster_context.get("node_boosts", {})
     brain_context = brain_label_matches(conn, prompt, limit=16)
@@ -1151,6 +1272,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     skipped: list[dict] = []
     for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at in observation_rows:
         overlap, matched = _lexical_overlap(tokens, text, source_path, note_name)
+        memory_score = memory_scores.get(obs_id, 0.0)
+        graph_score = graph_scores.get(note_id, 0.0)
         breakdown = score_observation_candidate(
             kind=kind,
             text=text,
@@ -1162,14 +1285,26 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             observation_created_at=created_at,
             node_updated_at=updated_at,
         )
-        score = breakdown.total + (overlap * 3.0)
+        hybrid = _retrieval_signals(
+            obs_id,
+            lexical_score=float(overlap),
+            graph_score=graph_score,
+            memory_score=memory_score,
+            lexical_ranks=lexical_ranks,
+            graph_ranks=graph_ranks,
+            memory_ranks=memory_ranks,
+        )
         cluster = node_boosts.get(note_id) or cluster_for_text(note_name, source_path, text)
+        obs_brain = brain_match(("node", note_id))
+        has_context_signal = bool(cluster or obs_brain)
+        score = breakdown.total + (overlap * 3.0) + min(4.0, graph_score * 1.5) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if cluster:
             score += min(5.0, float(cluster.get("cluster_score", 0)) * 0.2)
-        obs_brain = brain_match(("node", note_id))
         if obs_brain:
             score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
-        include_by_score = score >= 8
+        score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
+        source_quality_score = float((breakdown.source_quality or {}).get("score") or 0.0)
+        include_by_score = score >= 8 and (overlap > 0 or has_context_signal or (source_quality_score == 0 and breakdown.total >= 12))
         if overlap < min_overlap and not include_by_score and not obs_brain:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
             continue
@@ -1184,6 +1319,12 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "status": "active_evidence",
             "truth_policy": "source_contained_observation",
             "score_breakdown": breakdown.to_dict(),
+            "retrieval_signals": hybrid,
+            "memory": {
+                "source_path": source_path,
+                "mentions": int(memory_score),
+                "kind": "source_memory",
+            },
             "path": _path_from_observation(conn, note_id, text, hops=3),
         }
         if cluster:
@@ -1201,7 +1342,19 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             continue
         overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
         edge_brain = brain_match(("synapse", edge_id), ("node", src_id), ("node", dst_id), ("relationship", relation))
-        if overlap < min_overlap and not edge_brain:
+        graph_score = graph_scores.get(edge_id, 0.0)
+        memory_score = memory_scores.get(edge_id, 0.0)
+        hybrid = _retrieval_signals(
+            edge_id,
+            lexical_score=float(overlap),
+            graph_score=graph_score,
+            memory_score=memory_score,
+            lexical_ranks=lexical_ranks,
+            graph_ranks=graph_ranks,
+            memory_ranks=memory_ranks,
+        )
+        include_by_graph = graph_score >= 0.5 or hybrid["rrf"] >= 0.02
+        if overlap < min_overlap and not edge_brain and not include_by_graph:
             skipped.append({
                 "kind": "edge",
                 "id": edge_id,
@@ -1216,12 +1369,14 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         rel = relationship_type(relation)
         policy = _edge_truth_policy(status, relation)
         base = (float(confidence or 0) + float(strength or 0)) * 2.0
-        score = base + overlap * 3.0
         edge_cluster = node_boosts.get(src_id) or node_boosts.get(dst_id)
+        has_context_signal = bool(edge_cluster or edge_brain)
+        score = base + overlap * 3.0 + min(4.0, graph_score * 1.5) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if edge_cluster:
             score += min(4.0, float(edge_cluster.get("cluster_score", 0)) * 0.15)
         if edge_brain:
             score += min(4.0, float(edge_brain.get("score", 0)) * 0.3)
+        score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if status != "active":
             score -= 2.0
         if rel.get("category") in {"reference", "structure", "extraction"}:
@@ -1239,6 +1394,12 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "status": status,
             "truth_policy": policy,
             "source_type": source_type,
+            "retrieval_signals": hybrid,
+            "memory": {
+                "source_path": source_path,
+                "mentions": int(memory_score),
+                "kind": "source_memory",
+            },
             "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
             "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
         })
@@ -1268,6 +1429,12 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         "tokens": sorted(tokens),
         "clusters": cluster_context.get("clusters", []),
         "brain_labels": brain_context.get("matches", []),
+        "retrieval": {
+            "method": "hybrid_memory_graph_rrf",
+            "signals": ["lexical", "graph", "memory"],
+            "memory_term": "memory",
+            "query_seed_nodes": sorted(query_seed_nodes),
+        },
         "items": selected,
         "skipped": skipped[:50],
         "stats": {
