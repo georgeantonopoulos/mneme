@@ -842,6 +842,56 @@ def test_retrieve_uses_graph_and_memory_signals_with_mneme_language(tmp_path: Pa
     assert retrieved[edge]["memory"]["kind"] == "source_memory"
 
 
+def test_retrieve_lexical_lane_finds_low_base_score_memory(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    noisy = upsert_node(conn, "note", "Noisy Urgent Note", "Noise.md")
+    target = upsert_node(conn, "note", "Agent Brain Retrieval", "Mneme.md")
+    for index in range(30):
+        conn.execute(
+            "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+            (f"noise-{index}", noisy, "risk", f"Urgent unrelated deadline {index}", "Noise.md", 9.0, "2026-05-18T00:00:00"),
+        )
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("target-retrieval", target, "fact", "Retrieval should use graph memory ranking for agent brain context.", "Mneme.md", 1.0, "2026-05-18T00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "agent brain retrieval", max_items=5)
+
+    assert any(item["id"] == "target-retrieval" for item in result["items"])
+    target_item = next(item for item in result["items"] if item["id"] == "target-retrieval")
+    assert target_item["matched_terms"] == ["brain", "retrieval"]
+
+
+def test_retrieve_diversifies_repeated_source_memories(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    crowded = upsert_node(conn, "note", "Crowded Retrieval Memory", "Crowded.md")
+    nearby = upsert_node(conn, "note", "Nearby Retrieval Memory", "Nearby.md")
+    for index in range(5):
+        conn.execute(
+            "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+            (f"crowded-{index}", crowded, "fact", f"Retrieval graph memory ranking crowded detail {index}.", "Crowded.md", 9.0 - index * 0.1, "2026-05-18T00:00:00"),
+        )
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("nearby-0", nearby, "fact", "Retrieval graph memory ranking nearby detail.", "Nearby.md", 7.0, "2026-05-18T00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "retrieval graph ranking", max_items=3)
+    source_paths = [item["source_path"] for item in result["items"]]
+
+    assert source_paths.count("Crowded.md") == 2
+    assert "Nearby.md" in source_paths
+
+
 def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)

@@ -1076,7 +1076,7 @@ TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]{2,}", re.I)
 
 
 def _query_tokens(prompt: str) -> set[str]:
-    stop = {"about", "after", "again", "agent", "brain", "could", "from", "have", "into", "make", "need", "next", "should", "surface", "that", "this", "what", "when", "where", "with", "work"}
+    stop = {"about", "after", "again", "agent", "could", "from", "have", "into", "make", "memory", "need", "next", "should", "surface", "that", "this", "what", "when", "where", "with", "work"}
     return {token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop}
 
 
@@ -1084,6 +1084,28 @@ def _lexical_overlap(tokens: set[str], *values: str | None) -> tuple[int, list[s
     haystack = " ".join(value or "" for value in values).lower()
     matched = sorted(token for token in tokens if token in haystack)
     return len(matched), matched
+
+
+def _merge_rows_by_id(*row_sets: Iterable[tuple]) -> list[tuple]:
+    merged: dict[str, tuple] = {}
+    for rows in row_sets:
+        for row in rows:
+            if row and row[0] not in merged:
+                merged[row[0]] = row
+    return list(merged.values())
+
+
+def _like_clause(tokens: set[str], columns: list[str]) -> tuple[str, list[str]]:
+    if not tokens:
+        return "0", []
+    clauses: list[str] = []
+    params: list[str] = []
+    for token in sorted(tokens):
+        pattern = f"%{token.lower()}%"
+        for column in columns:
+            clauses.append(f"lower(COALESCE({column},'')) LIKE ?")
+            params.append(pattern)
+    return " OR ".join(clauses), params
 
 
 def _rrf_score(ranks: Iterable[int | None], k: int = 60) -> float:
@@ -1109,15 +1131,12 @@ def _memory_frequency_by_source(conn: sqlite3.Connection) -> dict[str, int]:
 def _query_seed_nodes(conn: sqlite3.Connection, tokens: set[str], limit: int = 24) -> set[str]:
     if not tokens:
         return set()
-    seeds: set[str] = set()
-    rows = conn.execute("SELECT id,name,source_path FROM nodes ORDER BY updated_at DESC LIMIT 1000").fetchall()
-    for node_id, name, source_path in rows:
-        overlap, _matched = _lexical_overlap(tokens, name, source_path)
-        if overlap:
-            seeds.add(node_id)
-        if len(seeds) >= limit:
-            break
-    return seeds
+    where, params = _like_clause(tokens, ["name", "source_path"])
+    rows = conn.execute(
+        f"SELECT id,name,source_path FROM nodes WHERE {where} ORDER BY updated_at DESC,name LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return {row[0] for row in rows}
 
 
 def _graph_distance_scores(conn: sqlite3.Connection, seed_nodes: set[str], max_hops: int = 2) -> dict[str, float]:
@@ -1191,6 +1210,42 @@ def _hybrid_rrf_boost(hybrid: dict, *, overlap: int, graph_score: float, has_con
     return _rrf_score(ranks.values()) * 25.0
 
 
+def _select_retrieval_items(items: list[dict], *, budget: int, max_items: int, skipped: list[dict], per_source_limit: int = 2) -> tuple[list[dict], int]:
+    selected: list[dict] = []
+    selected_ids: set[str] = set()
+    source_counts: dict[str, int] = {}
+    used = 0
+
+    def try_add(item: dict, *, enforce_source_limit: bool) -> bool:
+        nonlocal used
+        item_id = str(item.get("id") or "")
+        if item_id in selected_ids:
+            return False
+        source_path = item.get("source_path") or ""
+        if enforce_source_limit and source_counts.get(source_path, 0) >= per_source_limit:
+            return False
+        cost = len(item.get("snippet") or "") + len(item.get("title") or "")
+        if selected and (used + cost) > budget:
+            skipped.append({"kind": item["kind"], "id": item["id"], "source_path": item.get("source_path"), "skip_reasons": ["budget limit"], "score": item.get("score")})
+            return False
+        selected.append(item)
+        selected_ids.add(item_id)
+        source_counts[source_path] = source_counts.get(source_path, 0) + 1
+        used += cost
+        return True
+
+    for item in items:
+        try_add(item, enforce_source_limit=True)
+        if len(selected) >= max_items:
+            return selected, used
+
+    for item in items:
+        try_add(item, enforce_source_limit=False)
+        if len(selected) >= max_items:
+            break
+    return selected, used
+
+
 def _edge_truth_policy(status: str | None, relation: str) -> str:
     rel = relationship_type(relation)
     status = status or "candidate"
@@ -1212,12 +1267,21 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         tokens = _query_tokens(" ".join(hints))
     min_overlap = 2 if len(tokens) >= 3 else 1
     conn = sqlite3.connect(db_path)
-    observation_rows = conn.execute(
+    base_observation_rows = conn.execute(
         """SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
            FROM observations o JOIN nodes n ON n.id=o.note_id
            ORDER BY o.score DESC,o.created_at DESC LIMIT 500"""
     ).fetchall()
-    edge_rows = conn.execute(
+    obs_where, obs_params = _like_clause(tokens, ["o.text", "o.source_path", "n.name"])
+    lexical_observation_rows = conn.execute(
+        f"""SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
+            FROM observations o JOIN nodes n ON n.id=o.note_id
+            WHERE {obs_where}
+            ORDER BY o.score DESC,o.created_at DESC LIMIT 700""",
+        obs_params,
+    ).fetchall()
+    observation_rows = _merge_rows_by_id(lexical_observation_rows, base_observation_rows)
+    base_edge_rows = conn.execute(
         """SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
                   s.id,s.type,s.name,s.source_path,
                   d.id,d.type,d.name,d.source_path
@@ -1227,6 +1291,20 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
            WHERE COALESCE(e.status,'candidate') != 'killed'
            ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
     ).fetchall()
+    edge_where, edge_params = _like_clause(tokens, ["e.relation", "e.evidence_text", "e.source_path", "s.name", "d.name"])
+    lexical_edge_rows = conn.execute(
+        f"""SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
+                  s.id,s.type,s.name,s.source_path,
+                  d.id,d.type,d.name,d.source_path
+            FROM edges e
+            JOIN nodes s ON s.id=e.src_id
+            JOIN nodes d ON d.id=e.dst_id
+            WHERE COALESCE(e.status,'candidate') != 'killed'
+              AND ({edge_where})
+            ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 900""",
+        edge_params,
+    ).fetchall()
+    edge_rows = _merge_rows_by_id(lexical_edge_rows, base_edge_rows)
     memory_counts = _memory_frequency_by_source(conn)
     query_seed_nodes = _query_seed_nodes(conn, tokens)
     graph_scores = _graph_distance_scores(conn, query_seed_nodes)
@@ -1243,6 +1321,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     lexical_ranks = _rank_map(lexical_scores)
     graph_ranks = _rank_map(graph_scores)
     memory_ranks = _rank_map(memory_scores)
+    has_direct_lexical_matches = any(score > 0 for score in lexical_scores.values())
     cluster_context = retrieval_cluster_matches(conn, prompt, limit=5)
     node_boosts = cluster_context.get("node_boosts", {})
     brain_context = brain_label_matches(conn, prompt, limit=16)
@@ -1308,7 +1387,11 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
         score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         source_quality_score = float((breakdown.source_quality or {}).get("score") or 0.0)
-        include_by_score = score >= 8 and (overlap > 0 or has_context_signal or (source_quality_score == 0 and breakdown.total >= 12))
+        include_by_score = score >= 8 and (
+            overlap > 0
+            or has_context_signal
+            or (not has_direct_lexical_matches and source_quality_score == 0 and breakdown.total >= 12)
+        )
         if overlap < min_overlap and not include_by_score and not obs_brain:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
             continue
@@ -1414,17 +1497,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
 
     conn.close()
     items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
-    selected: list[dict] = []
-    used = 0
-    for item in items:
-        cost = len(item.get("snippet") or "") + len(item.get("title") or "")
-        if selected and (used + cost) > budget:
-            skipped.append({"kind": item["kind"], "id": item["id"], "source_path": item.get("source_path"), "skip_reasons": ["budget limit"], "score": item.get("score")})
-            continue
-        selected.append(item)
-        used += cost
-        if len(selected) >= max_items:
-            break
+    selected, used = _select_retrieval_items(items, budget=budget, max_items=max_items, skipped=skipped)
     return {
         "prompt": prompt,
         "budget": budget,
