@@ -807,6 +807,41 @@ def test_retrieve_uses_consolidated_cluster_context(tmp_path: Path):
     assert any(item.get("cluster") for item in result["items"])
 
 
+def test_retrieve_uses_graph_and_memory_signals_with_mneme_language(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    supplier = upsert_node(conn, "project", "Supplier", "Launch.md")
+    owner = upsert_node(conn, "person", "Mara", "Launch.md")
+    edge = upsert_edge(
+        conn,
+        supplier,
+        owner,
+        "delegates_to",
+        "Launch.md",
+        "Mara handles readiness.",
+        0.86,
+        status="active",
+        strength=0.84,
+    )
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        ("obs-readiness", owner, "fact", "Mara handles readiness.", "Launch.md", 3.0, "2026-05-18T00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "supplier launch", max_items=5)
+    retrieved = {item["id"]: item for item in result["items"]}
+
+    assert edge in retrieved
+    assert result["retrieval"]["method"] == "hybrid_memory_graph_rrf"
+    assert result["retrieval"]["signals"] == ["lexical", "graph", "memory"]
+    assert result["retrieval"]["memory_term"] == "memory"
+    assert retrieved[edge]["retrieval_signals"]["scores"]["graph"] > 0
+    assert retrieved[edge]["memory"]["kind"] == "source_memory"
+
+
 def test_consolidate_can_label_clusters_through_harness_provider(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
