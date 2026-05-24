@@ -5,7 +5,7 @@ from pathlib import Path
 from . import md_edit
 from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, record_feedback, remember_graph, retrieve_context, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
@@ -35,6 +35,8 @@ def sense_entries_from_args(args) -> list[dict]:
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
     if args.sense_type == "hermes_sessions":
         return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": os.path.expanduser("~/.hermes/sessions"), "limit": args.limit}}]
+    if args.sense_type == "notion":
+        return [{"id": "notion", "type": "notion", "enabled": True, "config": {"database_id": args.database_id, "token": args.token}}]
     cfg = load_runtime_config(getattr(args, "config", None) or DEFAULT_CONFIG_PATH)
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
 
@@ -195,7 +197,7 @@ def main(argv: list[str] | None = None) -> None:
     p=sense_sub.add_parser("list", help="List configured and available senses")
     p.add_argument("--json",action="store_true")
     p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events")
-    p.add_argument("sense_type", choices=["md","gws","hermes_sessions","all"])
+    p.add_argument("sense_type", choices=["md","gws","notion","hermes_sessions","all"])
     p.add_argument("--vault",type=Path)
     p.add_argument("--db",type=Path)
     p.add_argument("--hints")
@@ -205,12 +207,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--calendar",action=argparse.BooleanOptionalAction,default=True)
     p.add_argument("--tasks",action=argparse.BooleanOptionalAction,default=True)
     p.add_argument("--query")
+    p.add_argument("--database-id", help="Notion database id for the notion sense")
+    p.add_argument("--token", help="Notion API token for the notion sense; prefer NOTION_TOKEN env/config to avoid shell-history exposure")
     p.add_argument("--dry-run",action="store_true")
     p.add_argument("--json",action="store_true")
     p=sub.add_parser("tick", help="Run the cognition pulse and update thought candidates")
     p.add_argument("--db",type=Path)
     p.add_argument("--hints")
-    p.add_argument("--sense",choices=["all","md","gws","hermes_sessions"])
+    p.add_argument("--sense",choices=["all","md","gws","notion","hermes_sessions"])
     p.add_argument("--surface",action="store_true")
     p.add_argument("--limit",type=int,default=100)
     p.add_argument("--json",action="store_true")
@@ -279,6 +283,33 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--reason",default="User dismissed surfaced proposal")
     p.add_argument("--factor",type=float,default=0.5)
     p.add_argument("--floor",type=float,default=0.0)
+    p=sub.add_parser("forget", help="Mneme's version of forgetting — set edge weights to 0 for past-dated observations without deleting")
+    p.add_argument("--db",required=True,type=Path)
+    p.add_argument("--days-threshold",type=int,default=30,help="Forget observations with dates older than this many days (default: 30)")
+    p.add_argument("--dry-run",action="store_true",help="Show what would be forgotten without applying changes")
+    p.add_argument("--json",action="store_true")
+    p=sub.add_parser("meditate", help="Run a creative dreaming pass over random graph walks; mostly silent unless useful")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--iterations",type=int,default=10)
+    p.add_argument("--walks",type=int,default=6)
+    p.add_argument("--random-seed",type=int)
+    p.add_argument("--model")
+    p.add_argument("--reflection-provider",help="Provider label for LLM reflection; omit for deterministic fallback")
+    p.add_argument("--reflection-command",help="Custom reflection command. Prompt is sent on stdin unless {prompt} appears")
+    p.add_argument("--reflection-timeout",type=int,default=120)
+    p.add_argument("--min-surface-score",type=float,default=0.72)
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--json",action="store_true")
+    bridge=sub.add_parser("bridge", help="Bridge private action candidates to live senses before surfacing")
+    bridge_sub=bridge.add_subparsers(dest="bridge_cmd", required=True)
+    p=bridge_sub.add_parser("revalidate", help="Use current sense packets to revalidate meditation action candidates")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--sense",choices=["all","gws","notion","md","hermes_sessions"],default="all")
+    p.add_argument("--limit",type=int,default=25)
+    p.add_argument("--candidate-limit",type=int,default=20)
+    p.add_argument("--min-match-score",type=float,default=0.34)
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--json",action="store_true")
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -362,6 +393,44 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "weaken-edge":
         print(json.dumps(weaken_edge(args.db, args.edge_id, reason=args.reason, factor=args.factor, floor=args.floor), indent=2, ensure_ascii=False))
         return
+    if args.cmd == "forget":
+        print(json.dumps(forget_past_dates(args.db, days_threshold=args.days_threshold, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "meditate":
+        result = meditate_graph(path_from_config(args,"db"), iterations=args.iterations, walks=args.walks, random_seed=args.random_seed, model=args.model, creative=True, min_surface_score=args.min_surface_score, dry_run=args.dry_run, reflection_provider=args.reflection_provider, reflection_command=args.reflection_command, reflection_timeout=args.reflection_timeout)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(result.get("user_message") or "[SILENT]")
+        return
+    if args.cmd == "bridge":
+        if args.bridge_cmd == "revalidate":
+            class SenseArgs:
+                pass
+            sense_args = SenseArgs()
+            sense_args.sense_type = args.sense
+            sense_args.vault = None
+            sense_args.db = args.db
+            sense_args.config = args.config
+            sense_args.hints = None
+            sense_args.limit = args.limit
+            sense_args.follow_symlinks = False
+            sense_args.email = sense_args.calendar = sense_args.tasks = True
+            sense_args.query = None
+            sense_args.database_id = None
+            sense_args.token = None
+            sense_args.dry_run = True
+            entries = sense_entries_from_args(sense_args)
+            events = []
+            for entry in entries:
+                sense = build_sense_from_config(entry)
+                events.extend(list(sense.collect(limit=args.limit)))
+            result = revalidate_action_candidates(path_from_config(args,"db"), events=events, candidate_limit=args.candidate_limit, min_match_score=args.min_match_score, dry_run=args.dry_run)
+            if args.json:
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                print("[SILENT]" if result.get("revalidated", 0) == 0 else json.dumps(result, ensure_ascii=False))
+            return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
         return

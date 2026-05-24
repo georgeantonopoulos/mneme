@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from mneme.brain import brain_label_matches, brain_report, label_brain
-from mneme.core import activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import _meditation_seed_weight, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, meditate_graph, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
 from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
 from mneme.retrieval.scoring import freshness_breakdown, score_observation_candidate, source_quality_breakdown
@@ -90,6 +90,214 @@ def test_promote_candidates_is_explicit_and_dry_run_safe(tmp_path: Path):
     assert before == "candidate"
     assert live["activated"] == 1
     assert after == "active"
+
+
+def test_meditation_seed_weight_downranks_stale_daily_note_plumbing(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    old_note = upsert_node(conn, "note", "2026-04-01", "memory/2026-04-01.md")
+    index = upsert_node(conn, "note", "Index", "memory/2026-04-01.md")
+    project = upsert_node(conn, "project", "Current Project", "Projects/current-project.md")
+    school = upsert_node(conn, "project", "Milestone Transition", "Projects/current-project.md")
+    stale = upsert_edge(conn, old_note, index, "mentions_date", "memory/2026-04-01.md", "Old daily note deadline Apr 1 old blocker index", 0.9, status="active", strength=0.9)
+    useful = upsert_edge(conn, project, school, "relates_to", "Projects/current-project.md", "explicit evidence: confirmed milestone transition deadline has source-backed next action", 0.9, status="candidate", strength=0.4)
+    conn.commit()
+    rows = {r["id"]: r for r in conn.execute("""SELECT e.*,a.name src_name,b.name dst_name,a.type src_type,b.type dst_type
+        FROM edges e JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+        WHERE e.id IN (?,?)""", (stale, useful)).fetchall()}
+    stale_weight = _meditation_seed_weight(rows[stale])
+    useful_weight = _meditation_seed_weight(rows[useful])
+    conn.close()
+
+    assert useful_weight > stale_weight * 100
+
+
+def test_meditate_prefers_semantic_seed_over_graph_plumbing_when_both_available(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    old_note = upsert_node(conn, "note", "2026-04-01", "memory/2026-04-01.md")
+    index = upsert_node(conn, "note", "Index", "memory/2026-04-01.md")
+    project = upsert_node(conn, "project", "Current Project", "Projects/current-project.md")
+    school = upsert_node(conn, "project", "Milestone Transition", "Projects/current-project.md")
+    upsert_edge(conn, old_note, index, "mentions_date", "memory/2026-04-01.md", "Old daily note deadline Apr 1 old blocker index", 0.9, status="active", strength=0.9)
+    useful = upsert_edge(conn, project, school, "relates_to", "Projects/current-project.md", "explicit evidence: confirmed milestone transition deadline has source-backed next action", 0.9, status="candidate", strength=0.4)
+    conn.commit()
+    conn.close()
+
+    result = meditate_graph(db, iterations=3, walks=1, random_seed=3, min_surface_score=0.99)
+
+    assert result["seed_edges"][0]["id"] == useful
+    assert result["edge_changes"]
+
+
+def test_meditation_keeps_old_open_loop_actionable_instead_of_forgetting(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    car = upsert_node(conn, "project", "Subscription migration", "Projects/subscription-migration.md")
+    marketplace = upsert_node(conn, "vendor", "ServiceProvider", "Vendors/service-provider.md")
+    old_open = upsert_edge(
+        conn,
+        car,
+        marketplace,
+        "needs_action",
+        "Projects/subscription-migration.md",
+        "2026-02-01 Need to reopen subscription migration; waiting for provider follow up; draft unsent",
+        0.8,
+        status="active",
+        strength=0.7,
+    )
+    old_done = upsert_edge(
+        conn,
+        car,
+        marketplace,
+        "needs_action",
+        "Projects/subscription-migration.md",
+        "2026-02-01 Subscription migration completed and resolved",
+        0.8,
+        status="active",
+        strength=0.7,
+    )
+    conn.commit()
+    rows = {r["id"]: r for r in conn.execute("""SELECT e.*,a.name src_name,b.name dst_name,a.type src_type,b.type dst_type
+        FROM edges e JOIN nodes a ON a.id=e.src_id JOIN nodes b ON b.id=e.dst_id
+        WHERE e.id IN (?,?)""", (old_open, old_done)).fetchall()}
+    open_weight = _meditation_seed_weight(rows[old_open])
+    done_weight = _meditation_seed_weight(rows[old_done])
+    conn.close()
+
+    assert open_weight > done_weight * 20
+    assert open_weight > 0.1
+
+
+def test_meditate_reflection_can_turn_old_open_loop_into_action_intent(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    car = upsert_node(conn, "project", "Subscription migration", "Projects/subscription-migration.md")
+    marketplace = upsert_node(conn, "vendor", "ServiceProvider", "Vendors/service-provider.md")
+    edge = upsert_edge(
+        conn,
+        car,
+        marketplace,
+        "needs_action",
+        "Projects/subscription-migration.md",
+        "2026-02-01 Need to reopen subscription migration; waiting for provider follow up; draft unsent",
+        0.8,
+        status="active",
+        strength=0.7,
+    )
+    conn.commit()
+    conn.close()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'hypothesis':'The subscription-migration loop may still be open despite old evidence','supporting_evidence':['Need to reopen subscription migration; waiting for provider follow up; draft unsent'],'contradicting_evidence':[],'next_question':'Check newest email/project note before acting','action':'act','action_intent':'Check current provider status, then draft or submit the next migration step if still open','confidence':0.86,'novelty':0.55,'usefulness':0.9,'surface_score':0.82,'reason':'Old but explicitly unresolved and actionable'}))",
+    ]
+
+    result = meditate_graph(db, iterations=1, walks=1, random_seed=1, min_surface_score=0.72, reflection_provider="custom", reflection_command=command)
+
+    assert result["iterations"][0]["decision"] == "actionable"
+    assert result["hypotheses"][0]["action"] == "act"
+    assert "draft or submit" in result["hypotheses"][0]["action_intent"]
+    assert result["edge_changes"][0]["action"] == "act"
+    assert result["edge_changes"][0]["edge_id"] == edge
+    # Act proposals from old evidence are private action candidates until a live-source layer revalidates them.
+    assert result["decision"] == "silent"
+    assert result["user_message"] == "[SILENT]"
+
+
+def test_meditate_uses_llm_reflection_for_private_inner_loop(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    alpha = upsert_node(conn, "project", "Alpha", "alpha.md")
+    beta = upsert_node(conn, "project", "Beta", "beta.md")
+    edge = upsert_edge(conn, alpha, beta, "relates_to", "mneme://test/reflection", "Alpha/Beta ambiguous evidence", 0.7, status="candidate", strength=0.4)
+    conn.commit()
+    conn.close()
+
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; sys.stdin.read(); print(json.dumps({'hypothesis':'Alpha and Beta may hide a useful planning bridge','supporting_evidence':['Alpha/Beta ambiguous evidence'],'contradicting_evidence':[],'next_question':'Check live source before surfacing','action':'strengthen','confidence':0.91,'novelty':0.8,'usefulness':0.86,'surface_score':0.81,'reason':'reflection judged it useful and source-backed'}))",
+    ]
+    result = meditate_graph(db, iterations=2, walks=1, random_seed=2, min_surface_score=0.99, reflection_provider="custom", reflection_command=command)
+
+    assert result["seed_strategy"]["reflection"] == "llm"
+    assert all(item["reflection_used"] for item in result["iterations"])
+    assert result["hypotheses"][0]["claim"] == "Alpha and Beta may hide a useful planning bridge"
+    assert result["edge_changes"][0]["action"] == "strengthen"
+
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT status,strength FROM edges WHERE id=?", (edge,)).fetchone()
+    conn.close()
+    assert row[0] == "active"
+    assert row[1] > 0.4
+
+
+def test_meditate_records_random_dream_iterations_and_strengthens_or_weakens_edges(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    alpha = upsert_node(conn, "project", "Alpha Project", "alpha.md")
+    beta = upsert_node(conn, "project", "Beta Project", "beta.md")
+    gamma = upsert_node(conn, "project", "Gamma Project", "gamma.md")
+    good = upsert_edge(conn, alpha, beta, "relates_to", "mneme://test/evidence", "explicit evidence: Alpha supports Beta", 0.9, status="candidate", strength=0.4)
+    bad = upsert_edge(conn, alpha, gamma, "relates_to", "mneme://test/contradiction", "contradiction: Alpha is not connected to Gamma", 0.9, status="active", strength=0.8)
+    conn.commit()
+    conn.close()
+
+    result = meditate_graph(db, iterations=10, random_seed=7, creative=True, min_surface_score=0.99)
+
+    assert result["ok"] is True
+    assert result["decision"] == "silent"
+    assert result["creative_mode"] is True
+    assert result["seed_strategy"]["randomness"] == "weighted_random_walk"
+    assert len(result["iterations"]) == 10
+    assert {change["action"] for change in result["edge_changes"]} == {"strengthen", "weaken"}
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    good_row = conn.execute("SELECT status,strength FROM edges WHERE id=?", (good,)).fetchone()
+    bad_row = conn.execute("SELECT status,strength FROM edges WHERE id=?", (bad,)).fetchone()
+    meditation_count = conn.execute("SELECT count(*) FROM meditations").fetchone()[0]
+    iteration_count = conn.execute("SELECT count(*) FROM meditation_iterations").fetchone()[0]
+    hypothesis_count = conn.execute("SELECT count(*) FROM hypotheses").fetchone()[0]
+    conn.close()
+
+    assert good_row["status"] == "active"
+    assert good_row["strength"] > 0.4
+    assert bad_row["strength"] < 0.8
+    assert meditation_count == 1
+    assert iteration_count == 10
+    assert hypothesis_count >= 2
+
+
+def test_meditate_dry_run_does_not_change_edge_weights(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    alpha = upsert_node(conn, "project", "Alpha", "alpha.md")
+    gamma = upsert_node(conn, "project", "Gamma", "gamma.md")
+    bad = upsert_edge(conn, alpha, gamma, "relates_to", "mneme://test/contradiction", "contradiction: Alpha is not connected to Gamma", 0.9, status="active", strength=0.8)
+    conn.commit()
+    conn.close()
+
+    result = meditate_graph(db, iterations=3, random_seed=1, dry_run=True)
+
+    conn = sqlite3.connect(db)
+    strength = conn.execute("SELECT strength FROM edges WHERE id=?", (bad,)).fetchone()[0]
+    iteration_count = conn.execute("SELECT count(*) FROM meditation_iterations").fetchone()[0]
+    conn.close()
+
+    assert result["dry_run"] is True
+    assert strength == 0.8
+    assert iteration_count == 0
 
 
 def test_rebuild_preserves_durable_active_edges_and_killed_tombstones(tmp_path: Path):
@@ -1231,3 +1439,65 @@ def test_render_basename_is_sanitized_and_svg_fallback(tmp_path: Path, monkeypat
     assert "Reasoning" in svg
     assert "Next" in svg
     assert "Possible next move" not in svg
+
+
+def test_sense_bridge_revalidates_action_candidate_from_email_event(tmp_path: Path):
+    from mneme.senses.base import SenseEvent
+    from mneme.core import revalidate_action_candidates
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    project = upsert_node(conn, "project", "Subscription Migration", "Projects/subscription.md")
+    provider = upsert_node(conn, "vendor", "ProviderCo", "Projects/subscription.md")
+    edge = upsert_edge(conn, project, provider, "relates_to", "Projects/subscription.md", "needs reopen migration follow up", 0.8, status="candidate", strength=0.5)
+    conn.execute("""INSERT INTO hypotheses(id,meditation_id,claim,entities_json,relation,confidence,novelty,usefulness,evidence_count,contradiction_count,status,created_at,updated_at)
+                  VALUES('h1','m1','Subscription migration still needs reopening',?,?,?,?,?,?,?,?,?,?)""",
+                 (json.dumps(["Subscription Migration", "ProviderCo"]), "relates_to", 0.88, 0.7, 0.9, 1, 0, "actionable", "2026-05-18T00:00:00Z", "2026-05-18T00:00:00Z"))
+    conn.commit(); conn.close()
+
+    events = [SenseEvent(id="email1", sense_id="gws", sense_type="gws", source_id="email:abc", source_uri="gmail://abc", observed_at="2026-05-18T12:00:00Z", title="Subscription migration update", text="ProviderCo says the migration is still pending and needs reopen follow up", event_type="email_message")]
+    result = revalidate_action_candidates(db, events=events, dry_run=False)
+
+    assert result["checked_candidates"] == 1
+    assert result["revalidated"] == 1
+    conn = sqlite3.connect(db); conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT relation, source_type, status, strength FROM edges WHERE source_type='sense_bridge'").fetchall()
+    conn.close()
+    assert any(r["relation"] == "revalidated_by" and r["status"] == "active" and r["strength"] >= 0.9 for r in rows)
+
+
+def test_sense_bridge_does_not_revalidate_without_matching_live_source(tmp_path: Path):
+    from mneme.senses.base import SenseEvent
+    from mneme.core import revalidate_action_candidates
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    a = upsert_node(conn, "project", "Subscription Migration", "Projects/subscription.md")
+    b = upsert_node(conn, "vendor", "ProviderCo", "Projects/subscription.md")
+    upsert_edge(conn, a, b, "relates_to", "Projects/subscription.md", "needs reopen migration follow up", 0.8, status="candidate", strength=0.5)
+    conn.execute("""INSERT INTO hypotheses(id,meditation_id,claim,entities_json,relation,confidence,novelty,usefulness,evidence_count,contradiction_count,status,created_at,updated_at)
+                  VALUES('h2','m1','Subscription migration still needs reopening',?,?,?,?,?,?,?,?,?,?)""",
+                 (json.dumps(["Subscription Migration", "ProviderCo"]), "relates_to", 0.88, 0.7, 0.9, 1, 0, "actionable", "2026-05-18T00:00:00Z", "2026-05-18T00:00:00Z"))
+    conn.commit(); conn.close()
+
+    events = [SenseEvent(id="cal1", sense_id="gws", sense_type="gws", source_id="calendar:abc", source_uri="calendar://abc", observed_at="2026-05-18T12:00:00Z", title="Dentist", text="Dental appointment tomorrow", event_type="calendar_event")]
+    result = revalidate_action_candidates(db, events=events, dry_run=False)
+    assert result["checked_candidates"] == 1
+    assert result["revalidated"] == 0
+
+
+def test_notion_sense_collects_database_rows_from_runner():
+    from mneme.senses.notion import NotionSense
+    class Runner:
+        def run(self, args):
+            return json.dumps({"results": [{"id": "pg1", "url": "https://notion.test/pg1", "last_edited_time": "2026-05-18T12:00:00Z", "properties": {"Name": {"title": [{"plain_text": "Migration task"}]}, "Status": {"status": {"name": "Open"}}}}]})
+    sense = NotionSense(database_id="db123", access="dummy-value", runner=Runner())
+    dry_run_header = sense.dry_run(limit=1)["commands"][0][6]
+    assert dry_run_header == "Authorization: Bearer ***"
+    events = list(sense.collect(limit=1))
+    assert len(events) == 1
+    assert events[0].sense_type == "notion"
+    assert events[0].event_type == "notion_page"
+    assert "Migration task" in events[0].text
+    assert "Open" in events[0].text
+    assert events[0].metadata == {"notion_page_id": "pg1", "last_edited_time": "2026-05-18T12:00:00Z"}
