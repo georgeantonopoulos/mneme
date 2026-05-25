@@ -118,8 +118,8 @@ def _load_graph(conn: sqlite3.Connection, nodes: dict[str, dict], cfg: PhysarumR
 def _node_weight(node: dict, degree: int) -> float:
     weight = math.log1p(degree)
     if node["type"] == "observation":
-        kind = (node.get("metadata") or {}).get("kind")
-        weight += {"blocked": 4.0, "risk": 3.5, "fact": 1.5, "done": 0.5}.get(kind, 1.0)
+        kind: str | None = (node.get("metadata") or {}).get("kind")
+        weight += {"blocked": 4.0, "risk": 3.5, "fact": 1.5, "done": 0.5}.get(kind or "", 1.0)
     elif node["type"] == "note":
         weight += 2.0
     elif node["type"] == "wikilink":

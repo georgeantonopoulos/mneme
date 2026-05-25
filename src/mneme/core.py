@@ -688,8 +688,9 @@ def write_research_edges(conn: sqlite3.Connection, note_path: str, payload: dict
 def write_research_resolution(vault: Path, db_path: Path, payload: dict | str, active_threshold: float = 0.9) -> dict:
     if isinstance(payload, str):
         payload = json.loads(payload)
+    assert isinstance(payload, dict)
     date = payload.get("date") or dt.datetime.now(dt.timezone.utc).date().isoformat()
-    note_path = payload.get("note_path") or f"Sources/{date}_{slugify(payload.get('slug') or payload.get('title'))}-resolution.md"
+    note_path = payload.get("note_path") or f"Sources/{date}_{slugify(payload.get('slug') or payload.get('title') or '')}-resolution.md"
     content = research_note_content(payload)
     written = write_note(vault, note_path, content, mode="overwrite")
 
@@ -1850,6 +1851,7 @@ def explain_thought(db_path: Path, thought_id: str) -> dict:
 def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False) -> dict:
     if isinstance(payload, str):
         payload = json.loads(payload)
+    assert isinstance(payload, dict)
     source_path = str(payload.get("source_path") or "").strip()
     if not source_path:
         raise ValueError("remember payload requires source_path")
