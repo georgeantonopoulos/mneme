@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse, json, os, sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from . import md_edit
 from .agent import agent_preflight
@@ -17,12 +18,39 @@ from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
 
 
+@dataclass
+class SenseArgs:
+    sense_type: str = "all"
+    vault: Path | None = None
+    db: Path | None = None
+    config: Path | None = None
+    hints: str | None = None
+    limit: int | None = None
+    follow_symlinks: bool = False
+    email: bool = True
+    calendar: bool = True
+    tasks: bool = True
+    query: str | None = None
+    database_id: str | None = None
+    token: str | None = None
+    dry_run: bool = False
+
+
 def parse_hints(value: str | None):
     return DEFAULT_HINTS if not value else [p.strip() for p in value.split(",") if p.strip()]
 
 
 def path_from_config(args, name: str, required: bool = True) -> Path | None:
-    return resolve_path(args, name, required=required)
+    result = resolve_path(args, name, required=required)
+    if required:
+        assert result is not None  # resolve_path raises SystemExit when required and None
+    return result
+
+
+def required_path(args, name: str) -> Path:
+    result = resolve_path(args, name, required=True)
+    assert result is not None  # resolve_path raises SystemExit when required and None
+    return result
 
 
 def hints_from_args(args):
@@ -31,7 +59,7 @@ def hints_from_args(args):
 
 def sense_entries_from_args(args) -> list[dict]:
     if args.sense_type == "md":
-        vault = args.vault or path_from_config(args, "vault")
+        vault = args.vault or required_path(args, "vault")
         return [{"id": "vault", "type": "md", "enabled": True, "config": {"path": str(vault), "follow_symlinks": args.follow_symlinks}}]
     if args.sense_type == "gws":
         return [{"id": "gws", "type": "gws", "enabled": True, "config": {"email": args.email, "calendar": args.calendar, "tasks": args.tasks, "query": args.query}}]
@@ -46,8 +74,12 @@ def sense_entries_from_args(args) -> list[dict]:
 def run_sense_entries(args, entries: list[dict]) -> dict:
     import sqlite3
 
-    db_path = path_from_config(args, "db", required=not args.dry_run)
-    conn = None if args.dry_run else sqlite3.connect(db_path)
+    if args.dry_run:
+        db_path: Path | None = None
+        conn = None
+    else:
+        db_path = required_path(args, "db")
+        conn = sqlite3.connect(db_path)
     all_stats = {"events": 0, "nodes": 0, "observations": 0, "edges": 0, "by_sense": {}, "by_event_type": {}, "dry_run": bool(args.dry_run), "db": str(db_path) if db_path else None}
     for entry in entries:
         sense = build_sense_from_config(entry)
@@ -57,6 +89,7 @@ def run_sense_entries(args, entries: list[dict]) -> dict:
             else:
                 all_stats["by_sense"][sense.sense_id] = {"sense_id": sense.sense_id, "sense_type": sense.sense_type, "would_collect": True}
             continue
+        assert conn is not None  # dry_run continues above, so conn is always valid here
         stats = ingest_sense_events(conn, sense.collect(limit=args.limit), hints=hints_from_args(args))
         for key in ("events", "nodes", "observations", "edges"):
             all_stats[key] += stats[key]
@@ -369,18 +402,18 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(doctor(args.config), indent=2, ensure_ascii=False))
         return
     if args.cmd == "ingest":
-        print(json.dumps(ingest_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        print(json.dumps(ingest_vault(required_path(args,"vault"),required_path(args,"db"),hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
         return
     if args.cmd == "update":
-        print(json.dumps(update_vault(path_from_config(args,"vault"),path_from_config(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
+        print(json.dumps(update_vault(required_path(args,"vault"),required_path(args,"db"),hints_from_args(args),args.max_notes,follow_symlinks=args.follow_symlinks), indent=2, ensure_ascii=False))
         return
     if args.cmd == "write":
         content = args.content if args.content is not None else sys.stdin.read()
-        print(json.dumps(write_note(path_from_config(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False))
+        print(json.dumps(write_note(required_path(args,"vault"),args.path,content,mode=args.mode), indent=2, ensure_ascii=False))
         return
     if args.cmd == "note":
         try:
-            vault = path_from_config(args,"vault")
+            vault = required_path(args,"vault")
             if args.note_cmd == "read":
                 result = md_edit.read_note(vault,args.path,heading=args.heading,force=args.force)
             elif args.note_cmd == "write":
@@ -401,7 +434,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "resolve":
         payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
-        print(json.dumps(write_research_resolution(path_from_config(args,"vault"),path_from_config(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False))
+        print(json.dumps(write_research_resolution(required_path(args,"vault"),required_path(args,"db"),payload,active_threshold=args.active_threshold), indent=2, ensure_ascii=False))
         return
     if args.cmd == "explain-edge":
         print(json.dumps(explain_edge(args.db,args.edge_id), indent=2, ensure_ascii=False))
@@ -413,7 +446,7 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(forget_past_dates(args.db, days_threshold=args.days_threshold, dry_run=args.dry_run), indent=2, ensure_ascii=False))
         return
     if args.cmd == "meditate":
-        result = meditate_graph(path_from_config(args,"db"), iterations=args.iterations, walks=args.walks, random_seed=args.random_seed, model=args.model, creative=True, min_surface_score=args.min_surface_score, dry_run=args.dry_run, reflection_provider=args.reflection_provider, reflection_command=args.reflection_command, reflection_timeout=args.reflection_timeout)
+        result = meditate_graph(required_path(args,"db"), iterations=args.iterations, walks=args.walks, random_seed=args.random_seed, model=args.model, creative=True, min_surface_score=args.min_surface_score, dry_run=args.dry_run, reflection_provider=args.reflection_provider, reflection_command=args.reflection_command, reflection_timeout=args.reflection_timeout)
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
@@ -421,41 +454,42 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "bridge":
         if args.bridge_cmd == "revalidate":
-            class SenseArgs:
-                pass
-            sense_args = SenseArgs()
-            sense_args.sense_type = args.sense
-            sense_args.vault = None
-            sense_args.db = args.db
-            sense_args.config = args.config
-            sense_args.hints = None
-            sense_args.limit = args.limit
-            sense_args.follow_symlinks = False
-            sense_args.email = sense_args.calendar = sense_args.tasks = True
-            sense_args.query = None
-            sense_args.database_id = None
-            sense_args.token = None
-            sense_args.dry_run = True
+            sense_args = SenseArgs(
+                sense_type=args.sense,
+                vault=None,
+                db=args.db,
+                config=args.config,
+                hints=None,
+                limit=args.limit,
+                follow_symlinks=False,
+                email=True,
+                calendar=True,
+                tasks=True,
+                query=None,
+                database_id=None,
+                token=None,
+                dry_run=True,
+            )
             entries = sense_entries_from_args(sense_args)
             events = []
             for entry in entries:
                 sense = build_sense_from_config(entry)
                 events.extend(list(sense.collect(limit=args.limit)))
-            result = revalidate_action_candidates(path_from_config(args,"db"), events=events, candidate_limit=args.candidate_limit, min_match_score=args.min_match_score, dry_run=args.dry_run)
+            result = revalidate_action_candidates(required_path(args,"db"), events=events, candidate_limit=args.candidate_limit, min_match_score=args.min_match_score, dry_run=args.dry_run)
             if args.json:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             else:
                 print("[SILENT]" if result.get("revalidated", 0) == 0 else json.dumps(result, ensure_ascii=False))
             return
     if args.cmd == "candidates":
-        print(json.dumps(list_thought_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
+        print(json.dumps(list_thought_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
         return
     if args.cmd == "debug-candidates":
-        print(json.dumps(debug_candidates(path_from_config(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
+        print(json.dumps(debug_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
         return
     if args.cmd == "retrieve":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        print(json.dumps(retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
         return
     if args.cmd == "contract":
         if args.contract_cmd == "check":
@@ -489,7 +523,7 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(store_packet(packet_dir=args.packet_dir, source=args.source, kind=args.kind, raw_path=args.raw_path, text=text, metadata=metadata), indent=2, ensure_ascii=False))
             return
     if args.cmd == "surface":
-        print(json.dumps(surface_thoughts(path_from_config(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        print(json.dumps(surface_thoughts(required_path(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
         return
     if args.cmd == "sense":
         if args.sense_cmd == "list":
@@ -509,23 +543,26 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "tick":
         if args.sense:
-            class SenseArgs:
-                pass
-            sense_args = SenseArgs()
-            sense_args.sense_type = args.sense
-            sense_args.vault = None
-            sense_args.db = args.db
-            sense_args.config = args.config
-            sense_args.hints = args.hints
-            sense_args.limit = args.limit
-            sense_args.follow_symlinks = False
-            sense_args.email = sense_args.calendar = sense_args.tasks = True
-            sense_args.query = None
-            sense_args.dry_run = False
+            sense_args = SenseArgs(
+                sense_type=args.sense,
+                vault=None,
+                db=args.db,
+                config=args.config,
+                hints=args.hints,
+                limit=args.limit,
+                follow_symlinks=False,
+                email=True,
+                calendar=True,
+                tasks=True,
+                query=None,
+                database_id=None,
+                token=None,
+                dry_run=False,
+            )
             run_sense_entries(sense_args, sense_entries_from_args(sense_args))
-        result = tick(path_from_config(args,"db"), hints=hints_from_args(args), limit=args.limit)
+        result = tick(required_path(args,"db"), hints=hints_from_args(args), limit=args.limit)
         if args.surface:
-            result["surface"] = surface_thoughts(path_from_config(args,"db"), limit=1)
+            result["surface"] = surface_thoughts(required_path(args,"db"), limit=1)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     if args.cmd == "feedback":
@@ -545,17 +582,17 @@ def main(argv: list[str] | None = None) -> None:
             feedback_type = "too_obvious"; snooze = None
         else:
             feedback_type = "good_but_later"; snooze = None
-        print(json.dumps(record_feedback(path_from_config(args,"db"), args.thought_id, feedback_type, reason=args.reason, snooze=snooze), indent=2, ensure_ascii=False))
+        print(json.dumps(record_feedback(required_path(args,"db"), args.thought_id, feedback_type, reason=args.reason, snooze=snooze), indent=2, ensure_ascii=False))
         return
     if args.cmd == "explain":
-        print(json.dumps(explain_thought(path_from_config(args,"db"), args.thought_id), indent=2, ensure_ascii=False))
+        print(json.dumps(explain_thought(required_path(args,"db"), args.thought_id), indent=2, ensure_ascii=False))
         return
     if args.cmd == "consolidate":
         labeler = labeler_from_args(args)
-        print(json.dumps(consolidate_graph(path_from_config(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False))
+        print(json.dumps(consolidate_graph(required_path(args,"db"), iterations=args.iterations, min_cluster_size=args.min_cluster_size, labeler=labeler), indent=2, ensure_ascii=False))
         return
     if args.cmd == "brain":
-        db_path = path_from_config(args,"db")
+        db_path = required_path(args,"db")
         if args.brain_cmd == "label":
             targets = [part.strip() for part in args.targets.split(",") if part.strip()]
             print(json.dumps(label_brain(db_path, labeler=labeler_from_args(args), targets=targets, max_clusters=args.max_clusters, max_nodes=args.max_nodes, max_synapses=args.max_synapses, max_relationships=args.max_relationships), indent=2, ensure_ascii=False))
@@ -564,10 +601,10 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(brain_report(db_path, limit=args.limit), indent=2, ensure_ascii=False))
             return
     if args.cmd == "promote-candidates":
-        print(json.dumps(activate_candidate_edges(path_from_config(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+        print(json.dumps(activate_candidate_edges(required_path(args,"db"), mode=args.mode, dry_run=args.dry_run), indent=2, ensure_ascii=False))
         return
     if args.cmd == "remember":
-        db_path = path_from_config(args,"db")
+        db_path = required_path(args,"db")
         if args.remember_cmd == "add":
             payload = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
             print(json.dumps(remember_graph(db_path, payload, dry_run=args.dry_run), indent=2, ensure_ascii=False))
@@ -581,7 +618,7 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
         return
     if args.cmd == "physarum":
-        db_path = path_from_config(args,"db")
+        db_path = required_path(args,"db")
         if args.physarum_cmd == "run":
             cfg = PhysarumRunConfig(iterations=args.iterations, terminals=args.terminals, paths_per_iteration=args.paths_per_iteration, decay=args.decay, reinforcement=args.reinforcement, relation_penalty=args.relation_penalty, hub_penalty=args.hub_penalty, seed=args.seed)
             print(json.dumps(run_physarum(db_path, cfg), indent=2, ensure_ascii=False))
@@ -589,9 +626,9 @@ def main(argv: list[str] | None = None) -> None:
         if args.physarum_cmd == "top":
             print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False))
             return
-    db_path = path_from_config(args,"db")
-    out_path = path_from_config(args,"out", required=args.cmd in {"thought", "run-once"})
-    stats = ingest_vault(path_from_config(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
+    db_path = required_path(args,"db")
+    out_path = required_path(args,"out")
+    stats = ingest_vault(required_path(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
     generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops)
     image=render_card(generated,out_path)
     thought_id=save_thought(db_path,generated,str(image))

@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 from uuid import uuid4
 
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
@@ -128,7 +128,8 @@ def _llm_label_cluster(cluster_id: str, size: int, labels: list[str], summary: d
         timeout=config.timeout,
     )
     parsed = _json_from_text(result.stdout) if result.ok else {}
-    llm_labels = parsed.get("labels") if isinstance(parsed.get("labels"), list) else []
+    _ll = parsed.get("labels")
+    llm_labels: list[Any] = _ll if isinstance(_ll, list) else []
     clean_labels = []
     for label in llm_labels:
         text = str(label).strip().lower()

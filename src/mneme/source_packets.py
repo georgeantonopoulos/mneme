@@ -99,9 +99,10 @@ def store_packet(
     raw_dir.mkdir(parents=True, exist_ok=True)
     packet_id = packet_id or uuid.uuid4().hex
     if raw_bytes is None:
-        raw_bytes = Path(raw_path).read_bytes()
+        assert raw_path is not None
+        raw_bytes = raw_path.read_bytes()
     raw_sha = sha256_bytes(raw_bytes)
-    suffix = Path(raw_path).suffix if raw_path else ".txt"
+    suffix = raw_path.suffix if raw_path else ".txt"
     stored_raw = raw_dir / f"{packet_id}{suffix or '.bin'}"
     if raw_path and Path(raw_path).resolve() != stored_raw.resolve():
         shutil.copyfile(raw_path, stored_raw)

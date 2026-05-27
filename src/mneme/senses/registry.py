@@ -31,8 +31,8 @@ def get_sense_class(sense_type: str):
 
 
 def build_sense_from_config(entry: dict[str, Any]):
-    sense_type = entry.get("type") or entry.get("sense_type")
-    sense_id = entry.get("id") or sense_type
+    sense_type = str(entry.get("type") or entry.get("sense_type") or "")
+    sense_id = str(entry.get("id") or sense_type)
     config = dict(entry.get("config") or {})
     if sense_type in {"md", "markdown"}:
         path = config.get("path") or config.get("vault") or entry.get("vault")
