@@ -652,7 +652,8 @@ def test_candidates_expose_shared_score_breakdown_for_thoughts(tmp_path: Path):
 
     assert candidate["score_breakdown"]["factors"]
     assert candidate["score_breakdown"]["freshness"]["basis"] == "explicit_date"
-    assert thought["score"] == candidate["score"]
+    assert thought["surface"]["truth_policy"] == "source_contained_observation"
+    assert thought["score"] >= candidate["score"]
     assert "Waiting for owner" in thought["evidence"][0]
 
 
@@ -1417,7 +1418,7 @@ def test_thought_walk_prefers_semantic_edge_over_date_index_plumbing(tmp_path: P
     useful = upsert_node(conn, "project", "Useful Project", source)
     upsert_edge(conn, seed, date, "links_to", source, "[[2026-04-18]]", 0.99)
     upsert_edge(conn, date, index, "links_to", source, "[[index]]", 0.99)
-    upsert_edge(conn, seed, useful, "relates_to", source, "Alpha relates to Useful Project", 0.8)
+    upsert_edge(conn, seed, useful, "relates_to", source, "Alpha relates to Useful Project", 0.8, metadata={"validated": True})
     conn.commit()
     conn.close()
 
@@ -1440,7 +1441,7 @@ def test_candidate_paths_skip_low_value_wikilink_index_when_better_step_exists(t
     project = upsert_node(conn, "project", "Owner Plan", source)
     upsert_edge(conn, note, obs, "has_blocked", source, "Waiting for owner by 2026-05-01", 0.95)
     upsert_edge(conn, note, index, "links_to", source, "[[index]]", 0.99)
-    upsert_edge(conn, note, project, "relates_to", source, "Owner Plan", 0.8)
+    upsert_edge(conn, note, project, "relates_to", source, "Owner Plan", 0.8, metadata={"validated": True})
     conn.execute(
         "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
         ("obs1", note, "blocked", "Waiting for owner by 2026-05-01", source, 5, "now"),

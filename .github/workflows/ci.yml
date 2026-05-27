@@ -30,5 +30,8 @@ jobs:
       - name: Run smoke test
         run: mneme run-once --vault ./examples/vault --db /tmp/mneme_smoke.sqlite --out /tmp/mneme_smoke_out
 
+      - name: Run contract check
+        run: mneme contract check --db /tmp/mneme_smoke.sqlite
+
       - name: Run privacy scan
         run: python scripts/privacy_scan.py

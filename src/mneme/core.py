@@ -13,6 +13,11 @@ from typing import Any, Iterable
 
 from .brain import brain_label_matches
 from .consolidate import retrieval_cluster_matches
+from .contract import (
+    deterministic_ingest_status as contract_deterministic_ingest_status,
+    enforce_edge_write,
+    truth_policy_for_edge,
+)
 from .retrieval import score_observation_candidate
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -438,17 +443,8 @@ def log_edge_event(conn, edge_id: str, event: str, actor: str, thinking: dict) -
 
 
 def deterministic_ingest_status(relation: str) -> str:
-    """Default status for deterministic vault parsing.
-
-    Keep source-contained observations active because they are provenance edges, but
-    leave navigation/extraction links as candidates until an explicit validation or
-    promotion pass chooses them. This keeps the active graph selective instead of
-    turning every parsed link into a surfaced connection.
-    """
-    rel = relationship_type(relation)
-    if rel.get("category") == "observation":
-        return "active"
-    return "candidate"
+    """Default status for deterministic vault parsing."""
+    return contract_deterministic_ingest_status(relation)
 
 
 def extract_observations(text: str, hints: list[str] | None = None) -> list[tuple[str, str, float]]:
@@ -486,14 +482,47 @@ def extract_observations(text: str, hints: list[str] | None = None) -> list[tupl
 
 def upsert_edge(conn, src, dst, relation, source_path, evidence="", confidence=1.0, status="active", strength=None, source_type="vault", metadata=None):
     eid = hashlib.sha1(f"{src}:{relation}:{dst}:{source_path}:{evidence[:80]}".encode()).hexdigest()[:20]; ts = now_iso()
+    metadata = dict(metadata or {})
+    decision = enforce_edge_write(
+        relation=relation,
+        requested_status=status,
+        evidence_text=evidence,
+        confidence=float(confidence or 0.0),
+        source_type=source_type,
+        metadata=metadata,
+        requested_strength=strength,
+    )
+    if decision.status != "killed":
+        tombstone = conn.execute(
+            "SELECT id FROM edges WHERE src_id=? AND dst_id=? AND relation=? AND status='killed' LIMIT 1",
+            (src, dst, relation),
+        ).fetchone()
+        if tombstone:
+            log_edge_event(
+                conn,
+                tombstone[0],
+                "blocked_recreation",
+                "contract",
+                {
+                    "attempted_edge_id": eid,
+                    "source_path": source_path,
+                    "evidence_text": evidence[:500] if evidence else "",
+                    "requested_status": status,
+                    "contract": decision.contract_payload,
+                },
+            )
+            return tombstone[0]
+    status = decision.status
+    strength = decision.strength
+    metadata["contract"] = decision.contract_payload
     inserted = conn.execute("SELECT 1 FROM edges WHERE id=?", (eid,)).fetchone() is None
-    if strength is None:
-        strength = confidence
     conn.execute("""INSERT INTO edges(id,src_id,dst_id,relation,source_path,confidence,evidence_text,created_at,updated_at,status,strength,source_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at, confidence=max(edges.confidence, excluded.confidence), strength=max(edges.strength, excluded.strength), status=excluded.status, source_type=excluded.source_type, metadata_json=excluded.metadata_json""",
     (eid, src, dst, relation, source_path, confidence, evidence[:500], ts, ts, status, strength, source_type, json.dumps(metadata or {}, ensure_ascii=False)))
     if inserted:
         log_edge_event(conn, eid, "created", "ingest", edge_creation_thinking(relation, source_path, evidence, confidence))
+    if decision.reasons and decision.status != "killed":
+        log_edge_event(conn, eid, "contract_enforced", "contract", decision.contract_payload)
     return eid
 
 
@@ -803,13 +832,43 @@ def activate_candidate_edges(db_path: Path, mode: str = "validated-only", dry_ru
     else:
         conn.close()
         raise ValueError("mode must be 'validated-only' or 'all'")
-    total = conn.execute(f"SELECT count(*) FROM edges WHERE {where}").fetchone()[0]
+    rows = conn.execute(
+        f"SELECT id,relation,evidence_text,confidence,strength,source_type,metadata_json FROM edges WHERE {where}"
+    ).fetchall()
+    total = len(rows)
     if not dry_run:
-        conn.execute(f"UPDATE edges SET status='active', updated_at=? WHERE {where}", (now_iso(),))
+        activated = 0
+        for edge_id, relation, evidence, confidence, current_strength, source_type, metadata_json in rows:
+            try:
+                metadata = json.loads(metadata_json or "{}")
+            except json.JSONDecodeError:
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            decision = enforce_edge_write(
+                relation=relation,
+                requested_status="active",
+                evidence_text=evidence,
+                confidence=float(confidence or 0.0),
+                source_type=source_type or "vault",
+                metadata=metadata,
+                requested_strength=current_strength,
+            )
+            metadata["contract"] = decision.contract_payload
+            conn.execute(
+                "UPDATE edges SET status=?, strength=?, updated_at=?, metadata_json=? WHERE id=? AND status!='killed'",
+                (decision.status, decision.strength, now_iso(), json.dumps(metadata, ensure_ascii=False), edge_id),
+            )
+            if decision.status == "active":
+                activated += 1
+            if decision.reasons:
+                log_edge_event(conn, edge_id, "contract_enforced", "contract", decision.contract_payload)
         conn.commit()
+    else:
+        activated = 0
     counts = dict(conn.execute("SELECT status,count(*) FROM edges GROUP BY status").fetchall())
     conn.close()
-    return {"mode": mode, "dry_run": dry_run, "would_activate": total, "activated": 0 if dry_run else total, "edges_by_status": counts, "db": str(db_path)}
+    return {"mode": mode, "dry_run": dry_run, "would_activate": total, "activated": activated, "edges_by_status": counts, "db": str(db_path)}
 
 
 def update_vault(vault: Path, db_path: Path, hints: list[str] | None = None, max_notes: int | None = None, follow_symlinks: bool = False) -> dict:
@@ -1247,17 +1306,7 @@ def _select_retrieval_items(items: list[dict], *, budget: int, max_items: int, s
 
 
 def _edge_truth_policy(status: str | None, relation: str) -> str:
-    rel = relationship_type(relation)
-    status = status or "candidate"
-    if status == "killed":
-        return "excluded"
-    if status != "active":
-        return "candidate_only"
-    if rel.get("category") in {"semantic", "semantic_pending"} and rel.get("requires_validation"):
-        return "active_validated_claim"
-    if rel.get("category") in {"reference", "structure", "extraction"}:
-        return "provenance_not_fact"
-    return "active_evidence"
+    return truth_policy_for_edge(status=status, relation=relation)
 
 
 def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True) -> dict:
@@ -1653,14 +1702,26 @@ def tick(db_path: Path, *, hints: list[str] | None = None, limit: int = 100) -> 
     init_db(conn)
     now = now_iso()
     rows = conn.execute(
-        """SELECT o.id observation_id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type
+        """SELECT o.id observation_id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
            FROM observations o JOIN nodes n ON n.id=o.note_id
            ORDER BY o.score DESC,o.created_at DESC LIMIT ?""",
         (limit,),
     ).fetchall()
     upserted = 0
     for row in rows:
-        score, reasons = _candidate_reasons(row["kind"], row["text"], row["score"], hints)
+        breakdown = score_observation_candidate(
+            kind=row["kind"],
+            text=row["text"],
+            base_score=row["score"],
+            hints=hints,
+            note_type=row["type"],
+            note_name=row["name"],
+            source_path=row["source_path"],
+            observation_created_at=row["created_at"],
+            node_updated_at=row["updated_at"],
+        )
+        score = breakdown.total
+        reasons = list(breakdown.reasons) or ["high-signal observation"]
         if score < 0:
             continue
         candidate = {
@@ -1801,7 +1862,14 @@ def record_feedback(db_path: Path, thought_id: str, feedback_type: str, *, reaso
     cooldown_until = _iso_add_duration(snooze) if snooze else None
     conn = sqlite3.connect(db_path)
     init_db(conn)
-    row = conn.execute("SELECT id FROM thought_candidates WHERE id=?", (thought_id,)).fetchone()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """SELECT tc.id,tc.seed_observation_id,o.note_id,o.text
+           FROM thought_candidates tc
+           LEFT JOIN observations o ON o.id=tc.seed_observation_id
+           WHERE tc.id=?""",
+        (thought_id,),
+    ).fetchone()
     if not row:
         conn.close()
         return {"ok": False, "id": thought_id, "error": "not_found"}
@@ -1812,9 +1880,36 @@ def record_feedback(db_path: Path, thought_id: str, feedback_type: str, *, reaso
     )
     status = status_map[feedback_type]
     conn.execute("UPDATE thought_candidates SET status=?, cooldown_until=?, updated_at=? WHERE id=?", (status, cooldown_until, now_iso(), thought_id))
+    edge_changes: list[dict] = []
+    related_edges = []
+    if row["seed_observation_id"] and row["note_id"] and row["text"]:
+        related_edges = conn.execute(
+            """
+            SELECT id,status,strength
+            FROM edges
+            WHERE src_id=?
+              AND relation LIKE 'has_%'
+              AND evidence_text=?
+              AND status!='killed'
+            """,
+            (row["note_id"], row["text"][:500]),
+        ).fetchall()
+    if feedback_type in {"deny", "too_obvious", "good_but_later", "snooze"}:
+        for edge in related_edges:
+            previous = float(edge["strength"] or 0)
+            new_strength = round(max(0.0, previous * 0.5), 6)
+            new_status = "candidate" if edge["status"] == "active" and new_strength < 0.10 else edge["status"]
+            conn.execute("UPDATE edges SET strength=?, status=?, updated_at=? WHERE id=? AND status!='killed'", (new_strength, new_status, now_iso(), edge["id"]))
+            log_edge_event(conn, edge["id"], "weakened", "user_feedback", {"reason": reason or feedback_type, "factor": 0.5, "previous_strength": previous, "new_strength": new_strength, "previous_status": edge["status"], "new_status": new_status})
+            edge_changes.append({"id": edge["id"], "action": "weaken", "previous_strength": previous, "strength": new_strength, "status": new_status})
+    elif feedback_type == "kill":
+        for edge in related_edges:
+            conn.execute("UPDATE edges SET strength=0.0, status='killed', updated_at=? WHERE id=?", (now_iso(), edge["id"]))
+            log_edge_event(conn, edge["id"], "killed", "user_feedback", {"reason": reason or "false relationship", "previous_status": edge["status"], "previous_strength": edge["strength"]})
+            edge_changes.append({"id": edge["id"], "action": "kill", "status": "killed"})
     conn.commit()
     conn.close()
-    return {"ok": True, "id": thought_id, "feedback_type": feedback_type, "status": status, "cooldown_until": cooldown_until}
+    return {"ok": True, "id": thought_id, "feedback_type": feedback_type, "status": status, "cooldown_until": cooldown_until, "edge_changes": edge_changes}
 
 
 def explain_thought(db_path: Path, thought_id: str) -> dict:
@@ -2701,8 +2796,9 @@ def ingest_sense_events(conn: sqlite3.Connection, events: Iterable[Any], *, hint
                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
             (event_id, sense_id, sense_type, source_id, source_uri, event_type, title, text_hash, observed_at, now_iso(), json.dumps(metadata, ensure_ascii=False)),
         )
-        source_path = source_uri or metadata.get("path") or source_id
-        node_id = upsert_node(conn, "note", title, source_path, metadata={"sense_event_id": event_id, "sense_type": sense_type})
+        source_path = metadata.get("path") or source_uri or source_id
+        node_type = metadata.get("node_type") or "note"
+        node_id = upsert_node(conn, node_type, title, source_path, metadata={"sense_event_id": event_id, "sense_type": sense_type, **metadata})
         stats["nodes"] += 1
         for link in getattr(event, "links", None) or []:
             dst = upsert_node(conn, "wikilink", str(link), source_path)
@@ -2710,6 +2806,39 @@ def ingest_sense_events(conn: sqlite3.Connection, events: Iterable[Any], *, hint
             stats["edges"] += 1
         for kind, obs_text, score in extract_observations(text, hints):
             add_observation(conn, node_id, kind, obs_text, source_path, score, sense_event_id=event_id)
+            obs_id = upsert_node(conn, "observation", obs_text[:90], source_path, min(1.0, score / 6), {"kind": kind, "sense_event_id": event_id})
+            stats["nodes"] += 1
+            upsert_edge(
+                conn,
+                node_id,
+                obs_id,
+                f"has_{kind}",
+                source_path,
+                obs_text,
+                min(1.0, score / 6),
+                status=deterministic_ingest_status(f"has_{kind}"),
+                strength=min(1.0, score / 6),
+                source_type=sense_type,
+                metadata={"sense_event_id": event_id},
+            )
+            stats["edges"] += 1
+            for date_text in DATE_RE.findall(obs_text):
+                date_id = upsert_node(conn, "date", date_text, source_path, 0.75)
+                stats["nodes"] += 1
+                upsert_edge(
+                    conn,
+                    obs_id,
+                    date_id,
+                    "mentions_date",
+                    source_path,
+                    obs_text,
+                    0.75,
+                    status=deterministic_ingest_status("mentions_date"),
+                    strength=0.75,
+                    source_type=sense_type,
+                    metadata={"sense_event_id": event_id},
+                )
+                stats["edges"] += 1
             stats["observations"] += 1
         stats["events"] += 1
         stats["by_sense"][sense_id] = stats["by_sense"].get(sense_id, 0) + 1
@@ -2780,6 +2909,10 @@ def _weighted_candidate_choice(candidates: list[dict]) -> dict | None:
 
 
 def generate_proactive_thought(db_path: Path, hints: list[str] | None = None, hops: int = 5) -> dict:
+    query = " ".join(hints or DEFAULT_HINTS)
+    surfaced = surface_thoughts(db_path, query, limit=1, hops=hops, hints=hints)
+    if isinstance(surfaced, dict) and surfaced.get("thoughts"):
+        return surfaced["thoughts"][0]
     candidates = list_thought_candidates(db_path, limit=12, hops=hops, hints=hints)
     chosen = _weighted_candidate_choice(candidates)
     if chosen:

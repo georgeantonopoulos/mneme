@@ -30,7 +30,9 @@ The repo also includes a Hermes-compatible skill bundle at
 `skills/mneme-agent-brain/`. Install or point Hermes at that
 directory when an agent should operate Mneme as a working brain. The skill
 contains the `SKILL.md` entrypoint, a detailed operator runbook, and a smoke
-helper that delegates to `scripts/hermes_brain_ready.sh`.
+helper that delegates to `scripts/hermes_brain_ready.sh`. Hermes install and
+update steps live in
+[`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md).
 
 ## What it does
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse, json, os, sys
 from pathlib import Path
 from . import md_edit
+from .agent import agent_preflight
 from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
+from .contract import check_db_contract
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
@@ -171,6 +173,20 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--prompt",help="Prompt text; omit to read from stdin")
     p.add_argument("--budget",type=int,default=2500)
     p.add_argument("--max-items",type=int,default=8)
+    p.add_argument("--hints")
+    p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    contract=sub.add_parser("contract", help="Validate Mneme graph and output contract invariants")
+    contract_sub=contract.add_subparsers(dest="contract_cmd", required=True)
+    p=contract_sub.add_parser("check", help="Fail when graph contract invariants are violated")
+    p.add_argument("--db",type=Path)
+    agent=sub.add_parser("agent", help="Agent-facing Mneme runtime entrypoints")
+    agent_sub=agent.add_subparsers(dest="agent_cmd", required=True)
+    p=agent_sub.add_parser("preflight", help="Return prompt-safe context, surfaced thoughts, and mandatory contract rules")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prompt",help="Prompt text; omit to read from stdin")
+    p.add_argument("--budget",type=int,default=2500)
+    p.add_argument("--max-items",type=int,default=8)
+    p.add_argument("--surface-limit",type=int,default=5)
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
     packet=sub.add_parser("packet", help="Create sanitized untrusted source packets")
@@ -441,6 +457,29 @@ def main(argv: list[str] | None = None) -> None:
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
         print(json.dumps(retrieve_context(path_from_config(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
         return
+    if args.cmd == "contract":
+        if args.contract_cmd == "check":
+            report = check_db_contract(path_from_config(args,"db"))
+            print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+            if report.status != "pass":
+                raise SystemExit(1)
+            return
+    if args.cmd == "agent":
+        if args.agent_cmd == "preflight":
+            prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+            result = agent_preflight(
+                path_from_config(args,"db"),
+                prompt,
+                budget=args.budget,
+                max_items=args.max_items,
+                surface_limit=args.surface_limit,
+                hints=hints_from_args(args),
+                include_candidates=not args.no_candidates,
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            if result["contract"]["status"] != "pass":
+                raise SystemExit(1)
+            return
     if args.cmd == "packet":
         if args.packet_cmd == "create":
             metadata = json.loads(args.metadata_json)

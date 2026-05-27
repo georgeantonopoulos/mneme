@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from ..contract import AGENT_RULES, CONTRACT_NAME, CONTRACT_VERSION, check_db_contract, validate_retrieval_pack
+from ..core import DEFAULT_HINTS, retrieve_context, surface_thoughts
+from ..path_classifier import classify_path
+
+
+def agent_preflight(
+    db_path: Path,
+    prompt: str,
+    *,
+    budget: int = 2500,
+    max_items: int = 8,
+    surface_limit: int = 5,
+    hints: list[str] | None = None,
+    include_candidates: bool = True,
+) -> dict[str, Any]:
+    hints = hints or DEFAULT_HINTS
+    route = classify_path(prompt, enabled=False)
+    context = retrieve_context(
+        db_path,
+        prompt,
+        budget=budget,
+        max_items=max_items,
+        hints=hints,
+        include_candidates=include_candidates,
+    )
+    surface = surface_thoughts(
+        db_path,
+        prompt,
+        limit=surface_limit,
+        hints=hints,
+        include_candidates=include_candidates,
+    )
+    db_report = check_db_contract(db_path)
+    retrieval_report = validate_retrieval_pack(context)
+    warnings = list(db_report.warnings) + list(retrieval_report.warnings)
+    failures = list(db_report.failures) + list(retrieval_report.failures)
+    status = "pass" if not failures else "fail"
+    return {
+        "contract": {
+            "name": CONTRACT_NAME,
+            "version": CONTRACT_VERSION,
+            "status": status,
+            "db": db_report.to_dict(),
+            "retrieval": retrieval_report.to_dict(),
+        },
+        "agent_rules": AGENT_RULES,
+        "route": route,
+        "context": context,
+        "surface": surface,
+        "warnings": warnings,
+        "failures": failures,
+    }

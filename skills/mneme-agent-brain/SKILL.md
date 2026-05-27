@@ -33,6 +33,29 @@ Mneme turns a Markdown vault into an auditable SQLite neural map for agents. Use
 
 The default philosophy is evidence first. Retrieval may include candidate synapses, but candidate-only edges are not facts. Temporary agent memory must use a `mneme://` source path so it can be removed as one unit.
 
+## Mandatory Agent Contract
+
+Before using Mneme memory in any user-facing answer or action, run:
+
+```bash
+mneme agent preflight --db "$DB" --prompt "$PROMPT"
+```
+
+The agent must obey the returned `agent_rules`.
+
+Hard rules:
+
+1. Do not use Mneme memory as factual grounding unless `contract.status` is `pass`.
+2. Always inspect `truth_policy` before using a retrieved item.
+3. `candidate_only` means possible, unvalidated, and never phrased as fact.
+4. `provenance_not_fact` means the edge is useful for navigation or source context, not real-world truth.
+5. `source_contained_observation` means the source contains the observation; freshness still matters.
+6. Killed or excluded edges must never be surfaced, relied on, or recreated.
+7. Old open loops are historical until fresh source evidence or explicit user confirmation makes them live.
+8. User dismissal weakens surfacing by default. Kill only when the user or evidence says the relationship is false.
+9. Temporary agent memory must use `mneme://` and must be removable as one unit.
+10. Do not edit Markdown notes unless the user explicitly asks for vault writeback.
+
 ## When To Use
 
 - A Hermes agent needs context from a Mneme database before answering or acting.
@@ -50,11 +73,14 @@ Hermes skills are installed from a directory containing this `SKILL.md`. Support
 ```text
 skills/mneme-agent-brain/
   SKILL.md
+  references/install-update.md
   references/operator-flow.md
   scripts/mneme_brain_smoke.sh
 ```
 
 If this skill is installed from a repo tap, run Mneme commands from the Mneme checkout or set `MNEME_REPO` to that checkout before using the helper script.
+
+For copy-based Hermes installs and updates, follow `references/install-update.md`.
 
 ## Core Commands
 
@@ -112,8 +138,10 @@ The script must complete these steps:
 1. `mneme consolidate`
 2. `mneme brain label`
 3. `mneme brain report`
-4. `mneme retrieve`
-5. `mneme surface`
+4. `mneme contract check`
+5. `mneme retrieve`
+6. `mneme surface`
+7. `mneme agent preflight`
 
 Use `MNEME_BRAIN_DEPTH=smoke` for quick validation, `default` for normal runs, `deep` for a broader active frontier, and `full` only when the database is small enough or runtime is acceptable.
 
@@ -155,9 +183,11 @@ Treat `graph_memory_review` as a keep-or-forget prompt for `mneme://` memory. Tr
 
 - [ ] `mneme doctor` passes or the explicit `--vault` and `--db` paths are correct.
 - [ ] `scripts/hermes_brain_ready.sh "$DB" "$PROMPT"` exits 0.
+- [ ] `mneme agent preflight --db "$DB" --prompt "$PROMPT"` returns `contract.status: pass`.
 - [ ] `mneme retrieve` returns relevant items with `truth_policy`.
 - [ ] `mneme surface` returns thoughts with `surface` metadata.
 - [ ] Temporary `mneme://` memory can be added, surfaced, removed, and verified as zero remaining rows.
 - [ ] No private vault paths, note names, generated SQLite files, or thought images are committed.
 
-See `references/operator-flow.md` for a longer operator runbook.
+See `references/install-update.md` for Hermes install/update steps and
+`references/operator-flow.md` for the runtime operator runbook.

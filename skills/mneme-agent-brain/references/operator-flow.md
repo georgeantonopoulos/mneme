@@ -52,7 +52,17 @@ The label command receives a prompt on stdin and should return JSON with:
 }
 ```
 
-## 4. Retrieve Context
+## 4. Agent Preflight
+
+Before using Mneme memory in an answer or action, run the contract preflight:
+
+```bash
+mneme agent preflight --db "$DB" --prompt "$PROMPT"
+```
+
+Use only the returned context and surfaced thoughts. If `contract.status` is not `pass`, do not use Mneme memory as factual grounding.
+
+## 5. Retrieve Context
 
 Use retrieval for prompt-time context:
 
@@ -63,11 +73,11 @@ mneme retrieve --db "$DB" --prompt "$PROMPT" --max-items 8
 Read `truth_policy` before treating a synapse as factual:
 
 - `source_contained_observation`: a source note directly contains the observation.
-- `active_validated`: an active relationship can guide reasoning.
+- `active_validated_claim`: an active relationship can guide reasoning.
 - `candidate_only`: a possible relationship; review before trusting.
 - `killed`: excluded from retrieval.
 
-## 5. Surface Thoughts
+## 6. Surface Thoughts
 
 Use surface for proactive thought candidates from the same retrieval path:
 
@@ -77,7 +87,7 @@ mneme surface --db "$DB" --prompt "$PROMPT" --limit "${MNEME_SURFACE_LIMIT:-5}"
 
 Prefer surfaced thoughts when deciding what to inspect next. Use rendered `mneme thought` cards only when a visual card is the desired output.
 
-## 6. Add Temporary Graph Memory
+## 7. Add Temporary Graph Memory
 
 Use `mneme://` memory for tests and agent working state:
 
@@ -101,7 +111,7 @@ mneme remember remove --db "$DB" --source-path mneme://test/hermes-validation
 
 The remove command refuses non-`mneme://` sources by design.
 
-## 7. Full Readiness Check
+## 8. Full Readiness Check
 
 Run the repo script when available:
 
@@ -116,9 +126,9 @@ Depth presets:
 - `deep`: all discovered clusters plus broader active frontier.
 - `full`: every eligible target, for small DBs or long runs.
 
-The script is successful only if retrieval and surfaced thought output both work.
+The script is successful only if contract check, preflight, retrieval, and surfaced thought output all work.
 
-## 8. Privacy Gate
+## 9. Privacy Gate
 
 Before committing:
 
