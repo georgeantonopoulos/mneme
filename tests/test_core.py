@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from mneme.brain import brain_label_matches, brain_report, label_brain
-from mneme.core import _meditation_seed_weight, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, meditate_graph, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution
+from mneme.core import _meditation_path_penalty, _meditation_seed_weight, activate_candidate_edges, create_config, debug_candidates, doctor, explain_edge, forget_source, generate_proactive_thought, generate_thought, ingest_vault, init_db, list_thought_candidates, load_config, log_edge_event, meditate_graph, relationship_type, remember_graph, retrieve_context, stable_id, surface_thoughts, update_vault, upsert_edge, upsert_node, walk_graph, write_note, write_research_resolution, extract_observations, observation_score
 from mneme.consolidate import LabelerConfig, consolidate_graph, retrieval_cluster_matches
 from mneme.render import render_card, safe_basename
 from mneme.retrieval.scoring import freshness_breakdown, score_observation_candidate, source_quality_breakdown
@@ -1552,3 +1552,154 @@ def test_notion_sense_collects_database_rows_from_runner():
     assert "Migration task" in events[0].text
     assert "Open" in events[0].text
     assert events[0].metadata == {"notion_page_id": "pg1", "last_edited_time": "2026-05-18T12:00:00Z"}
+
+
+# --- Fix 1: remember add auto-creates nodes for standalone observations ---
+
+def test_remember_graph_auto_creates_node_for_observation(tmp_path: Path):
+    """Observations referencing unknown node refs should auto-create entity nodes."""
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "source_path": "mneme://test/auto-node",
+        "nodes": [],
+        "edges": [],
+        "observations": [
+            {"node": "Topic X", "kind": "fact", "text": "Topic X is a known concept", "score": 5.0}
+        ],
+    }
+    result = remember_graph(db, payload)
+    assert result["ok"]
+    assert len(result["nodes"]) == 1
+    auto_node = result["nodes"][0]
+    assert auto_node["type"] == "entity"
+    assert auto_node["name"] == "Topic X"
+    assert auto_node.get("auto_created") is True
+    assert len(result["observations"]) == 1
+
+    # Verify node exists in DB
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT name, type FROM nodes WHERE name = 'Topic X'").fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "Topic X"
+    assert row[1] == "entity"
+
+
+def test_remember_graph_resolves_existing_node_for_observation(tmp_path: Path):
+    """Observations referencing a node name that already exists should resolve to it."""
+    db = tmp_path / "mneme.sqlite"
+    # First create a node explicitly
+    payload1 = {
+        "source_path": "mneme://test/existing-node",
+        "nodes": [{"ref": "existing", "type": "project", "name": "Existing Project"}],
+        "edges": [],
+        "observations": [],
+    }
+    remember_graph(db, payload1)
+
+    # Now add an observation referencing "Existing Project" by name (not the ref)
+    payload2 = {
+        "source_path": "mneme://test/existing-obs",
+        "nodes": [],
+        "edges": [],
+        "observations": [
+            {"node": "Existing Project", "kind": "fact", "text": "Existing Project is active", "score": 4.0}
+        ],
+    }
+    result = remember_graph(db, payload2)
+    assert result["ok"]
+    # Observation should be attached to the existing node
+    assert len(result["observations"]) == 1
+
+    # Verify the observation was linked to the existing project node
+    conn = sqlite3.connect(db)
+    obs_row = conn.execute("SELECT note_id FROM observations WHERE text LIKE '%Existing Project is active%'").fetchone()
+    node_row = conn.execute("SELECT id, name, type FROM nodes WHERE name = 'Existing Project'").fetchone()
+    conn.close()
+    assert obs_row is not None
+    assert node_row is not None
+    assert obs_row[0] == node_row[0]
+
+
+def test_remember_graph_correction_observation_high_score(tmp_path: Path):
+    """Correction observations should default to score 9.0 when score is not specified."""
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "source_path": "mneme://test/correction",
+        "nodes": [{"ref": "topic_y", "name": "Topic Y"}],
+        "edges": [],
+        "observations": [
+            {"node": "topic_y", "kind": "correction", "text": "Topic Y was previously described incorrectly, the correct value is Z"}
+        ],
+    }
+    result = remember_graph(db, payload)
+    assert result["ok"]
+    assert len(result["observations"]) == 1
+
+    # Check the observation score in the DB
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT kind, score FROM observations WHERE kind = 'correction'").fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "correction"
+    assert row[1] == 9.0
+
+
+# --- Fix 2: correction scoring tier ---
+
+def test_correction_kind_gets_authority_boost():
+    """kind=correction should get +8.0 authority boost in scoring."""
+    correction = score_observation_candidate(
+        kind="correction",
+        text="previously stated amount was Y not X",
+        base_score=1.0,
+        hints=[],
+    )
+    assert "user_correction_authority" in correction.reasons
+    # Base (1.0) + correction authority (8.0) = 9.0, minus minor penalties
+    assert correction.total >= 8.0
+
+
+def test_correction_kind_in_extract_observations():
+    """extract_observations should recognize correction keywords and assign high score."""
+    obs = extract_observations("- [ ] Correction: the prior value was wrong, it should be Y")
+    correction_obs = [o for o in obs if o[0] == "correction"]
+    assert len(correction_obs) >= 1
+    assert correction_obs[0][2] >= 9.0
+
+
+def test_observation_score_correction():
+    """observation_score should return kind=correction and high score for correction text."""
+    kind, score = observation_score("Fix: the recorded number was incorrect", [])
+    assert kind == "correction"
+    assert score >= 9.0
+
+
+# --- Fix 3: memory path penalty exemption for user_confirmed ---
+
+def test_meditation_path_penalty_memory_default():
+    """Default memory path should get 0.18 penalty."""
+    assert _meditation_path_penalty("memory/MEMORY.md") == 0.18
+    assert _meditation_path_penalty("notes/memory/some_note.md") == 0.18
+
+
+def test_meditation_path_penalty_user_confirmed_exempt():
+    """User-confirmed corrections should be exempt from memory path penalty."""
+    assert _meditation_path_penalty("memory/MEMORY.md", source_type="user_confirmed") == 1.0
+
+
+def test_meditation_path_penalty_user_confirmed_metadata():
+    """User-confirmed corrections in metadata should be exempt from memory path penalty."""
+    import json
+    meta = json.dumps({"certainty": "user_confirmed"})
+    assert _meditation_path_penalty("memory/MEMORY.md", metadata_json=meta) == 1.0
+    meta2 = json.dumps({"source_type": "user_confirmed"})
+    assert _meditation_path_penalty("memory/MEMORY.md", metadata_json=meta2) == 1.0
+
+
+def test_meditation_path_penalty_non_memory_unchanged():
+    """Non-memory paths without user_confirmed should remain at their normal penalty values."""
+    assert _meditation_path_penalty("projects/important.md") == 1.35
+    assert _meditation_path_penalty("random/note.md") == 1.0
+    # user_confirmed also exempts project path boost, returning 1.0 baseline
+    assert _meditation_path_penalty("projects/important.md", source_type="user_confirmed") == 1.0

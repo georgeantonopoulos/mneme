@@ -151,6 +151,9 @@ def score_observation_candidate(
     total = float(base_score or 0)
     factors.append({"label": "base observation score", "value": round(total, 2)})
 
+    if kind == "correction":
+        total = _add_factor(total, factors, "user correction authority", 8.0)
+        reasons.append("user_correction_authority")
     if kind == "blocked":
         total = _add_factor(total, factors, "open loop / unresolved task", 5.0)
         reasons.append("open loop / unresolved task")

@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--dry-run",action="store_true")
     remember=sub.add_parser("remember", help="Add or remove scoped agent memory without editing vault notes")
     remember_sub=remember.add_subparsers(dest="remember_cmd", required=True)
-    p=remember_sub.add_parser("add", help="Add a mneme:// scoped memory payload to the graph")
+    p=remember_sub.add_parser("add", help="Add a mneme:// scoped memory payload to the graph. Observations referencing unknown node refs auto-create entity nodes.")
     p.add_argument("--db",type=Path)
     p.add_argument("--file",type=Path,help="JSON payload file; omit to read JSON from stdin")
     p.add_argument("--dry-run",action="store_true")

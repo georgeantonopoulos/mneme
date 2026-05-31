@@ -31,6 +31,7 @@ STATUS_WORDS = {
     "blocked": ["blocked", "stuck", "waiting", "awaiting", "needs", "need to", "todo", "to do", "follow up", "unresolved"],
     "done": ["paid", "resolved", "closed", "completed", "done", "accepted", "confirmed"],
     "risk": ["deadline", "expires", "due", "appeal", "fine", "penalty", "urgent", "overdue", "risk"],
+    "correction": ["correction", "corrected", "fix:", "incorrect", "wrong:", "misleading", "updated:", "superseded"],
 }
 DEFAULT_HINTS = ["deadline", "project", "invoice", "lease", "tax", "school", "move", "certification", "payment"]
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "mneme" / "config.json"
@@ -456,7 +457,9 @@ def extract_observations(text: str, hints: list[str] | None = None) -> list[tupl
         kind = "done" if done.lower() == "x" else "blocked"
         if any(word in low for word in STATUS_WORDS["risk"]):
             kind = "risk"
-        score = 6.0 if kind == "blocked" else 5.0 if kind == "risk" else 2.0
+        if any(word in low for word in STATUS_WORDS["correction"]):
+            kind = "correction"
+        score = 9.0 if kind == "correction" else 6.0 if kind == "blocked" else 5.0 if kind == "risk" else 2.0
         if any(hint.lower() in low for hint in hints):
             score += 2.0
         observations.append((kind, body.strip(), score))
@@ -466,12 +469,14 @@ def extract_observations(text: str, hints: list[str] | None = None) -> list[tupl
         if body.startswith("["):
             continue
         kind = None
-        if any(word in low for word in STATUS_WORDS["risk"]):
+        if any(word in low for word in STATUS_WORDS["correction"]):
+            kind = "correction"
+        elif any(word in low for word in STATUS_WORDS["risk"]):
             kind = "risk"
         elif any(word in low for word in STATUS_WORDS["blocked"]):
             kind = "blocked"
         if kind:
-            score = 5.0 + (2.0 if any(hint.lower() in low for hint in hints) else 0.0)
+            score = 9.0 if kind == "correction" else 5.0 + (2.0 if any(hint.lower() in low for hint in hints) else 0.0)
             observations.append((kind, body, score))
     if not observations and text.strip():
         low = text.lower()
@@ -549,7 +554,7 @@ def observation_score(text: str, hints: list[str]):
     low = text.lower(); kind = "fact"; score = 1.0
     for candidate, words in STATUS_WORDS.items():
         if any(word in low for word in words):
-            kind = candidate; score += {"blocked":3.0,"risk":2.5,"done":1.5}.get(candidate,1.0)
+            kind = candidate; score += {"blocked":3.0,"risk":2.5,"done":1.5,"correction":8.0}.get(candidate,1.0)
     if any(h.lower() in low for h in hints): score += 2.0
     if DATE_RE.search(text): score += 1.0
     return kind, score
@@ -1997,14 +2002,28 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
         for obs in observations_in:
             node_ref = str(obs.get("node") or "")
             if node_ref not in created_nodes:
-                raise ValueError("remember observations must reference nodes from the same payload")
+                # Auto-resolve or auto-create: look up by name, else create entity
+                existing = conn.execute(
+                    "SELECT id FROM nodes WHERE name=? COLLATE NOCASE LIMIT 1",
+                    (node_ref,),
+                ).fetchone()
+                if existing:
+                    created_nodes[node_ref] = existing[0]
+                else:
+                    # Auto-create as entity node with the ref as its name
+                    auto_name = str(obs.get("node_name") or node_ref)
+                    auto_id = upsert_node(conn, "entity", auto_name, source_path)
+                    created_nodes[node_ref] = auto_id
+                    out_nodes.append({"ref": node_ref, "id": auto_id, "type": "entity", "name": auto_name, "source_path": source_path, "auto_created": True})
             text = str(obs.get("text") or "").strip()
             if not text:
                 raise ValueError("remember observation requires text")
             kind = str(obs.get("kind") or "fact")
+            # Correction observations default to high score
+            default_score = 9.0 if kind == "correction" else 3.0
             out_observations.append({"node": created_nodes[node_ref], "kind": kind, "text": text[:1000]})
             if not dry_run:
-                add_observation(conn, created_nodes[node_ref], kind, text, source_path, float(obs.get("score", 3.0)))
+                add_observation(conn, created_nodes[node_ref], kind, text, source_path, float(obs.get("score", default_score)))
         if dry_run:
             conn.rollback()
         else:
@@ -2069,10 +2088,20 @@ def _meditation_has_term(text: str, terms: set[str]) -> bool:
     return False
 
 
-def _meditation_path_penalty(source_path: str | None) -> float:
+def _meditation_path_penalty(source_path: str | None, *, source_type: str | None = None, metadata_json: str | None = None) -> float:
     path = (source_path or "").lower()
     if not path:
         return 1.0
+    # User-confirmed corrections in MEMORY.md should NOT be penalized
+    if source_type == "user_confirmed":
+        return 1.0
+    if metadata_json:
+        try:
+            meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+            if meta.get("certainty") == "user_confirmed" or meta.get("source_type") == "user_confirmed":
+                return 1.0
+        except (json.JSONDecodeError, TypeError):
+            pass
     if "/memory/" in f"/{path}" or path.startswith("memory/"):
         return 0.18
     if "/archive/" in f"/{path}" or "daily" in path:
@@ -2164,7 +2193,7 @@ def _meditation_seed_weight(row: sqlite3.Row) -> float:
     open_loop = 2.2 if _meditation_has_term(evidence, MEDITATION_OPEN_LOOP_TERMS) else 1.0
     resolved = 0.10 if _meditation_has_term(evidence, MEDITATION_RESOLVED_TERMS) else 1.0
     low_signal = 0.12 if _meditation_has_term(evidence, MEDITATION_LOW_SIGNAL_TERMS) else 1.0
-    source_penalty = _meditation_path_penalty(row["source_path"])
+    source_penalty = _meditation_path_penalty(row["source_path"], source_type=row["source_type"] if "source_type" in row.keys() else None, metadata_json=row["metadata_json"] if "metadata_json" in row.keys() else None)
     stale_penalty = _meditation_staleness_penalty(row["evidence_text"] or "", row["source_path"])
     semantic_node_bonus = 1.25 if row["src_type"] in {"project", "person", "place", "event", "finance", "vendor"} or row["dst_type"] in {"project", "person", "place", "event", "finance", "vendor"} else 1.0
     return max(0.001, base * novelty * relation_weight * contradiction * high_value * open_loop * resolved * low_signal * source_penalty * stale_penalty * semantic_node_bonus)
