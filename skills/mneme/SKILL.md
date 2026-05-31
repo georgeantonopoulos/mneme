@@ -5,6 +5,23 @@ description: Canonical skill for Mneme — single memory system for retrieval, w
 
 # Mneme
 
+## Path Discovery
+
+Before running any mneme command, resolve vault/db/out paths. In sandboxed environments (Codex, CI, containers), `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` may not be set. Always discover paths first:
+
+```bash
+mneme doctor --json
+```
+
+This returns JSON with `settings.vault`, `settings.db`, and `settings.out`. Extract and use those values as `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` respectively. Example:
+
+```bash
+VAULT=$(mneme doctor --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['vault'])")
+MNEME_DB=$(mneme doctor --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['db'])")
+```
+
+Use these resolved paths in all subsequent `--vault`, `--db`, and `--out` flags. Do **not** assume env vars are set.
+
 ## Vault Write Path
 
 Always use `mneme write` or `mneme note` for vault Markdown files. Never use file tools directly on `$VAULT/`. Exception: scripts and configs outside the vault.
@@ -36,6 +53,16 @@ mneme feedback <thought_id> --accept|--deny|--snooze 7d|--kill --reason "..." --
 ```
 
 Never let killed edges drive answers. Candidate/pending facts must be visibly tentative.
+
+### Auto-Pruning After Surfacing
+
+After explaining a surfaced item, assess whether it is still an open loop. Apply feedback automatically:
+
+- **Resolved/past corrections** (nightly cron corrections already applied, past-deadline items, corrections for facts that have since been fixed): kill immediately with `mneme feedback <thought_id> --kill --reason "resolved: <why>" --json`
+- **Standing preferences** (ongoing user preferences, not time-bound): snooze with `mneme feedback <thought_id> --snooze 7d --reason "standing preference: will re-surface if still relevant" --json`
+- **Open/active items**: keep surfaced, apply `--accept` or `--deny` based on relevance
+
+Never leave surfaced items un-acked. Every surfaced thought must receive feedback within the same retrieval cycle to prevent stale items from re-surfacing.
 
 ## Correction Pipeline (Critical)
 
