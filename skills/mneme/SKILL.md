@@ -7,21 +7,21 @@ description: Canonical skill for Mneme — single memory system for retrieval, w
 
 ## Vault Write Path
 
-Always use `mneme write` or `mneme note` for vault Markdown files. Never use file tools directly on `/root/vault/`. Exception: scripts and configs outside the vault.
+Always use `mneme write` or `mneme note` for vault Markdown files. Never use file tools directly on `$VAULT/`. Exception: scripts and configs outside the vault.
 
 ## Vault Path Configuration
 
-- **Vault:** `/root/vault`
-- **DB:** `/root/.local/share/mneme/mneme.sqlite`
-- **Config:** `/root/.config/mneme/config.json`
+- **Vault:** `$VAULT`
+- **DB:** `$MNEME_DB`
+- **Config:** `$MNEME_CONFIG`
 
 If `mneme write` fails with "path escapes vault root" or writes to the wrong directory:
 
 ```bash
-mneme init --vault /root/vault --force
+mneme init --vault "$VAULT" --force
 ```
 
-Verify: `mneme write --path memory/test.md --mode create --content "test"` should create `/root/vault/memory/test.md`.
+Verify: `mneme write --path memory/test.md --mode create --content "test"` should create `$VAULT/memory/test.md`.
 
 ## Retrieval Path (Default)
 
@@ -84,12 +84,12 @@ As of commit 4fc5c59, observations with `kind=correction` get +8.0 authority boo
 When the public CLI does not cover an operation, use the private runtime script:
 
 ```bash
-python3 /root/.hermes/scripts/mneme/mneme_private.py retrieve --prompt "..." --budget 2500 --max-items 8
-python3 /root/.hermes/scripts/mneme/mneme_private.py note read <vault-relative-path>
-python3 /root/.hermes/scripts/mneme/mneme_private.py note write <vault-relative-path> --mode create --content "..."
-python3 /root/.hermes/scripts/mneme/mneme_private.py note upsert-section <vault-relative-path> --heading "..." --content "..."
-python3 /root/.hermes/scripts/mneme/mneme_private.py kill-synapse <id> --reason "..."
-python3 /root/.hermes/scripts/mneme/mneme_private.py rebuild
+python3 mneme_private.py retrieve --prompt "..." --budget 2500 --max-items 8
+python3 mneme_private.py note read <vault-relative-path>
+python3 mneme_private.py note write <vault-relative-path> --mode create --content "..."
+python3 mneme_private.py note upsert-section <vault-relative-path> --heading "..." --content "..."
+python3 mneme_private.py kill-synapse <id> --reason "..."
+python3 mneme_private.py rebuild
 ```
 
 Use private fallback ONLY when:
@@ -104,35 +104,35 @@ Prefer public `mneme forget` for bulk age-based forgetting before private `kill-
 All public CLI commands accept `--db` to specify the database:
 
 ```bash
-mneme sense run all --db /root/.local/share/mneme/mneme.sqlite --json
-mneme tick --surface --db /root/.local/share/mneme/mneme.sqlite --json
-mneme surface --limit 3 --db /root/.local/share/mneme/mneme.sqlite --json
-mneme explain <id> --db /root/.local/share/mneme/mneme.sqlite --json
-mneme feedback <id> --accept --db /root/.local/share/mneme/mneme.sqlite --json
-mneme remember add --db /root/.local/share/mneme/mneme.sqlite --json
-mneme resolve --file payload.json --db /root/.local/share/mneme/mneme.sqlite
-mneme forget --db /root/.local/share/mneme/mneme.sqlite --days-threshold 30
+mneme sense run all --db "$MNEME_DB" --json
+mneme tick --surface --db "$MNEME_DB" --json
+mneme surface --limit 3 --db "$MNEME_DB" --json
+mneme explain <id> --db "$MNEME_DB" --json
+mneme feedback <id> --accept --db "$MNEME_DB" --json
+mneme remember add --db "$MNEME_DB" --json
+mneme resolve --file payload.json --db "$MNEME_DB"
+mneme forget --db "$MNEME_DB" --days-threshold 30
 ```
 
 ## Vault Notes via `mneme note`
 
 ```bash
-mneme note read <vault-relative-path> --vault /root/vault
-mneme note write <vault-relative-path> --vault /root/vault --mode append --content "..."
-mneme note upsert-section <vault-relative-path> --vault /root/vault --heading "Status" --content "..."
+mneme note read <vault-relative-path> --vault "$VAULT"
+mneme note write <vault-relative-path> --vault "$VAULT" --mode append --content "..."
+mneme note upsert-section <vault-relative-path> --vault "$VAULT" --heading "Status" --content "..."
 ```
 
 For private vault operations not covered by public CLI:
 
 ```bash
-python3 /root/.hermes/scripts/mneme/mneme_private.py note upsert-section <path> --heading "..." --content "..."
+python3 mneme_private.py note upsert-section <path> --heading "..." --content "..."
 ```
 
 ## Forgetting
 
 ```bash
-mneme forget --db /root/.local/share/mneme/mneme.sqlite --days-threshold 30 --dry-run  # preview
-mneme forget --db /root/.local/share/mneme/mneme.sqlite --days-threshold 30            # apply
+mneme forget --db "$MNEME_DB" --days-threshold 30 --dry-run  # preview
+mneme forget --db "$MNEME_DB" --days-threshold 30            # apply
 ```
 
 `mneme forget` sets edge strength to 0 and marks related thought candidates as resolved. It never deletes nodes/observations. The `tick()` function auto-skips observations with dates older than the threshold.
@@ -148,10 +148,10 @@ mneme retrieve --db "$DB" --prompt "..." --max-items 8
 
 ## Public Repo Development
 
-Source code lives at `/root/mneme/src/mneme/`. Always run tests before committing:
+Source code lives at `./src/mneme/`. Always run tests before committing:
 
 ```bash
-cd /root/mneme && python -m pytest tests/ -x -q
+cd . && python -m pytest tests/ -x -q
 ```
 
 Push to `georgeantonopoulos/mneme` on GitHub. No personal info in commits.
@@ -159,7 +159,7 @@ Push to `georgeantonopoulos/mneme` on GitHub. No personal info in commits.
 Pre-commit gate for public repo:
 
 ```bash
-cd /root/mneme
+cd .
 python -m pytest tests/ -x -q
 python scripts/privacy_scan.py
 bash -n scripts/install.sh
