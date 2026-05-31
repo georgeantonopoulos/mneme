@@ -8,7 +8,7 @@ from .agent import agent_preflight
 from .brain import brain_report, label_brain
 from .consolidate import LabelerConfig, consolidate_graph
 from .contract import check_db_contract
-from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
+from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, generate_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
@@ -241,6 +241,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate synapses from thought surfacing")
     p.add_argument("--json",action="store_true")
+    p.add_argument("--render",action="store_true",help="Render SVG/PNG cards for surfaced thoughts")
+    p.add_argument("--out",type=Path,help="Output directory for rendered cards (default: config out path)")
     sense=sub.add_parser("sense", help="List and run source senses")
     sense_sub=sense.add_subparsers(dest="sense_cmd", required=True)
     p=sense_sub.add_parser("list", help="List configured and available senses")
@@ -318,11 +320,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--db",type=Path)
     p.add_argument("--source-path",required=True)
     p.add_argument("--dry-run",action="store_true")
-    p=sub.add_parser("thought")
+    p=sub.add_parser("thought", help="Generate a proactive thought card and render SVG/PNG")
     p.add_argument("--db",type=Path)
     p.add_argument("--out",type=Path)
     p.add_argument("--hints")
     p.add_argument("--hops",type=int,default=5)
+    p.add_argument("--json",action="store_true",help="Output structured JSON")
     p=sub.add_parser("explain-edge")
     p.add_argument("edge_id")
     p.add_argument("--db",required=True,type=Path)
@@ -522,8 +525,65 @@ def main(argv: list[str] | None = None) -> None:
             text = args.text if args.text is not None else (args.text_path.read_text(encoding="utf-8", errors="replace") if args.text_path else (args.raw_path.read_text(encoding="utf-8", errors="replace") if args.raw_path else sys.stdin.read()))
             print(json.dumps(store_packet(packet_dir=args.packet_dir, source=args.source, kind=args.kind, raw_path=args.raw_path, text=text, metadata=metadata), indent=2, ensure_ascii=False))
             return
+    if args.cmd == "thought":
+        db_path = required_path(args, "db")
+        out_path = path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out"
+        generated = generate_proactive_thought(db_path, hints=hints_from_args(args), hops=args.hops)
+        image = render_card(generated, out_path)
+        thought_id = save_thought(db_path, generated, str(image))
+        result = {
+            "id": thought_id,
+            "title": generated["title"],
+            "insight": generated["insight"],
+            "action": generated["action"],
+            "why_now": generated.get("why_now"),
+            "score": generated.get("score"),
+            "path": [n.get("name") for n in generated["path"]],
+            "image": str(image),
+            "db": str(db_path),
+        }
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"Thought: {generated['title']}")
+            print(f"  Insight: {generated['insight']}")
+            print(f"  Action:  {generated['action']}")
+            print(f"  Why now:  {generated.get('why_now', 'N/A')}")
+            print(f"  Image:   {image}")
+            print(f"  ID:      {thought_id}")
+        return
     if args.cmd == "surface":
-        print(json.dumps(surface_thoughts(required_path(args,"db"), args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        db_path = required_path(args, "db")
+        surfaced = surface_thoughts(db_path, args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates)
+        out_path = path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out"
+        if args.render or args.out:
+            thoughts = surfaced.get("thoughts", []) if isinstance(surfaced, dict) else surfaced
+            for i, thought in enumerate(thoughts):
+                # Ensure thought has the keys render_card needs (title, insight, action, path)
+                if "path" not in thought or "insight" not in thought:
+                    # Candidate-mode items need conversion to full thought dicts
+                    path_nodes = []
+                    if thought.get("seed_id"):
+                        path_nodes.append({"id": thought["seed_id"], "type": thought.get("seed_type", "node"), "name": thought.get("title") or thought.get("seed_id")})
+                    why_now_val = thought.get("why_now", "")
+                    if isinstance(why_now_val, dict):
+                        why_now_str = "; ".join(str(v) for v in why_now_val.values())
+                    else:
+                        why_now_str = str(why_now_val)
+                    candidate = {
+                        "score": thought.get("activation_score", 0),
+                        "evidence": [thought.get("observation", {}).get("text", "")],
+                        "reasons": [why_now_str],
+                    }
+                    thought = generate_thought(db_path, path_nodes, candidate)
+                    thoughts[i] = thought
+                image = render_card(thought, out_path, basename=thought.get("title"))
+                # Add image path to the surfaced result, not the thought copy
+                if isinstance(surfaced, dict) and "thoughts" in surfaced:
+                    surfaced["thoughts"][i]["image"] = str(image)
+                else:
+                    surfaced[i]["image"] = str(image)
+        print(json.dumps(surfaced, indent=2, ensure_ascii=False))
         return
     if args.cmd == "sense":
         if args.sense_cmd == "list":
