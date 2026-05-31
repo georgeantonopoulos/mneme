@@ -58,9 +58,12 @@ Never let killed edges drive answers. Candidate/pending facts must be visibly te
 
 After explaining a surfaced item, assess whether it is still an open loop. Apply feedback automatically:
 
-- **Resolved/past corrections** (nightly cron corrections already applied, past-deadline items, corrections for facts that have since been fixed): kill immediately with `mneme feedback <thought_id> --kill --reason "resolved: <why>" --json`
+- **Stale/past-dated observations** (nightly cron corrections already applied, past deadlines, resolved items with old dates): use `mneme forget --db "$MNEME_DB" --days-threshold <N>` first. This sets edge strength to 0 for observations older than N days without deleting nodes/observations. Prefer `forget` over `kill` for age-related cleanup — it is non-destructive and reversible.
+- **Resolved corrections with no date anchor** (corrections that were applied but lack an observation date): use `mneme feedback <thought_id> --kill --reason "resolved: <why>" --json` only after `forget` has been tried.
 - **Standing preferences** (ongoing user preferences, not time-bound): snooze with `mneme feedback <thought_id> --snooze 7d --reason "standing preference: will re-surface if still relevant" --json`
 - **Open/active items**: keep surfaced, apply `--accept` or `--deny` based on relevance
+
+**Pruning priority: `forget` → `feedback --kill` → `kill-synapse` (private fallback, last resort).**
 
 Never leave surfaced items un-acked. Every surfaced thought must receive feedback within the same retrieval cycle to prevent stale items from re-surfacing.
 
