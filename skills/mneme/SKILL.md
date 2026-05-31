@@ -49,7 +49,8 @@ mneme sense run all --json          # or targeted: mneme sense run md --json / m
 mneme tick --surface --json
 mneme surface --limit 3 --json
 mneme explain <thought_id> --json   # before treating a surfaced item as evidence
-mneme feedback <thought_id> --accept|--deny|--snooze 7d|--kill --reason "..." --json
+mneme forget --db "$MNEME_DB" --days-threshold <N>   # FIRST for stale/past-dated observations (non-destructive)
+mneme feedback <thought_id> --accept|--deny|--snooze 7d|--kill --reason "..." --json   # after forget or for surfaced thought IDs
 ```
 
 Never let killed edges drive answers. Candidate/pending facts must be visibly tentative.
