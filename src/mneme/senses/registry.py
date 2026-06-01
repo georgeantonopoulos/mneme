@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .gateway_log import GatewayLogSense
 from .gws import GwsSense
 from .hermes_sessions import HermesSessionSense
 from .markdown import MarkdownSense
@@ -16,11 +17,13 @@ SENSE_TYPES = {
     "notion": NotionSense,
     "hermes_sessions": HermesSessionSense,
     "sessions": HermesSessionSense,
+    "gateway_log": GatewayLogSense,
+    "gateway-log": GatewayLogSense,
 }
 
 
 def available_senses() -> list[str]:
-    return sorted({"md", "gws", "notion", "hermes_sessions"})
+    return sorted({"md", "gws", "notion", "hermes_sessions", "gateway_log"})
 
 
 def get_sense_class(sense_type: str):
@@ -58,4 +61,10 @@ def build_sense_from_config(entry: dict[str, Any]):
     if sense_type in {"hermes_sessions", "sessions"}:
         sessions_dir = config.get("path") or config.get("sessions_dir") or os.path.expanduser("~/.hermes/sessions")
         return HermesSessionSense(sense_id=sense_id, sessions_dir=Path(sessions_dir).expanduser(), limit=config.get("limit"))
+    if sense_type in {"gateway_log", "gateway-log"}:
+        return GatewayLogSense(
+            sense_id=sense_id,
+            log_path=config.get("log_path") or config.get("path") or "~/.hermes/logs/gateway.log",
+            state_path=config.get("state_path") or config.get("cursor_path"),
+        )
     return get_sense_class(str(sense_type))(sense_id=sense_id, **config)

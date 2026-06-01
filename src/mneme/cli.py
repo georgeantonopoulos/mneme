@@ -67,6 +67,8 @@ def sense_entries_from_args(args) -> list[dict]:
         return [{"id": "hermes-sessions", "type": "hermes_sessions", "enabled": True, "config": {"path": os.path.expanduser("~/.hermes/sessions"), "limit": args.limit}}]
     if args.sense_type == "notion":
         return [{"id": "notion", "type": "notion", "enabled": True, "config": {"database_id": args.database_id, "token": args.token}}]
+    if args.sense_type == "gateway_log":
+        return [{"id": "gateway-log", "type": "gateway_log", "enabled": True, "config": {"log_path": "~/.hermes/logs/gateway.log"}}]
     cfg = load_runtime_config(getattr(args, "config", None) or DEFAULT_CONFIG_PATH)
     return [entry for entry in configured_senses(cfg) if entry.get("enabled", True)]
 
@@ -248,7 +250,7 @@ def main(argv: list[str] | None = None) -> None:
     p=sense_sub.add_parser("list", help="List configured and available senses")
     p.add_argument("--json",action="store_true")
     p=sense_sub.add_parser("run", help="Collect one or all senses and ingest normalized events")
-    p.add_argument("sense_type", choices=["md","gws","notion","hermes_sessions","all"])
+    p.add_argument("sense_type", choices=["md","gws","notion","hermes_sessions","gateway_log","all"])
     p.add_argument("--vault",type=Path)
     p.add_argument("--db",type=Path)
     p.add_argument("--hints")
