@@ -305,28 +305,33 @@ def _render_reasoning(thought: dict, palette: dict[str, str], esc) -> list[str]:
     return parts
 
 
-def _render_next(thought: dict, palette: dict[str, str], esc) -> list[str]:
+def _render_next(thought: dict, palette: dict[str, str], esc) -> tuple[list[str], int]:
+    """Render the Next/action box. Returns (svg_parts, bottom_y). The
+    bottom_y lets the caller position the footer just below the box so
+    a 2-line action never collides with the metadata footer."""
+    action_lines = wrap_text(thought.get("action", ""), 90, 2)
+    box_h = 60 + max(0, len(action_lines) - 1) * 28
     parts: list[str] = []
     parts.append(
-        f'<rect x="90" y="760" width="1020" height="80" rx="22" '
+        f'<rect x="90" y="760" width="1020" height="{box_h}" rx="22" '
         f'fill="{palette["next_bg"]}" stroke="{palette["next_border"]}"/>'
     )
     parts.append(
-        f'<text x="120" y="804" fill="{palette["next_accent"]}" '
+        f'<text x="120" y="790" fill="{palette["next_accent"]}" '
         f'font-family="Inter,Arial" font-size="22" font-weight="700">Next</text>'
     )
-    for j, line in enumerate(wrap_text(thought.get("action", ""), 90, 1)):
+    for j, line in enumerate(action_lines):
         parts.append(
-            f'<text x="210" y="804" fill="{palette["next_ink"]}" '
+            f'<text x="210" y="{790 + j * 28}" fill="{palette["next_ink"]}" '
             f'font-family="Inter,Arial" font-size="22">{esc(line)}</text>'
         )
-    return parts
+    return parts, 760 + box_h
 
 
-def _render_footer(thought: dict, palette: dict[str, str], esc) -> list[str]:
+def _render_footer(thought: dict, palette: dict[str, str], esc, top_y: int) -> list[str]:
     """Footer: why_now, source surface metadata. Sits in its own row
-    below the Next zone (which ends at y=840) so the two never share a
-    y coordinate or paint over each other."""
+    starting at ``top_y`` (the y just below the Next box) so a 2-line
+    action never collides with the meta block."""
     parts: list[str] = []
     bits: list[str] = []
     why_now = thought.get("why_now")
@@ -341,7 +346,7 @@ def _render_footer(thought: dict, palette: dict[str, str], esc) -> list[str]:
     if bits:
         for j, line in enumerate(wrap_text("  ·  ".join(bits), 130, 2)):
             parts.append(
-                f'<text x="90" y="{858 + j * 18}" fill="{palette["ink_dim"]}" '
+                f'<text x="90" y="{top_y + 18 + j * 18}" fill="{palette["ink_dim"]}" '
                 f'font-family="Inter,Arial" font-size="15">{esc(line)}</text>'
             )
     return parts
@@ -419,12 +424,18 @@ def render_svg(thought: dict, svg_path: Path, theme: str = "dark") -> None:
     parts.extend(_render_path(thought, palette, esc))
     parts.extend(_render_evidence(thought, palette, esc))
     parts.extend(_render_reasoning(thought, palette, esc))
-    parts.extend(_render_next(thought, palette, esc))
-    parts.extend(_render_footer(thought, palette, esc))
+    next_parts, next_bottom = _render_next(thought, palette, esc)
+    parts.extend(next_parts)
+    # Pad the SVG height if the Next box pushed the layout down.
+    if next_bottom + 80 > height:
+        height = next_bottom + 80
+        parts[0] = f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
+        parts[6] = f'<rect x="40" y="40" width="1120" height="{height - 80}" rx="36" fill="{palette["panel"]}" stroke="{palette["panel_border"]}" filter="url(#shadow)"/>'
+    parts.extend(_render_footer(thought, palette, esc, top_y=next_bottom + 8))
 
     generated = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     parts.append(
-        f'<text x="1110" y="900" text-anchor="end" fill="{palette["ink_dim"]}" '
+        f'<text x="1110" y="{height - 20}" text-anchor="end" fill="{palette["ink_dim"]}" '
         f'font-family="Inter,Arial" font-size="13">'
         f'Generated {esc(generated)} from a local Markdown-derived SQLite graph.</text>'
     )
