@@ -81,6 +81,36 @@ A line between two nodes is not automatically a fact. Mneme separates:
 
 This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
 
+## What a thought card looks like
+
+When Mneme surfaces a thought, the CLI renders a self-contained SVG/PNG
+card so the human can see at a glance what was found, why, and what to
+do next. The example below is a fictional demo (the `[Persona]` token
+and the `mneme://thoughts/demo-open-loop` URI make this unmistakable).
+A real card would carry your actual node names and source paths.
+
+![Demo thought card](assets/examples/demo-thought-card.svg)
+
+A card carries:
+
+- **Header** — wordmark, classification badge (`Open loop` / `Deadline` /
+  `Surface match` / `Reasoned walk`), score chip.
+- **Path** — the multi-hop graph walk that surfaced, with the relation
+  (e.g. `blocks`, `mentions`, `raises`, `references`) shown as a chip
+  between each pair of nodes. Paths longer than 12 nodes get a `+N more`
+  overflow chip.
+- **Evidence** — the thought's source-backed snippets and observations,
+  deduped, capped at 5 lines with a `+N more in JSON output` marker when
+  truncated. Hidden entirely when no observations exist.
+- **Reasoning** — the insight, with a distinct purple/violet tint so it
+  reads as a third colored band.
+- **Next** — a concrete next step in an amber tint.
+- **Footer** — `Why now:` explanation, `src:` URI, `matched:` terms, and
+  the generated timestamp.
+
+Theme can be `dark` (default) or `light`, selectable via the
+`MNEME_CARD_THEME` env var or the `theme=` kwarg on `render_card`.
+
 ## Privacy model
 
 Mneme is local-first:

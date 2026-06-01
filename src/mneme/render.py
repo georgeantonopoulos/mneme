@@ -263,69 +263,76 @@ def _render_evidence(thought: dict, palette: dict[str, str], esc) -> list[str]:
 
     lines = unique[:MAX_EVIDENCE_LINES]
     body = []
+    # Box anchored at y=490 so the Evidence → Reasoning gap matches the
+    # Reasoning → Next gap (30px), keeping the three bands rhythmically
+    # spaced regardless of insight length.
     body.append(
-        f'<rect x="90" y="500" width="1020" height="120" rx="22" '
+        f'<rect x="90" y="490" width="1020" height="120" rx="22" '
         f'fill="{palette["evidence_bg"]}" stroke="{palette["evidence_border"]}"/>'
     )
     body.append(
-        f'<text x="120" y="540" fill="{palette["evidence_accent"]}" '
+        f'<text x="120" y="530" fill="{palette["evidence_accent"]}" '
         f'font-family="Inter,Arial" font-size="22" font-weight="700">Evidence</text>'
     )
     for j, line in enumerate(wrap_text("• " + " • ".join(lines), 100, MAX_EVIDENCE_LINES)):
         body.append(
-            f'<text x="120" y="{570 + j * 26}" fill="{palette["evidence_ink"]}" '
+            f'<text x="120" y="{560 + j * 26}" fill="{palette["evidence_ink"]}" '
             f'font-family="Inter,Arial" font-size="20">{esc(line)}</text>'
         )
     if len(unique) > MAX_EVIDENCE_LINES:
         body.append(
-            f'<text x="120" y="605" fill="{palette["ink_dim"]}" '
+            f'<text x="120" y="595" fill="{palette["ink_dim"]}" '
             f'font-family="Inter,Arial" font-size="16" font-style="italic">'
             f'+{len(unique) - MAX_EVIDENCE_LINES} more in JSON output</text>'
         )
     return body
 
 
-def _render_reasoning(thought: dict, palette: dict[str, str], esc) -> list[str]:
+def _render_reasoning(thought: dict, palette: dict[str, str], esc) -> tuple[list[str], int]:
+    """Reasoning zone. Box height grows to fit up to 3 wrapped lines
+    of the insight so a long insight never collides with the Next
+    box below. Returns (svg_parts, bottom_y).
+    """
+    insight_lines = wrap_text(thought.get("insight", ""), 95, 3)
+    box_h = 60 + max(0, len(insight_lines) - 1) * 28
     parts: list[str] = []
-    # Give the Reasoning zone a distinct, gentle tint so it reads as the
-    # third colored band alongside Evidence (blue) and Next (amber).
     parts.append(
-        f'<rect x="90" y="640" width="1020" height="100" rx="22" '
+        f'<rect x="90" y="640" width="1020" height="{box_h}" rx="22" '
         f'fill="{palette["reasoning_bg"]}" stroke="{palette["reasoning_border"]}"/>'
     )
     parts.append(
         f'<text x="120" y="678" fill="{palette["reasoning_accent"]}" '
         f'font-family="Inter,Arial" font-size="22" font-weight="700">Reasoning</text>'
     )
-    for j, line in enumerate(wrap_text(thought.get("insight", ""), 95, 3)):
+    for j, line in enumerate(insight_lines):
         parts.append(
             f'<text x="120" y="{708 + j * 28}" fill="{palette["ink"]}" '
             f'font-family="Inter,Arial" font-size="22">{esc(line)}</text>'
         )
-    return parts
+    return parts, 640 + box_h
 
 
-def _render_next(thought: dict, palette: dict[str, str], esc) -> tuple[list[str], int]:
-    """Render the Next/action box. Returns (svg_parts, bottom_y). The
-    bottom_y lets the caller position the footer just below the box so
-    a 2-line action never collides with the metadata footer."""
+def _render_next(thought: dict, palette: dict[str, str], esc, top_y: int) -> tuple[list[str], int]:
+    """Render the Next/action box at ``top_y``. Returns
+    (svg_parts, bottom_y) so the footer can sit just below it.
+    """
     action_lines = wrap_text(thought.get("action", ""), 90, 2)
     box_h = 60 + max(0, len(action_lines) - 1) * 28
     parts: list[str] = []
     parts.append(
-        f'<rect x="90" y="760" width="1020" height="{box_h}" rx="22" '
+        f'<rect x="90" y="{top_y}" width="1020" height="{box_h}" rx="22" '
         f'fill="{palette["next_bg"]}" stroke="{palette["next_border"]}"/>'
     )
     parts.append(
-        f'<text x="120" y="790" fill="{palette["next_accent"]}" '
+        f'<text x="120" y="{top_y + 30}" fill="{palette["next_accent"]}" '
         f'font-family="Inter,Arial" font-size="22" font-weight="700">Next</text>'
     )
     for j, line in enumerate(action_lines):
         parts.append(
-            f'<text x="210" y="{790 + j * 28}" fill="{palette["next_ink"]}" '
+            f'<text x="210" y="{top_y + 30 + j * 28}" fill="{palette["next_ink"]}" '
             f'font-family="Inter,Arial" font-size="22">{esc(line)}</text>'
         )
-    return parts, 760 + box_h
+    return parts, top_y + box_h
 
 
 def _render_footer(thought: dict, palette: dict[str, str], esc, top_y: int) -> list[str]:
@@ -423,8 +430,20 @@ def render_svg(thought: dict, svg_path: Path, theme: str = "dark") -> None:
     parts.extend(_render_header(thought, palette, esc))
     parts.extend(_render_path(thought, palette, esc))
     parts.extend(_render_evidence(thought, palette, esc))
-    parts.extend(_render_reasoning(thought, palette, esc))
-    next_parts, next_bottom = _render_next(thought, palette, esc)
+    reasoning_parts, reasoning_bottom = _render_reasoning(thought, palette, esc)
+    parts.extend(reasoning_parts)
+    # Position the Next box 40px below the Reasoning box, with a thin
+    # horizontal divider at the midpoint of the gap so the eye sees a
+    # clear "this is a new section" cue even though the panel fill is
+    # the same as the gap color.
+    next_top = reasoning_bottom + 40
+    # Divider at the midpoint of the gap.
+    divider_y = reasoning_bottom + 20
+    parts.append(
+        f'<line x1="120" y1="{divider_y}" x2="1080" y2="{divider_y}" '
+        f'stroke="{palette["rule"]}" stroke-width="1" stroke-dasharray="3 6"/>'
+    )
+    next_parts, next_bottom = _render_next(thought, palette, esc, top_y=next_top)
     parts.extend(next_parts)
     # Pad the SVG height if the Next box pushed the layout down.
     if next_bottom + 80 > height:

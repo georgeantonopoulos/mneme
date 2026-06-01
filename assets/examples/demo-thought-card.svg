@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="964" viewBox="0 0 1200 964">
+<defs>
+<filter id="shadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/></filter>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#64748b"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#070b14"/>
+<rect x="40" y="40" width="1120" height="884" rx="36" fill="#101827" stroke="#243044" filter="url(#shadow)"/>
+<text x="90" y="100" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="22">MNEME</text>
+<rect x="230" y="68" width="170" height="44" rx="22" fill="#fbbf24"/>
+<text x="315" y="97" text-anchor="middle" fill="#101827" font-family="Inter,Arial" font-size="19" font-weight="800" letter-spacing="0.5">Open loop</text>
+<rect x="1040" y="74" width="80" height="34" rx="17" fill="#1e293b" stroke="#243044"/>
+<text x="1080" y="97" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Arial" font-size="18" font-weight="700">8.20</text>
+<text x="90" y="158" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="700">Open loop hiding in the graph</text>
+<circle cx="120" cy="280" r="44" fill="#60a5fa" opacity="0.95" stroke="#243044" stroke-width="2"/>
+<text x="120" y="288" text-anchor="middle" fill="#07111f" font-family="Inter,Arial" font-size="22" font-weight="800">1</text>
+<text x="120" y="360" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">Auth refactor</text>
+<text x="120" y="438" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="14" font-style="italic">project</text>
+<path d="M 170 280 C 240 252, 240 252, 310 280" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+<rect x="196" y="220" width="88" height="26" rx="13" fill="#1e293b" stroke="#1e3a5f"/>
+<text x="240" y="238" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Arial" font-size="14" font-weight="600">blocks</text>
+<circle cx="360" cy="280" r="44" fill="#fb923c" opacity="0.95" stroke="#243044" stroke-width="2"/>
+<text x="360" y="288" text-anchor="middle" fill="#07111f" font-family="Inter,Arial" font-size="22" font-weight="800">2</text>
+<text x="360" y="360" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">Blocked since</text>
+<text x="360" y="382" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">2026-05-21</text>
+<text x="360" y="438" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="14" font-style="italic">task</text>
+<path d="M 410 280 C 480 252, 480 252, 550 280" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+<rect x="424" y="220" width="112" height="26" rx="13" fill="#1e293b" stroke="#1e3a5f"/>
+<text x="480" y="238" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Arial" font-size="14" font-weight="600">mentions</text>
+<circle cx="600" cy="280" r="44" fill="#22d3ee" opacity="0.95" stroke="#243044" stroke-width="2"/>
+<text x="600" y="288" text-anchor="middle" fill="#07111f" font-family="Inter,Arial" font-size="22" font-weight="800">3</text>
+<text x="600" y="360" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">Decision: use</text>
+<text x="600" y="382" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">JWT</text>
+<text x="600" y="438" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="14" font-style="italic">note</text>
+<path d="M 650 280 C 720 252, 720 252, 790 280" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+<rect x="676" y="220" width="88" height="26" rx="13" fill="#1e293b" stroke="#1e3a5f"/>
+<text x="720" y="238" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Arial" font-size="14" font-weight="600">raises</text>
+<circle cx="840" cy="280" r="44" fill="#fb7185" opacity="0.95" stroke="#243044" stroke-width="2"/>
+<text x="840" y="288" text-anchor="middle" fill="#07111f" font-family="Inter,Arial" font-size="22" font-weight="800">4</text>
+<text x="840" y="360" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">Migration risk</text>
+<text x="840" y="438" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="14" font-style="italic">observation</text>
+<path d="M 890 280 C 960 252, 960 252, 1030 280" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+<rect x="892" y="220" width="136" height="26" rx="13" fill="#1e293b" stroke="#1e3a5f"/>
+<text x="960" y="238" text-anchor="middle" fill="#cbd5e1" font-family="Inter,Arial" font-size="14" font-weight="600">references</text>
+<circle cx="1080" cy="280" r="44" fill="#f472b6" opacity="0.95" stroke="#243044" stroke-width="2"/>
+<text x="1080" y="288" text-anchor="middle" fill="#07111f" font-family="Inter,Arial" font-size="22" font-weight="800">5</text>
+<text x="1080" y="360" text-anchor="middle" fill="#e2e8f0" font-family="Inter,Arial" font-size="18">CTO [Persona]</text>
+<text x="1080" y="438" text-anchor="middle" fill="#64748b" font-family="Inter,Arial" font-size="14" font-style="italic">person</text>
+<rect x="90" y="490" width="1020" height="120" rx="22" fill="#0f2537" stroke="#1e3a5f"/>
+<text x="120" y="530" fill="#38bdf8" font-family="Inter,Arial" font-size="22" font-weight="700">Evidence</text>
+<text x="120" y="560" fill="#e5e7eb" font-family="Inter,Arial" font-size="20">• Auth refactor note last touched 2026-05-21 (auth-refactor.md) • Calendar: Auth milestone @</text>
+<text x="120" y="586" fill="#e5e7eb" font-family="Inter,Arial" font-size="20">2026-06-19 • blocked • needs review • deadline in 2 weeks</text>
+<rect x="90" y="640" width="1020" height="116" rx="22" fill="#1a1530" stroke="#3b2f6b"/>
+<text x="120" y="678" fill="#a78bfa" font-family="Inter,Arial" font-size="22" font-weight="700">Reasoning</text>
+<text x="120" y="708" fill="#f8fafc" font-family="Inter,Arial" font-size="22">Why this matters: A two-week-old &#x27;blocked&#x27; tag on the Auth refactor note is connected to a</text>
+<text x="120" y="736" fill="#f8fafc" font-family="Inter,Arial" font-size="22">&#x27;mentions&#x27; edge from a decision log entry that was later marked &#x27;superseded&#x27;. Mneme is</text>
+<text x="120" y="764" fill="#f8fafc" font-family="Inter,Arial" font-size="22">surfacing the bridge because the superseded decision may be why the block was never closed.</text>
+<line x1="120" y1="776" x2="1080" y2="776" stroke="#1e293b" stroke-width="1" stroke-dasharray="3 6"/>
+<rect x="90" y="796" width="1020" height="88" rx="22" fill="#1f1b10" stroke="#5b4315"/>
+<text x="120" y="826" fill="#fbbf24" font-family="Inter,Arial" font-size="22" font-weight="700">Next</text>
+<text x="210" y="826" fill="#fef3c7" font-family="Inter,Arial" font-size="22">Ask whether the Auth refactor block is still real, or just stale. If superseded, retire</text>
+<text x="210" y="854" fill="#fef3c7" font-family="Inter,Arial" font-size="22">the edge; if still real, attach the decision log as evidence and re-route the next step.</text>
+<text x="90" y="910" fill="#475569" font-family="Inter,Arial" font-size="15">Why now: weighted random walk on unresolved-task cluster; two distinct senses (vault + calendar) corroborated · src:</text>
+<text x="90" y="928" fill="#475569" font-family="Inter,Arial" font-size="15">mneme://thoughts/demo-open-loop · matched: blocked, decision, auth</text>
+<text x="1110" y="944" text-anchor="end" fill="#475569" font-family="Inter,Arial" font-size="13">Generated 2026-06-01T12:54:32+00:00 from a local Markdown-derived SQLite graph.</text>
+</svg>
