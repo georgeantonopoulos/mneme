@@ -32,7 +32,23 @@ directory when an agent should operate Mneme as a working brain. The skill
 contains the `SKILL.md` entrypoint, a detailed operator runbook, and a smoke
 helper that delegates to `scripts/hermes_brain_ready.sh`. Hermes install and
 update steps live in
-[`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md).
+[`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md)
+and are summarised in the [Hermes install](#hermes-install) section below.
+
+### Hook directive ordering
+
+Hermes hosts that wire Mneme as a pre-LLM hook must follow the
+directive-ordering pattern documented at
+[`skills/mneme/references/hook-directive-order.md`](skills/mneme/references/hook-directive-order.md).
+In short: when a pre-LLM hook injects a Mneme path header (e.g.
+`MNEME BOTH PATH …`) plus a multi-step protocol, the injected context MUST
+begin with a `PRIMARY DIRECTIVE: answer the user's request first` banner
+that explicitly overrides any "do Mneme writeback first" language. The
+public test suite (`tests/test_hook_directive_order.py`) covers the
+invariant. Host runtimes that already implement the older numbered-step
+header should be patched to prepend the banner; the numbered steps alone
+are insufficient and have been observed to cause the agent to stop
+responding mid-turn.
 
 ## What it does
 
@@ -130,6 +146,61 @@ mneme note --help
 ```
 
 The package includes the graph memory engine and a small path-safe Markdown editor; there is no separate editor plugin to install.
+
+## Hermes install
+
+Hermes needs two things from Mneme:
+
+1. The `mneme` CLI on `PATH` (installed by the standard install above).
+2. The `skills/mneme-agent-brain/` skill directory reachable from the
+   active Hermes profile (for example
+   `~/.hermes/skills/mneme-agent-brain/`).
+
+The fast path:
+
+```bash
+# 1. Install or update the CLI
+curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash
+
+# 2. Wire the skill into the active Hermes profile
+mkdir -p ~/.hermes/skills
+ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-agent-brain
+
+# 3. Smoke-test the wiring (the helper runs the full brain harness
+#    so Hermes can tell whether the latest brain is usable).
+MNEME_BRAIN_DEPTH=smoke ~/.local/share/mneme/scripts/hermes_brain_ready.sh /tmp/mneme_smoke.sqlite
+```
+
+If your Hermes profile lives somewhere other than `~/.hermes`, set
+`HERMES_HOME` to that directory before step 2 and substitute the
+profile's `skills/` path in the symlink.
+
+Manual checkout (for hermes profiles that need the repo on disk):
+
+```bash
+git clone https://github.com/georgeantonopoulos/mneme.git ~/.local/share/mneme
+python -m pip install -e ~/.local/share/mneme
+ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-agent-brain
+```
+
+The full operator runbook (env-var overrides, profile isolation, brain
+harness depths) lives at
+[`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md).
+
+### Hook directive ordering in Hermes
+
+If the Hermes deployment uses a pre-LLM hook that injects a Mneme
+`path` (`retrieval`, `correction`, or `both`) into the agent's system
+prompt, the hook MUST prepend the primary directive banner described in
+[Hook directive ordering](#hook-directive-ordering) above. Hermes
+hosts that omit the banner have been observed to lose the user's
+request to a Mneme writeback loop and stop responding. The public
+test `tests/test_hook_directive_order.py` pins the invariant; run it
+after any hook changes:
+
+```bash
+python -m pytest tests/test_hook_directive_order.py -v
+```
 
 ## Quick start
 
