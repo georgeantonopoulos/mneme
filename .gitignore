@@ -13,3 +13,6 @@ build/
 .coverage
 .DS_Store
 .hermes-synced-skills/
+
+# Local demo thought-card PNG (SVG in README is the source of truth)
+/assets/examples/demo-thought-card.png

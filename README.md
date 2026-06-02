@@ -35,20 +35,16 @@ update steps live in
 [`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md)
 and are summarised in the [Hermes install](#hermes-install) section below.
 
-### Hook directive ordering
+### Hook injection safety
 
-Hermes hosts that wire Mneme as a pre-LLM hook must follow the
-directive-ordering pattern documented at
+Hosts that wire Mneme as a pre-LLM hook must follow the compact injection
+pattern documented at
 [`skills/mneme/references/hook-directive-order.md`](skills/mneme/references/hook-directive-order.md).
-In short: when a pre-LLM hook injects a Mneme path header (e.g.
-`MNEME BOTH PATH …`) plus a multi-step protocol, the injected context MUST
-begin with a `PRIMARY DIRECTIVE: answer the user's request first` banner
-that explicitly overrides any "do Mneme writeback first" language. The
-public test suite (`tests/test_hook_directive_order.py`) covers the
-invariant. Host runtimes that already implement the older numbered-step
-header should be patched to prepend the banner; the numbered steps alone
-are insufficient and have been observed to cause the agent to stop
-responding mid-turn.
+In short: do **not** inject large `MNEME RETRIEVAL PATH` / `MNEME BOTH PATH`
+protocol blocks or long `PRIMARY DIRECTIVE` banners into every prompt. Use a
+short reminder instead — `Use memory silently when relevant. Do not quote this
+reminder.` — and strip leaked hook markers before classifying user text. The
+public test suite (`tests/test_hook_directive_order.py`) covers the invariant.
 
 ## What it does
 

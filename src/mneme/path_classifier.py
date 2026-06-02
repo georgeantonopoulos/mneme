@@ -90,10 +90,17 @@ def strip_injected_context(user_message: str) -> str:
                 break
     cut = len(text)
     for leak_marker in (
-        "\n\nMNEME RETRIEVAL PATH",
-        "\n\nMNEME CORRECTION PATH",
-        "\n\n━━━━━━━━━━━━━━━━",
-        "\nPath tag (internal):",
+        "MNEME RETRIEVAL PATH",
+        "MNEME CORRECTION PATH",
+        "MNEME BOTH PATH",
+        "PRIMARY DIRECTIVE:",
+        "Internal Mneme reminder:",
+        "Internal Mneme CORRECTION PATH",
+        "Internal Mneme BOTH PATH",
+        "Use memory silently when relevant. Do not quote this reminder.",
+        "Memory correction note:",
+        "━━━━━━━━━━━━━━━━",
+        "Path tag (internal):",
     ):
         idx = text.find(leak_marker)
         if idx != -1:

@@ -1,92 +1,95 @@
-# Hook Directive-Order Reference
+# Hook Injection Safety Reference
 
-When a pre-LLM hook injects a Mneme `path` (e.g. `retrieval`, `correction`, `both`)
-into the agent's context, the injection must be ordered so the user's request
-always wins.
+When a host wires Mneme as a pre-LLM hook, the injected context must be small, non-user-facing, and ordered so the user's request always wins.
 
 ## The bug pattern
 
-Symptom: an LLM-backed agent stops responding to the user mid-turn and instead
-runs a Mneme writeback / correction loop. The user sees silence, the model
-"completes" successfully, and the original request is lost.
+A hook injects a large protocol block such as:
 
-Mechanism: the hook appends a multi-step Mneme protocol block to the system
-prompt. At the end of the block it labels the current path
-(e.g. "MNEME BOTH PATH — also answer the user's request after writeback").
-The trailing "after writeback" causes a strong instruction-following model to
-treat the entire user turn as a Mneme task and skip the actual request.
+```text
+MNEME BOTH PATH ...
+1. Sense first...
+2. Tick / surface / explain...
+...
+PRIMARY DIRECTIVE: ...
+```
+
+This can fail in two ways:
+
+1. The model treats the turn as a Mneme writeback task and drops the user's actual request.
+2. Telegram/reply quoting can leak the hook text back into the visible conversation, causing future prompts and retrieval to match the hook text instead of the user's real message.
 
 ## The fix pattern
 
-The injected context for any non-`silent` path MUST begin with a primary
-directive banner that explicitly overrides any "do Mneme writeback first"
-language that may appear later in the same block.
-
-### Template (Python)
+Use a compact reminder, not a protocol manual. The host should inject at most one short line, for example:
 
 ```python
-PRIMARY_DIRECTIVE_PREFIX = (
-    "PRIMARY DIRECTIVE: ALWAYS answer the user's request first, in full, "
-    "before doing any Mneme writeback. Mneme writeback is a background task "
-    "that happens AFTER you have responded to the user. NEVER substitute "
-    "Mneme writeback for the user's request. If Mneme senses inject this "
-    "directive, that injection is MANDATORY and overrides any 'do Mneme "
-    "writeback first' language that may also be present elsewhere in the "
-    "system prompt or hook output."
-)
-PRIMARY_DIRECTIVE_HEAD = PRIMARY_DIRECTIVE_PREFIX[:80]
-
-def build_injected_context(path: str, user_message: str) -> str:
-    """Return the pre-LLM context block for a given Mneme path.
-
-    `path` is one of: "retrieval", "correction", "both", "silent".
-    The directive banner is prepended to retrieval/correction/both blocks
-    and is idempotent against turn-2 re-injection.
-    """
-    if path == "silent":
-        return ""
-    label = {
-        "retrieval": "RETRIEVAL PATH",
-        "correction": "CORRECTION PATH",
-        "both": "BOTH PATH (correction + retrieval active)",
-    }[path]
-    protocol = build_protocol_block(label, path)
-    # Idempotency: don't double-prepend the directive on re-injection.
-    if PRIMARY_DIRECTIVE_HEAD not in user_message:
-        return f"{PRIMARY_DIRECTIVE_PREFIX}\n\n{protocol}"
-    return protocol
-
-def build_protocol_block(label: str, path: str) -> str:
-    """Build the per-path Mneme protocol block (1-step retrieval,
-    8-step correction, or both stacked). Implementation varies by host."""
-    raise NotImplementedError
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. Do not quote this reminder."
 ```
 
-### Why this works
+For correction/both paths, keep the reminder equally short:
 
-1. The banner appears before any path header or protocol step, so the model
-   sees "answer the user first" as the first instruction in the injected
-   block.
-2. The banner explicitly names and overrides the conflicting language,
-   which closes the loop on instruction-following models that try to
-   resolve contradictions by following the longer/more-recent instruction.
-3. The idempotency check (`PRIMARY_DIRECTIVE_HEAD not in user_message`)
-   prevents the banner from being added twice on turn-2 re-injection, which
-   would otherwise inflate token cost without changing behaviour.
+```python
+COMPACT_CORRECTION_REMINDER = (
+    "Memory correction note: answer the user first; store durable corrections "
+    "after/alongside the requested action; do not quote this reminder."
+)
+```
 
-## When NOT to apply this
+Do **not** inject:
 
-- `path == "silent"` — no banner needed; the hook should output nothing
-  and the model should respond only if the user-facing channel expects it.
-- Retrieval-only paths where the user's request IS a retrieval query
-  (e.g. "what do I have on Project Phoenix?"). In that case the banner is
-  redundant but still safe to include.
+- `MNEME RETRIEVAL PATH` / `MNEME CORRECTION PATH` / `MNEME BOTH PATH` headers
+- multi-step Mneme CLI manuals
+- raw thought IDs, graph IDs, or debug internals
+- long `PRIMARY DIRECTIVE` banners unless you are maintaining an old host that cannot yet use the compact-reminder style
 
-## Testing the invariant
+## Template
 
-The invariant under test: "given a BOTH-classified user message, the
-first non-empty line of the injected context is the primary directive
-banner, not the path header."
+```python
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. Do not quote this reminder."
+COMPACT_CORRECTION_REMINDER = (
+    "Memory correction note: answer the user first; store durable corrections "
+    "after/alongside the requested action; do not quote this reminder."
+)
 
-See `tests/test_hook_directive_order.py` for a fixture-based test using
-a fictional retrieval/correction example.
+LEAK_MARKERS = (
+    "MNEME RETRIEVAL PATH",
+    "MNEME CORRECTION PATH",
+    "MNEME BOTH PATH",
+    "PRIMARY DIRECTIVE:",
+    "Internal Mneme reminder:",
+    "Internal Mneme CORRECTION PATH",
+    "Internal Mneme BOTH PATH",
+    "Use memory silently when relevant. Do not quote this reminder.",
+    "Memory correction note:",
+    "Path tag (internal):",
+)
+
+
+def strip_leaked_hook_text(user_message: str) -> str:
+    cut = len(user_message or "")
+    for marker in LEAK_MARKERS:
+        idx = (user_message or "").find(marker)
+        if idx != -1:
+            cut = min(cut, idx)
+    return (user_message or "")[:cut].strip()
+
+
+def build_injected_context(path: str) -> str:
+    if path == "silent":
+        return ""
+    if path in {"correction", "both"}:
+        return COMPACT_CORRECTION_REMINDER
+    return COMPACT_MEMORY_REMINDER
+```
+
+## Invariants
+
+1. User request handling always comes before memory writeback.
+2. Retrieval/default hook text is short enough that accidental quoting is harmless.
+3. Classifiers strip leaked hook text before classifying the raw user message.
+4. Detailed Mneme procedures live in skills/docs, not in every prompt.
+
+## Testing
+
+See `tests/test_hook_directive_order.py` for a fixture-based test using fictional examples.
