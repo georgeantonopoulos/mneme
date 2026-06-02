@@ -106,6 +106,8 @@ After resolving:
 
 **Use `mneme resolve` for corrections instead**, or include a `nodes[]` array with `mneme remember add`.
 
+Mnemonic payload aliases accepted by current code: node objects may use `label` as an alias for `name`, and observations may use `node_ref` or `node_id` as aliases for `node`. Prefer the canonical schema in examples: `nodes[].name` and `observations[].node`.
+
 ## Kind=correction Scoring
 
 As of commit 4fc5c59, observations with `kind=correction` get +8.0 authority boost and default score 9.0 in `extract_observations/scoring`. The MEMORY.md path penalty (0.18x) is waived for `source_type=user_confirmed`.
@@ -140,7 +142,7 @@ mneme tick --surface --db "$MNEME_DB" --json
 mneme surface --limit 3 --db "$MNEME_DB" --json
 mneme explain <id> --db "$MNEME_DB" --json
 mneme feedback <id> --accept --db "$MNEME_DB" --json
-mneme remember add --db "$MNEME_DB" --json
+mneme remember add --db "$MNEME_DB" --file /tmp/mneme-memory.json
 mneme resolve --file payload.json --db "$MNEME_DB"
 mneme forget --db "$MNEME_DB" --days-threshold 30
 ```

@@ -1970,9 +1970,9 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
         for index, node in enumerate(nodes_in):
             ref = str(node.get("ref") or node.get("id") or f"node{index + 1}")
             node_type = str(node.get("type") or "entity")
-            name = str(node.get("name") or "").strip()
+            name = str(node.get("name") or node.get("label") or "").strip()
             if not name:
-                raise ValueError(f"remember node {ref} requires name")
+                raise ValueError(f"remember node {ref} requires name (or label alias)")
             node_id = upsert_node(conn, node_type, name, source_path, float(node.get("confidence", 1.0)), node.get("metadata") or {})
             created_nodes[ref] = node_id
             out_nodes.append({"ref": ref, "id": node_id, "type": node_type, "name": name, "source_path": source_path})
@@ -2000,13 +2000,22 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
             )
             out_edges.append({"id": edge_id, "src": created_nodes[src_ref], "dst": created_nodes[dst_ref], "relation": relation, "status": status})
         for obs in observations_in:
-            node_ref = str(obs.get("node") or "")
+            node_ref = str(obs.get("node") or obs.get("node_ref") or obs.get("node_id") or "")
             if node_ref not in created_nodes:
-                # Auto-resolve or auto-create: look up by name, else create entity
-                existing = conn.execute(
-                    "SELECT id FROM nodes WHERE name=? COLLATE NOCASE LIMIT 1",
-                    (node_ref,),
-                ).fetchone()
+                existing = None
+                if obs.get("node_id") and not (obs.get("node") or obs.get("node_ref")):
+                    # node_id conventionally means a persisted Mneme node id, not a
+                    # payload-local ref. Resolve it first to avoid silently creating
+                    # a new entity named after an id-like string.
+                    existing = conn.execute("SELECT id FROM nodes WHERE id=? LIMIT 1", (node_ref,)).fetchone()
+                if not existing:
+                    # Auto-resolve or auto-create: look up by name, else create entity.
+                    # This preserves existing behavior for node/node_ref and for
+                    # node_id values that are intentionally payload-local refs.
+                    existing = conn.execute(
+                        "SELECT id FROM nodes WHERE name=? COLLATE NOCASE LIMIT 1",
+                        (node_ref,),
+                    ).fetchone()
                 if existing:
                     created_nodes[node_ref] = existing[0]
                 else:

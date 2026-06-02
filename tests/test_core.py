@@ -1556,6 +1556,70 @@ def test_notion_sense_collects_database_rows_from_runner():
 
 # --- Fix 1: remember add auto-creates nodes for standalone observations ---
 
+def test_remember_graph_accepts_common_agent_payload_aliases(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "source_path": "mneme://test/agent-aliases",
+        "nodes": [
+            {"ref": "lesson", "type": "lesson", "label": "Callback replay lesson"},
+        ],
+        "observations": [
+            {
+                "node_ref": "lesson",
+                "kind": "lesson",
+                "text": "Replay pasted localhost callback URLs on the VPS while xurl is alive.",
+                "score": 9,
+            }
+        ],
+    }
+
+    result = remember_graph(db, payload)
+
+    assert result["nodes"][0]["name"] == "Callback replay lesson"
+    assert len(result["observations"]) == 1
+    retrieved = retrieve_context(db, "callback replay lesson", max_items=3)
+    assert any("Replay pasted localhost" in item["snippet"] for item in retrieved["items"])
+
+
+def test_remember_graph_node_id_alias_resolves_existing_node_id(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    existing = remember_graph(
+        db,
+        {
+            "source_path": "mneme://test/existing-node",
+            "nodes": [{"ref": "lesson", "type": "lesson", "name": "Existing callback lesson"}],
+        },
+    )
+    existing_id = existing["nodes"][0]["id"]
+
+    result = remember_graph(
+        db,
+        {
+            "source_path": "mneme://test/node-id-alias",
+            "observations": [
+                {
+                    "node_id": existing_id,
+                    "kind": "lesson",
+                    "text": "Existing node ids attach observations to the existing node.",
+                    "score": 9,
+                }
+            ],
+        },
+    )
+
+    assert result["nodes"] == []
+    assert result["observations"][0]["node"] == existing_id
+    conn = sqlite3.connect(db)
+    try:
+        row = conn.execute(
+            "SELECT note_id FROM observations WHERE text=?",
+            ("Existing node ids attach observations to the existing node.",),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (existing_id,)
+
+
 def test_remember_graph_auto_creates_node_for_observation(tmp_path: Path):
     """Observations referencing unknown node refs should auto-create entity nodes."""
     db = tmp_path / "mneme.sqlite"
