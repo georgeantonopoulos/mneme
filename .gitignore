@@ -16,3 +16,6 @@ build/
 
 # Local demo thought-card PNG (SVG in README is the source of truth)
 /assets/examples/demo-thought-card.png
+# Local Mneme test/runtime state
+.local/share/mneme/
+
