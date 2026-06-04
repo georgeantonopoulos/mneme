@@ -18,6 +18,52 @@ from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
 
 
+def _ensure_verbose_retrieval_fields(result: dict) -> dict:
+    for item in result.get("items", []):
+        item.setdefault("score_breakdown", {})
+        item.setdefault("retrieval_signals", {})
+        item.setdefault("freshness", {})
+    return result
+
+
+def _format_retrieval_explanation(result: dict) -> str:
+    lines = [
+        f"Query: {result.get('prompt', '')}",
+        f"Method: {(result.get('retrieval') or {}).get('method', 'unknown')}",
+        "",
+    ]
+    for index, item in enumerate(result.get("items", []), start=1):
+        freshness = item.get("freshness") or {}
+        signals = item.get("retrieval_signals") or {}
+        scores = signals.get("scores") or {}
+        breakdown = item.get("score_breakdown") or {}
+        lines.append(f"{index}. {item.get('title') or item.get('id')} [{item.get('kind')}] score={item.get('score')}")
+        lines.append(f"   source={item.get('source_path') or ''} status={item.get('status') or ''} truth={item.get('truth_policy') or ''}")
+        if item.get("matched_terms"):
+            lines.append("   matched=" + ", ".join(map(str, item.get("matched_terms") or [])))
+        parts = [
+            f"lexical={scores.get('lexical', 0)}",
+            f"graph={scores.get('graph', 0)}",
+            f"memory={scores.get('memory', 0)}",
+            f"rrf={signals.get('rrf', 0)}",
+            f"source_authority={freshness.get('source_authority', 1.0)}",
+            f"staleness={freshness.get('staleness', 1.0)}",
+        ]
+        if "edge_source_authority" in freshness:
+            parts.append(f"edge_source_authority={freshness.get('edge_source_authority')}")
+        if "status_multiplier" in freshness:
+            parts.append(f"status_multiplier={freshness.get('status_multiplier')}")
+        if "raw_score" in freshness:
+            parts.append(f"raw_score={freshness.get('raw_score')}")
+        if breakdown.get("freshness"):
+            parts.append(f"observation_freshness={breakdown['freshness'].get('score')}")
+        lines.append("   factors: " + "; ".join(parts))
+        lines.append("")
+    if not result.get("items"):
+        lines.append(result.get("empty_reason") or "No items returned.")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 @dataclass
 class SenseArgs:
     sense_type: str = "all"
@@ -210,6 +256,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max-items",type=int,default=8)
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    p.add_argument("--verbose",action="store_true",help="Include score breakdown, retrieval signals, and freshness metadata")
+    p.add_argument("--explain",nargs="?",const=True,help="Print a human-readable ranking explanation; optional value overrides --prompt")
     contract=sub.add_parser("contract", help="Validate Mneme graph and output contract invariants")
     contract_sub=contract.add_subparsers(dest="contract_cmd", required=True)
     p=contract_sub.add_parser("check", help="Fail when graph contract invariants are violated")
@@ -493,8 +541,19 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(debug_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
         return
     if args.cmd == "retrieve":
-        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        print(json.dumps(retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates), indent=2, ensure_ascii=False))
+        if args.explain is True:
+            prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        elif args.explain:
+            prompt = args.explain
+        else:
+            prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        result = retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates)
+        if args.verbose or args.explain:
+            result = _ensure_verbose_retrieval_fields(result)
+        if args.explain:
+            print(_format_retrieval_explanation(result), end="")
+        else:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     if args.cmd == "contract":
         if args.contract_cmd == "check":

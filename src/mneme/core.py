@@ -1275,6 +1275,43 @@ def _hybrid_rrf_boost(hybrid: dict, *, overlap: int, graph_score: float, has_con
     return _rrf_score(ranks.values()) * 25.0
 
 
+def _retrieval_source_authority(source_path: str | None, source_type: str | None = None) -> float:
+    source_type_norm = (source_type or "").strip().lower()
+    path = (source_path or "").strip().lower()
+    if source_type_norm == "user_confirmed":
+        return 1.3
+    if path.startswith(("gws://", "email://")):
+        return 1.4
+    normalized = path.replace("\\", "/")
+    parts = [part for part in normalized.split("/") if part]
+    if any(part in {"cron", "logs", "out", "debug", "heartbeat"} for part in parts):
+        return 0.08
+    if "memory" in parts:
+        return 0.25
+    if any(part in {"daily", "archive"} for part in parts):
+        return 0.15
+    if any(part in {"projects", "people", "events", "vendors"} for part in parts):
+        return 1.2
+    return 1.0
+
+
+def _retrieval_staleness(text: str | None, source_path: str | None) -> float:
+    return _meditation_staleness_penalty(text or "", source_path)
+
+
+def _retrieval_edge_source_authority(source_type: str | None) -> float:
+    source_type_norm = (source_type or "").strip().lower()
+    if source_type_norm == "user_confirmed":
+        return 1.4
+    if source_type_norm in {"gws", "email", "calendar"}:
+        return 1.3
+    if source_type_norm in {"sense", "extraction"}:
+        return 1.0
+    if source_type_norm in {"", "candidate"}:
+        return 0.7
+    return 1.0
+
+
 def _select_retrieval_items(items: list[dict], *, budget: int, max_items: int, skipped: list[dict], per_source_limit: int = 2) -> tuple[list[dict], int]:
     selected: list[dict] = []
     selected_ids: set[str] = set()
@@ -1441,6 +1478,10 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         if obs_brain:
             score += min(4.0, float(obs_brain.get("score", 0)) * 0.35)
         score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
+        raw_score = score
+        source_authority = _retrieval_source_authority(source_path)
+        staleness = _retrieval_staleness(text, source_path)
+        score *= source_authority * staleness
         source_quality_score = float((breakdown.source_quality or {}).get("score") or 0.0)
         include_by_score = score >= 8 and (
             overlap > 0
@@ -1462,6 +1503,11 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "truth_policy": "source_contained_observation",
             "score_breakdown": breakdown.to_dict(),
             "retrieval_signals": hybrid,
+            "freshness": {
+                "raw_score": round(raw_score, 3),
+                "source_authority": source_authority,
+                "staleness": staleness,
+            },
             "memory": {
                 "source_path": source_path,
                 "mentions": int(memory_score),
@@ -1519,10 +1565,14 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         if edge_brain:
             score += min(4.0, float(edge_brain.get("score", 0)) * 0.3)
         score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
-        if status != "active":
-            score -= 2.0
         if rel.get("category") in {"reference", "structure", "extraction"}:
             score -= 0.8
+        raw_score = score
+        source_authority = _retrieval_source_authority(source_path, source_type)
+        edge_source_authority = _retrieval_edge_source_authority(source_type)
+        staleness = _retrieval_staleness(evidence_text, source_path)
+        status_multiplier = 0.3 if status == "candidate" else 1.0
+        score *= source_authority * edge_source_authority * staleness * status_multiplier
         items.append({
             "kind": "edge",
             "id": edge_id,
@@ -1537,6 +1587,23 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "truth_policy": policy,
             "source_type": source_type,
             "retrieval_signals": hybrid,
+            "score_breakdown": {
+                "base": round(base, 3),
+                "lexical": round(overlap * 3.0, 3),
+                "graph": round(min(4.0, graph_score * 1.5), 3),
+                "raw_score": round(raw_score, 3),
+                "source_authority": source_authority,
+                "edge_source_authority": edge_source_authority,
+                "staleness": staleness,
+                "status_multiplier": status_multiplier,
+            },
+            "freshness": {
+                "raw_score": round(raw_score, 3),
+                "source_authority": source_authority,
+                "edge_source_authority": edge_source_authority,
+                "staleness": staleness,
+                "status_multiplier": status_multiplier,
+            },
             "memory": {
                 "source_path": source_path,
                 "mentions": int(memory_score),
@@ -1545,6 +1612,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
             "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
         })
+        if status == "candidate":
+            items[-1]["truth_policy_tags"] = ["candidate"]
         if edge_cluster:
             items[-1]["cluster"] = edge_cluster
         if edge_brain:
@@ -1595,8 +1664,10 @@ def _surface_item_to_thought(db_path: Path, item: dict, prompt: str) -> dict:
         reasons.append("brain label activated: " + ", ".join(item["brain_label"].get("labels", [])[:3]))
     if item.get("truth_policy"):
         reasons.append(f"truth policy: {item['truth_policy']}")
+    item_score = float(item.get("score") or 0)
+    raw_score = float((item.get("freshness") or {}).get("raw_score") or item_score)
     candidate = {
-        "score": item.get("score", 0),
+        "score": max(item_score, raw_score),
         "evidence": evidence,
         "reasons": reasons,
     }
