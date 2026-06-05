@@ -7,6 +7,22 @@ from pathlib import Path
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+DATE_FILE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _is_date_filename(filename: str) -> bool:
+    """Check if a filename looks like a date pattern (2026-04-18.md, 2026-04-18, etc.)."""
+    stem = Path(filename).stem
+    return bool(DATE_FILE_RE.match(stem))
+
+
+def _date_slug(filename: str) -> str:
+    """Extract date slug from a date-pattern filename."""
+    stem = Path(filename).stem
+    m = DATE_FILE_RE.match(stem)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return slug(stem)
 
 
 def slug(value: str | None, *, fallback: str = "item") -> str:
@@ -132,15 +148,44 @@ def derive_path(source_path: str | None, node_type: str | None, node_name: str |
         first = parts[0].lower()
         stem = slug(Path(parts[-1]).stem)
         mapping = {
-            "projects": "projects",
-            "people": "people",
+            "projects": "project",
+            "people": "person",
             "memory": "memory",
-            "vendors": "vendors",
-            "events": "events",
+            "vendors": "vendor",
+            "events": "event",
             "daily": "daily",
+            "places": "place",
+            "finance": "finance",
+            "sources": "source",
+            "context": "context",
+            "knowledge": "knowledge",
+            "archives": "memory",
+            "credentials": "context",
+            "documents": "context",
+            "notes": "memory",
+            "entities": "person",
+            "travel": "event",
+            "flights": "event",
+            "hermes": "agent",
+            "identity": "context",
         }
+        # Handle dotted prefixes like ".hermes" or "hy-world-2.0"
         if first in mapping and stem:
             return f"{mapping[first]}/{stem}"
+        # Handle date-pattern filenames (2026-04-18.md etc.)
+        if len(parts) == 1 and _is_date_filename(parts[0]):
+            return f"daily/{_date_slug(parts[0])}"
+    # Type-based fallbacks when no path prefix matches
+    type_fallback = {
+        "date": "daily",
+        "observation": "memory",
+        "wikilink": "context",
+        "user_prompt": "agent",
+        "heading": "memory",
+        "reference": "context",
+    }
+    if type_slug in type_fallback:
+        return normalize_path(f"{type_fallback[type_slug]}/{name_slug}") or f"{type_fallback[type_slug]}/{name_slug}"
     if path.stem:
         name_slug = slug(path.stem, fallback=name_slug)
     return normalize_path(f"uncategorized/{name_slug}") or "uncategorized/item"

@@ -19,16 +19,28 @@ def _db(tmp_path: Path) -> Path:
 
 
 def test_derive_path_patterns():
-    assert derive_path("projects/Alpha Project.md", "project", "Alpha Project") == "projects/alpha-project"
-    assert derive_path("people/Person A.md", "person", "Person A") == "people/person-a"
+    assert derive_path("projects/Alpha Project.md", "project", "Alpha Project") == "project/alpha-project"
+    assert derive_path("people/Person A.md", "person", "Person A") == "person/person-a"
     assert derive_path("memory/2026-01-02.md", "note", "2026-01-02") == "memory/2026-01-02"
-    assert derive_path("vendors/Vendor B.md", "vendor", "Vendor B") == "vendors/vendor-b"
-    assert derive_path("events/Event C.md", "event", "Event C") == "events/event-c"
+    assert derive_path("vendors/Vendor B.md", "vendor", "Vendor B") == "vendor/vendor-b"
+    assert derive_path("events/Event C.md", "event", "Event C") == "event/event-c"
     assert derive_path("daily/2026-01-03.md", "note", "2026-01-03") == "daily/2026-01-03"
     assert derive_path("gws://calendar/event-a", "event", "Calendar Event A") == "event/calendar-event-a"
     assert derive_path("email://inbox/message-a", "person", "Sender A") == "email"
     assert derive_path("mneme://memory/item-a", "entity", "Memory Item A") == "agent/memory"
     assert derive_path("misc/freeform.md", "entity", "Loose Item") == "uncategorized/freeform"
+    # Extended mappings
+    assert derive_path("places/Athens.md", "place", "Athens") == "place/athens"
+    assert derive_path("finance/VAT.md", "finance", "VAT") == "finance/vat"
+    assert derive_path("sources/article.md", "note", "Article") == "source/article"
+    assert derive_path("context/AGENTS.md", "note", "AGENTS") == "context/agents"
+    assert derive_path("knowledge/physics.md", "note", "Physics") == "knowledge/physics"
+    # Date-pattern bare filenames
+    assert derive_path("2026-04-18.md", "date", "Apr 18") == "daily/2026-04-18"
+    # Type-based fallbacks
+    assert derive_path(None, "date", "Apr 20") == "daily/apr-20"
+    assert derive_path(None, "observation", "Some obs") == "memory/some-obs"
+    assert derive_path(None, "wikilink", "MyLink") == "context/mylink"
 
 
 def test_set_node_path_and_subtree_index(tmp_path: Path):
