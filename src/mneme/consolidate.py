@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Sequence
 from uuid import uuid4
 
+from .hierarchy import ensure_hierarchy_schema, mark_cross_boundary_edges, set_node_path, slug
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 
 
@@ -204,9 +205,10 @@ def _latest_run_id(conn: sqlite3.Connection) -> str | None:
 
 
 def _load_graph(conn: sqlite3.Connection):
+    ensure_hierarchy_schema(conn)
     nodes = {
-        row[0]: {"id": row[0], "type": row[1], "name": row[2], "source_path": row[3], "confidence": row[4] or 1.0}
-        for row in conn.execute("SELECT id,type,name,source_path,confidence FROM nodes")
+        row[0]: {"id": row[0], "type": row[1], "name": row[2], "source_path": row[3], "confidence": row[4] or 1.0, "path": row[5]}
+        for row in conn.execute("SELECT id,type,name,source_path,confidence,path FROM nodes")
     }
     relation_categories = {
         row[0]: row[1] for row in conn.execute("SELECT id,category FROM relationship_types")
@@ -296,6 +298,35 @@ def _node_stats(nodes: dict, adjacency: dict[str, dict[str, float]], clusters: d
     return stats
 
 
+def _cluster_to_path(label_json: list[str] | str, cluster_members: list[dict]) -> str:
+    if isinstance(label_json, str):
+        try:
+            labels = json.loads(label_json)
+        except json.JSONDecodeError:
+            labels = [label_json]
+    else:
+        labels = label_json
+    label_tokens: list[str] = []
+    for label in labels if isinstance(labels, list) else []:
+        label_tokens.extend(sorted(_tokens(str(label))))
+    boilerplate = {"memory", "candidate", "current", "daily", "note", "notes", "updated", "utc"}
+    useful = [token for token in label_tokens if token not in boilerplate and not re.fullmatch(r"20\d{2}(-\d{2}){0,2}", token)]
+    type_counts = Counter(str(member.get("type") or "entity") for member in cluster_members)
+    dominant_type = type_counts.most_common(1)[0][0] if type_counts else "entity"
+    top_by_type = {
+        "project": "projects",
+        "person": "people",
+        "vendor": "vendors",
+        "event": "events",
+        "finance": "finance",
+        "note": "notes",
+        "heading": "notes",
+        "observation": "observations",
+    }.get(dominant_type, f"{slug(dominant_type)}s")
+    leaf = slug(useful[0] if useful else (cluster_members[0].get("name") if cluster_members else dominant_type))
+    return f"{top_by_type}/{leaf}"
+
+
 def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: int = 2, labeler: LabelerConfig | None = None) -> dict:
     labeler = labeler or LabelerConfig()
     with sqlite3.connect(db_path) as conn:
@@ -350,6 +381,13 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
             if summary["label_meta"].get("ignore"):
                 continue
             persisted_clusters[cluster_id] = node_ids
+            cluster_path = _cluster_to_path(
+                labels,
+                [
+                    {"id": node_id, "name": nodes[node_id]["name"], "type": nodes[node_id]["type"], "source_path": nodes[node_id].get("source_path")}
+                    for node_id in node_ids
+                ],
+            )
             for node_id in node_ids:
                 stat = stats[node_id]
                 conn.execute(
@@ -357,6 +395,10 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
                        VALUES(?,?,?,?,?,?,?,?,?)""",
                     (run_id, cluster_id, node_id, stat.role, stat.salience, stat.hubness, stat.participation, stat.local_clustering, stat.weighted_degree),
                 )
+                if not nodes[node_id].get("path"):
+                    node_path = cluster_path if stat.role in {"exemplar", "content"} else f"{cluster_path}/{slug(nodes[node_id]['name'])}"
+                    set_node_path(conn, node_id, node_path)
+                    nodes[node_id]["path"] = node_path
             conn.execute(
                 "INSERT INTO memory_clusters(run_id,cluster_id,size,label_json,summary_json) VALUES(?,?,?,?,?)",
                 (run_id, cluster_id, len(node_ids), json.dumps(labels), json.dumps(summary, ensure_ascii=False)),
@@ -398,6 +440,7 @@ def consolidate_graph(db_path: Path, *, iterations: int = 12, min_cluster_size: 
                 json.dumps(summary),
             ),
         )
+        mark_cross_boundary_edges(conn)
         conn.commit()
     return {"run_id": run_id, **summary}
 
@@ -410,7 +453,7 @@ def retrieval_cluster_matches(conn: sqlite3.Connection, prompt: str, *, limit: i
     if not query_tokens:
         return {"run_id": run_id, "clusters": [], "node_boosts": {}}
     rows = conn.execute(
-        """SELECT c.cluster_id,c.size,c.label_json,c.summary_json,m.node_id,m.role,m.salience,m.hubness,n.name,n.type,n.source_path
+        """SELECT c.cluster_id,c.size,c.label_json,c.summary_json,m.node_id,m.role,m.salience,m.hubness,n.name,n.type,n.source_path,n.path
            FROM memory_clusters c
            JOIN cluster_memberships m ON m.run_id=c.run_id AND m.cluster_id=c.cluster_id
            JOIN nodes n ON n.id=m.node_id
@@ -418,35 +461,49 @@ def retrieval_cluster_matches(conn: sqlite3.Connection, prompt: str, *, limit: i
         (run_id,),
     ).fetchall()
     by_cluster: dict[str, dict] = {}
-    for cluster_id, size, label_json, summary_json, node_id, role, salience, hubness, name, node_type, source_path in rows:
+    for cluster_id, size, label_json, summary_json, node_id, role, salience, hubness, name, node_type, source_path, hierarchy_path in rows:
         labels = set(json.loads(label_json or "[]"))
         label_tokens = _tokens(*labels)
         label_overlap = query_tokens & label_tokens
-        node_overlap = query_tokens & _tokens(name, source_path)
+        path_tokens = _tokens(hierarchy_path)
+        node_overlap = query_tokens & (_tokens(name, source_path) | path_tokens)
         overlap = label_overlap | node_overlap
         if not overlap:
             continue
         cluster = by_cluster.setdefault(
             cluster_id,
-            {"cluster_id": cluster_id, "size": size, "labels": sorted(labels), "summary": json.loads(summary_json or "{}"), "score": 0.0, "matched_terms": set(), "label_terms": set(), "member_scores": [], "members": []},
+            {"cluster_id": cluster_id, "size": size, "labels": sorted(labels), "summary": json.loads(summary_json or "{}"), "score": 0.0, "matched_terms": set(), "label_terms": set(), "paths": set(), "top_paths": set(), "member_scores": [], "members": []},
         )
         role_bonus = 1.2 if role in {"exemplar", "content"} else 0.5 if role == "bridge" else -0.6 if role == "hub" else 0.0
+        path_bonus = len(query_tokens & path_tokens) * 1.5
         score = len(node_overlap) * 2.0 + float(salience or 0.0) + role_bonus - min(1.5, float(hubness or 0.0) * 0.12)
+        score += path_bonus
         cluster["matched_terms"].update(overlap)
         cluster["label_terms"].update(label_overlap)
+        if hierarchy_path:
+            cluster["paths"].add(str(hierarchy_path))
+            cluster["top_paths"].add(str(hierarchy_path).split("/", 1)[0])
         cluster["member_scores"].append(score)
-        cluster["members"].append({"id": node_id, "name": name, "type": node_type, "source_path": source_path, "role": role, "score": round(score, 2)})
+        cluster["members"].append({"id": node_id, "name": name, "type": node_type, "source_path": source_path, "hierarchy_path": hierarchy_path, "role": role, "score": round(score, 2)})
     for cluster in by_cluster.values():
         member_scores = sorted(cluster.pop("member_scores"), reverse=True)
         best_members = sum(member_scores[:3]) / max(1, min(3, len(member_scores)))
         label_bonus = len(cluster.get("label_terms") or []) * 5.0
         coverage_bonus = len(cluster.get("matched_terms") or []) * 1.5
-        cluster["score"] = label_bonus + coverage_bonus + best_members
+        top_paths = cluster.get("top_paths") or set()
+        all_paths = cluster.get("paths") or set()
+        path_role = "bridge" if len(top_paths) > 1 else "strong" if len(all_paths) == 1 else "mixed"
+        path_group_bonus = 3.0 if path_role == "strong" else 2.0 if path_role == "bridge" else 0.8 if all_paths else 0.0
+        cluster["path_role"] = path_role
+        cluster["path_boost"] = path_group_bonus
+        cluster["score"] = label_bonus + coverage_bonus + best_members + path_group_bonus
     clusters = sorted(by_cluster.values(), key=lambda item: (-item["score"], item["cluster_id"]))[:limit]
     node_boosts: dict[str, dict] = {}
     for cluster in clusters:
         cluster["score"] = round(cluster["score"], 2)
         cluster["matched_terms"] = sorted(cluster["matched_terms"])
+        cluster["paths"] = sorted(cluster.get("paths") or [])
+        cluster.pop("top_paths", None)
         cluster.pop("label_terms", None)
         cluster["members"] = sorted(cluster["members"], key=lambda item: (-item["score"], item["name"]))[:8]
         for member in cluster["members"]:

@@ -10,6 +10,7 @@ from .consolidate import LabelerConfig, consolidate_graph
 from .contract import check_db_contract
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, generate_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
+from .hierarchy import get_node_path, get_subtree_node_ids, migrate_add_paths, path_tree, rebuild_path_index, set_node_path, validate_paths
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
@@ -167,6 +168,28 @@ def add_labeler_args(p) -> None:
     p.add_argument("--label-timeout",type=int,default=DEFAULT_TIMEOUT_SECONDS)
 
 
+def _resolve_node_arg(conn, value: str) -> tuple[str, str, str]:
+    rows = conn.execute(
+        """SELECT id,type,name FROM nodes
+           WHERE id=? OR lower(name)=lower(?)
+           ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,name
+           LIMIT 2""",
+        (value, value, value),
+    ).fetchall()
+    if not rows:
+        like = f"%{value.lower()}%"
+        rows = conn.execute(
+            "SELECT id,type,name FROM nodes WHERE lower(name) LIKE ? ORDER BY name LIMIT 2",
+            (like,),
+        ).fetchall()
+    if not rows:
+        raise SystemExit(f"node not found: {value}")
+    if len(rows) > 1:
+        names = ", ".join(f"{row[2]} ({row[0]})" for row in rows)
+        raise SystemExit(f"node is ambiguous: {value}; matches: {names}")
+    return str(rows[0][0]), str(rows[0][1]), str(rows[0][2])
+
+
 def main(argv: list[str] | None = None) -> None:
     parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents")
     parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)")
@@ -292,6 +315,24 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
     p.add_argument("--verbose",action="store_true",help="Include score breakdown, retrieval signals, and freshness metadata")
     p.add_argument("--explain",nargs="?",const=True,help="Print a human-readable ranking explanation; optional value overrides --prompt")
+    path_cmd=sub.add_parser("path", help="Manage hierarchy paths for graph nodes")
+    path_sub=path_cmd.add_subparsers(dest="path_cmd", required=True)
+    p=path_sub.add_parser("set", help="Set a node hierarchy path")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--node",required=True,help="Node id, exact name, or unambiguous partial name")
+    p.add_argument("--path",required=True,help="Hierarchy path, for example projects/example")
+    p=path_sub.add_parser("get", help="Show a node path and subtree members")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--node",required=True,help="Node id, exact name, or unambiguous partial name")
+    p=path_sub.add_parser("ls", help="List hierarchy paths")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prefix",help="Optional path prefix")
+    p=path_sub.add_parser("tree", help="Show hierarchy path tree with counts")
+    p.add_argument("--db",type=Path)
+    p=path_sub.add_parser("migrate", help="Derive paths for existing nodes and rebuild indexes")
+    p.add_argument("--db",type=Path)
+    p=path_sub.add_parser("validate", help="Validate node paths and path index rows")
+    p.add_argument("--db",type=Path)
     contract=sub.add_parser("contract", help="Validate Mneme graph and output contract invariants")
     contract_sub=contract.add_subparsers(dest="contract_cmd", required=True)
     p=contract_sub.add_parser("check", help="Fail when graph contract invariants are violated")
@@ -604,6 +645,43 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(json.dumps(result, indent=2, ensure_ascii=False))
         return
+    if args.cmd == "path":
+        db_path = required_path(args, "db")
+        if args.path_cmd == "migrate":
+            print(json.dumps(migrate_add_paths(db_path), indent=2, ensure_ascii=False))
+            return
+        import sqlite3
+
+        with sqlite3.connect(db_path) as conn:
+            if args.path_cmd == "set":
+                node_id, node_type, node_name = _resolve_node_arg(conn, args.node)
+                set_node_path(conn, node_id, args.path)
+                rebuild_path_index(conn)
+                conn.commit()
+                print(json.dumps({"ok": True, "node": {"id": node_id, "type": node_type, "name": node_name}, "path": get_node_path(conn, node_id)}, indent=2, ensure_ascii=False))
+                return
+            if args.path_cmd == "get":
+                node_id, node_type, node_name = _resolve_node_arg(conn, args.node)
+                node_path = get_node_path(conn, node_id)
+                subtree_ids = sorted(get_subtree_node_ids(conn, node_path) if node_path else [])
+                members = [
+                    {"id": row[0], "type": row[1], "name": row[2], "path": row[3]}
+                    for row in conn.execute(
+                        f"SELECT id,type,name,path FROM nodes WHERE id IN ({','.join('?' for _ in subtree_ids)}) ORDER BY path,name" if subtree_ids else "SELECT id,type,name,path FROM nodes WHERE 0",
+                        subtree_ids,
+                    ).fetchall()
+                ]
+                print(json.dumps({"node": {"id": node_id, "type": node_type, "name": node_name}, "path": node_path, "subtree": members}, indent=2, ensure_ascii=False))
+                return
+            if args.path_cmd == "ls":
+                print(json.dumps(path_tree(conn, args.prefix), indent=2, ensure_ascii=False))
+                return
+            if args.path_cmd == "tree":
+                print(json.dumps(path_tree(conn), indent=2, ensure_ascii=False))
+                return
+            if args.path_cmd == "validate":
+                print(json.dumps(validate_paths(conn), indent=2, ensure_ascii=False))
+                return
     if args.cmd == "contract":
         if args.contract_cmd == "check":
             report = check_db_contract(path_from_config(args,"db"))

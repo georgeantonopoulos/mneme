@@ -18,6 +18,7 @@ from .contract import (
     enforce_edge_write,
     truth_policy_for_edge,
 )
+from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_path
 from .retrieval import score_observation_candidate
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -367,9 +368,10 @@ def seed_relationship_types(conn: sqlite3.Connection) -> None:
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
     PRAGMA journal_mode=WAL;
-    CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,source_path TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,confidence REAL DEFAULT 1.0,metadata_json TEXT DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,source_path TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,confidence REAL DEFAULT 1.0,path TEXT DEFAULT NULL,metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS relationship_types(id TEXT PRIMARY KEY,label TEXT NOT NULL,inverse_id TEXT,category TEXT NOT NULL,domain_type TEXT DEFAULT 'any',range_type TEXT DEFAULT 'any',description TEXT DEFAULT '',requires_validation INTEGER DEFAULT 1,symmetric INTEGER DEFAULT 0,transitive INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,status TEXT DEFAULT 'active',strength REAL DEFAULT 1.0,source_type TEXT DEFAULT 'vault',metadata_json TEXT DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS edges(id TEXT PRIMARY KEY,src_id TEXT NOT NULL,dst_id TEXT NOT NULL,relation TEXT NOT NULL,source_path TEXT,confidence REAL DEFAULT 1.0,evidence_text TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,status TEXT DEFAULT 'active',strength REAL DEFAULT 1.0,source_type TEXT DEFAULT 'vault',metadata_json TEXT DEFAULT '{}',cross_boundary INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS path_index(path TEXT NOT NULL,node_id TEXT NOT NULL,depth INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(path,node_id));
     CREATE TABLE IF NOT EXISTS edge_debug_log(id TEXT PRIMARY KEY,edge_id TEXT NOT NULL,event TEXT NOT NULL,actor TEXT NOT NULL,thinking_json TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sense_events(id TEXT PRIMARY KEY,sense_id TEXT NOT NULL,sense_type TEXT NOT NULL,source_id TEXT NOT NULL,source_uri TEXT,event_type TEXT,title TEXT,text_hash TEXT,observed_at TEXT,ingested_at TEXT,metadata_json TEXT DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY,note_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,score REAL DEFAULT 0,created_at TEXT NOT NULL,sense_event_id TEXT);
@@ -385,12 +387,16 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_edge_debug_edge ON edge_debug_log(edge_id);
     CREATE INDEX IF NOT EXISTS idx_obs_note ON observations(note_id);
     CREATE INDEX IF NOT EXISTS idx_obs_sense_event ON observations(sense_event_id);
+    CREATE INDEX IF NOT EXISTS idx_path_index_prefix ON path_index(path);
+    CREATE INDEX IF NOT EXISTS idx_path_index_node ON path_index(node_id);
     """)
     for ddl in [
+        "ALTER TABLE nodes ADD COLUMN path TEXT DEFAULT NULL",
         "ALTER TABLE edges ADD COLUMN status TEXT DEFAULT 'active'",
         "ALTER TABLE edges ADD COLUMN strength REAL DEFAULT 1.0",
         "ALTER TABLE edges ADD COLUMN source_type TEXT DEFAULT 'vault'",
         "ALTER TABLE edges ADD COLUMN metadata_json TEXT DEFAULT '{}'",
+        "ALTER TABLE edges ADD COLUMN cross_boundary INTEGER DEFAULT 0",
         "ALTER TABLE observations ADD COLUMN sense_event_id TEXT",
     ]:
         try:
@@ -1204,6 +1210,70 @@ def _query_seed_nodes(conn: sqlite3.Connection, tokens: set[str], limit: int = 2
     return {row[0] for row in rows}
 
 
+def _resolve_query_paths(conn: sqlite3.Connection, tokens: set[str]) -> dict[str, float]:
+    if not tokens:
+        return {}
+    ensure_hierarchy_schema(conn)
+    normalized_tokens = {normalize_path(token) or token for token in tokens}
+    scores: dict[str, float] = {}
+    placeholders = ",".join("?" for _ in normalized_tokens)
+    if placeholders:
+        for path, count in conn.execute(
+            f"""SELECT path,COUNT(*) FROM path_index
+                WHERE path IN ({placeholders})
+                GROUP BY path
+                ORDER BY COUNT(*) DESC
+                LIMIT 10""",
+            tuple(sorted(normalized_tokens)),
+        ).fetchall():
+            segments = set(str(path).split("/"))
+            scores[str(path)] = scores.get(str(path), 0.0) + float(count or 0) + len(segments & normalized_tokens) * 2.0
+    where, params = _like_clause(tokens, ["name", "source_path", "path"])
+    if where != "0":
+        for path, name, source_path in conn.execute(
+            f"""SELECT path,name,source_path FROM nodes
+                WHERE path IS NOT NULL AND path != '' AND ({where})
+                ORDER BY updated_at DESC,name
+                LIMIT 24""",
+            params,
+        ).fetchall():
+            if not path:
+                continue
+            overlap, _matched = _lexical_overlap(tokens, path, name, source_path)
+            if overlap:
+                scores[str(path)] = scores.get(str(path), 0.0) + float(overlap * 3)
+                parent = str(path).rsplit("/", 1)[0] if "/" in str(path) else str(path)
+                scores[parent] = scores.get(parent, 0.0) + float(overlap)
+    return dict(sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:10])
+
+
+def _ids_clause(column: str, node_ids: set[str]) -> tuple[str, list[str]]:
+    if not node_ids:
+        return "0", []
+    placeholders = ",".join("?" for _ in node_ids)
+    return f"{column} IN ({placeholders})", sorted(node_ids)
+
+
+def _path_proximity_scores(conn: sqlite3.Connection, matched_paths: dict[str, float]) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    if not matched_paths:
+        return scores
+    ensure_hierarchy_schema(conn)
+    for path, relevance in matched_paths.items():
+        normalized = normalize_path(path)
+        if not normalized:
+            continue
+        base_depth = len(normalized.split("/"))
+        for node_id, node_path in conn.execute(
+            "SELECT id,path FROM nodes WHERE path IS NOT NULL AND (path=? OR path LIKE ?)",
+            (normalized, normalized + "/%"),
+        ).fetchall():
+            depth_delta = max(0, len(str(node_path).split("/")) - base_depth)
+            bonus = float(relevance) / (1.0 + depth_delta)
+            scores[str(node_id)] = max(scores.get(str(node_id), 0.0), bonus)
+    return scores
+
+
 def _graph_distance_scores(conn: sqlite3.Connection, seed_nodes: set[str], max_hops: int = 2) -> dict[str, float]:
     if not seed_nodes:
         return {}
@@ -1359,42 +1429,61 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         tokens = _query_tokens(" ".join(hints))
     min_overlap = 2 if len(tokens) >= 3 else 1
     conn = sqlite3.connect(db_path)
+    ensure_hierarchy_schema(conn)
+    matched_paths = _resolve_query_paths(conn, tokens)
+    path_node_ids: set[str] = set()
+    for path in matched_paths:
+        path_node_ids.update(get_subtree_node_ids(conn, path))
+    path_filter_active = bool(path_node_ids)
+    path_proximity_scores = _path_proximity_scores(conn, matched_paths)
+    obs_path_clause, obs_path_params = _ids_clause("n.id", path_node_ids)
+    edge_src_clause, edge_src_params = _ids_clause("e.src_id", path_node_ids)
+    edge_dst_clause, edge_dst_params = _ids_clause("e.dst_id", path_node_ids)
+    edge_path_clause = f"(({edge_src_clause}) OR ({edge_dst_clause}) OR COALESCE(e.cross_boundary,0)=1)"
+    edge_path_params = edge_src_params + edge_dst_params
     base_observation_rows = conn.execute(
-        """SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
+        f"""SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at,n.path
            FROM observations o JOIN nodes n ON n.id=o.note_id
-           ORDER BY o.score DESC,o.created_at DESC LIMIT 500"""
+           {"WHERE " + obs_path_clause if path_filter_active else ""}
+           ORDER BY o.score DESC,o.created_at DESC LIMIT 500""",
+        obs_path_params if path_filter_active else [],
     ).fetchall()
     obs_where, obs_params = _like_clause(tokens, ["o.text", "o.source_path", "n.name"])
     lexical_observation_rows = conn.execute(
-        f"""SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at
+        f"""SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at,n.path
             FROM observations o JOIN nodes n ON n.id=o.note_id
             WHERE {obs_where}
+              {"AND (" + obs_path_clause + ")" if path_filter_active else ""}
             ORDER BY o.score DESC,o.created_at DESC LIMIT 700""",
-        obs_params,
+        obs_params + (obs_path_params if path_filter_active else []),
     ).fetchall()
     observation_rows = _merge_rows_by_id(lexical_observation_rows, base_observation_rows)
     base_edge_rows = conn.execute(
-        """SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
-                  s.id,s.type,s.name,s.source_path,
-                  d.id,d.type,d.name,d.source_path
+        f"""SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,COALESCE(e.cross_boundary,0),
+                  s.id,s.type,s.name,s.source_path,s.path,
+                  d.id,d.type,d.name,d.source_path,d.path
            FROM edges e
            JOIN nodes s ON s.id=e.src_id
            JOIN nodes d ON d.id=e.dst_id
            WHERE COALESCE(e.status,'candidate') != 'killed'
+             {"AND " + edge_path_clause if path_filter_active else ""}
            ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 800"""
+        ,
+        edge_path_params if path_filter_active else [],
     ).fetchall()
     edge_where, edge_params = _like_clause(tokens, ["e.relation", "e.evidence_text", "e.source_path", "s.name", "d.name"])
     lexical_edge_rows = conn.execute(
-        f"""SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,
-                  s.id,s.type,s.name,s.source_path,
-                  d.id,d.type,d.name,d.source_path
+        f"""SELECT e.id,e.relation,e.status,e.confidence,e.strength,e.source_type,e.source_path,e.evidence_text,COALESCE(e.cross_boundary,0),
+                  s.id,s.type,s.name,s.source_path,s.path,
+                  d.id,d.type,d.name,d.source_path,d.path
             FROM edges e
             JOIN nodes s ON s.id=e.src_id
             JOIN nodes d ON d.id=e.dst_id
             WHERE COALESCE(e.status,'candidate') != 'killed'
               AND ({edge_where})
+              {"AND " + edge_path_clause if path_filter_active else ""}
             ORDER BY e.strength DESC,e.confidence DESC,e.updated_at DESC LIMIT 900""",
-        edge_params,
+        edge_params + (edge_path_params if path_filter_active else []),
     ).fetchall()
     edge_rows = _merge_rows_by_id(lexical_edge_rows, base_edge_rows)
     memory_counts = _memory_frequency_by_source(conn)
@@ -1402,11 +1491,11 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     graph_scores = _graph_distance_scores(conn, query_seed_nodes)
     lexical_scores: dict[str, float] = {}
     memory_scores: dict[str, float] = {}
-    for obs_id, _note_id, _kind, text, source_path, _base_score, _created_at, note_name, _note_type, _updated_at in observation_rows:
+    for obs_id, _note_id, _kind, text, source_path, _base_score, _created_at, note_name, _note_type, _updated_at, _node_path in observation_rows:
         overlap, _matched = _lexical_overlap(tokens, text, source_path, note_name)
         lexical_scores[obs_id] = float(overlap)
         memory_scores[obs_id] = float(memory_counts.get(source_path or "", 0))
-    for edge_id, relation, _status, _confidence, _strength, _source_type, source_path, evidence_text, _src_id, _src_type, src_name, _src_path, _dst_id, _dst_type, dst_name, _dst_path in edge_rows:
+    for edge_id, relation, _status, _confidence, _strength, _source_type, source_path, evidence_text, _cross_boundary, _src_id, _src_type, src_name, _src_path, _src_hpath, _dst_id, _dst_type, dst_name, _dst_path, _dst_hpath in edge_rows:
         overlap, _matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
         lexical_scores[edge_id] = float(overlap)
         memory_scores[edge_id] = float(memory_counts.get(source_path or "", 0))
@@ -1445,10 +1534,11 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
 
     items: list[dict] = []
     skipped: list[dict] = []
-    for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at in observation_rows:
+    for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at, node_path in observation_rows:
         overlap, matched = _lexical_overlap(tokens, text, source_path, note_name)
         memory_score = memory_scores.get(obs_id, 0.0)
-        graph_score = graph_scores.get(note_id, 0.0)
+        path_bonus = path_proximity_scores.get(note_id, 0.0)
+        graph_score = max(graph_scores.get(note_id, 0.0), path_bonus * 0.35)
         breakdown = score_observation_candidate(
             kind=kind,
             text=text,
@@ -1472,7 +1562,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         cluster = node_boosts.get(note_id) or cluster_for_text(note_name, source_path, text)
         obs_brain = brain_match(("node", note_id))
         has_context_signal = bool(cluster or obs_brain)
-        score = breakdown.total + (overlap * 3.0) + min(4.0, graph_score * 1.5) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
+        score = breakdown.total + (overlap * 3.0) + min(4.0, graph_score * 1.5) + min(3.0, path_bonus) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if cluster:
             score += min(5.0, float(cluster.get("cluster_score", 0)) * 0.2)
         if obs_brain:
@@ -1515,6 +1605,10 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             },
             "path": _path_from_observation(conn, note_id, text, hops=3),
         }
+        if node_path:
+            item["hierarchy_path"] = node_path
+        if path_bonus:
+            item["path_match"] = {"bonus": round(path_bonus, 3), "matched_paths": matched_paths}
         if cluster:
             item["cluster"] = cluster
         if obs_brain:
@@ -1524,13 +1618,14 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         else:
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
 
-    for edge_id, relation, status, confidence, strength, source_type, source_path, evidence_text, src_id, src_type, src_name, src_path, dst_id, dst_type, dst_name, dst_path in edge_rows:
+    for edge_id, relation, status, confidence, strength, source_type, source_path, evidence_text, cross_boundary, src_id, src_type, src_name, src_path, src_hpath, dst_id, dst_type, dst_name, dst_path, dst_hpath in edge_rows:
         if status != "active" and not include_candidates:
             skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["candidate edge excluded"], "status": status})
             continue
         overlap, matched = _lexical_overlap(tokens, relation, evidence_text, source_path, src_name, dst_name)
         edge_brain = brain_match(("synapse", edge_id), ("node", src_id), ("node", dst_id), ("relationship", relation))
-        graph_score = graph_scores.get(edge_id, 0.0)
+        path_bonus = max(path_proximity_scores.get(src_id, 0.0), path_proximity_scores.get(dst_id, 0.0))
+        graph_score = max(graph_scores.get(edge_id, 0.0), path_bonus * 0.3)
         memory_score = memory_scores.get(edge_id, 0.0)
         hybrid = _retrieval_signals(
             edge_id,
@@ -1559,7 +1654,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         base = (float(confidence or 0) + float(strength or 0)) * 2.0
         edge_cluster = node_boosts.get(src_id) or node_boosts.get(dst_id)
         has_context_signal = bool(edge_cluster or edge_brain)
-        score = base + overlap * 3.0 + min(4.0, graph_score * 1.5) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
+        score = base + overlap * 3.0 + min(4.0, graph_score * 1.5) + min(3.0, path_bonus) + _hybrid_rrf_boost(hybrid, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if edge_cluster:
             score += min(4.0, float(edge_cluster.get("cluster_score", 0)) * 0.15)
         if edge_brain:
@@ -1567,6 +1662,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         score += _memory_boost(memory_score, overlap=overlap, graph_score=graph_score, has_context_signal=has_context_signal)
         if rel.get("category") in {"reference", "structure", "extraction"}:
             score -= 0.8
+        if cross_boundary:
+            score *= 1.5
         raw_score = score
         source_authority = _retrieval_source_authority(source_path, source_type)
         edge_source_authority = _retrieval_edge_source_authority(source_type)
@@ -1592,6 +1689,8 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
                 "lexical": round(overlap * 3.0, 3),
                 "graph": round(min(4.0, graph_score * 1.5), 3),
                 "raw_score": round(raw_score, 3),
+                "path": round(min(3.0, path_bonus), 3),
+                "cross_boundary_multiplier": 1.5 if cross_boundary else 1.0,
                 "source_authority": source_authority,
                 "edge_source_authority": edge_source_authority,
                 "staleness": staleness,
@@ -1599,6 +1698,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             },
             "freshness": {
                 "raw_score": round(raw_score, 3),
+                "cross_boundary_multiplier": 1.5 if cross_boundary else 1.0,
                 "source_authority": source_authority,
                 "edge_source_authority": edge_source_authority,
                 "staleness": staleness,
@@ -1609,9 +1709,12 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
                 "mentions": int(memory_score),
                 "kind": "source_memory",
             },
-            "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path},
-            "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path},
+            "cross_boundary": bool(cross_boundary),
+            "src": {"id": src_id, "type": src_type, "name": src_name, "source_path": src_path, "hierarchy_path": src_hpath},
+            "dst": {"id": dst_id, "type": dst_type, "name": dst_name, "source_path": dst_path, "hierarchy_path": dst_hpath},
         })
+        if path_bonus:
+            items[-1]["path_match"] = {"bonus": round(path_bonus, 3), "matched_paths": matched_paths}
         if status == "candidate":
             items[-1]["truth_policy_tags"] = ["candidate"]
         if edge_cluster:
@@ -1635,6 +1738,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "signals": ["lexical", "graph", "memory"],
             "memory_term": "memory",
             "query_seed_nodes": sorted(query_seed_nodes),
+            "matched_paths": matched_paths,
+            "path_filter_active": path_filter_active,
+            "path_node_count": len(path_node_ids),
         },
         "items": selected,
         "skipped": skipped[:50],
