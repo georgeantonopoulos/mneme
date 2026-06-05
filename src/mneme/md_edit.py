@@ -510,14 +510,19 @@ def daily_note(vault_root: str | Path, action: str, date: str | None = None,
         return write_note(root, rel, content, mode="create", force=force)
 
 
+# Architecture note: Mneme treats Markdown wikilinks as navigational source
+# syntax, not the primary semantic graph. Moving a note should therefore be
+# cheap by default; eager vault-wide wikilink rewrites are opt-in for Obsidian
+# style workflows that need click-through links to stay current immediately.
 def move_note(vault_root: str | Path, src_path: str, dst_path: str,
-              dry_run: bool = False, force: bool = False) -> dict:
-    """Move a note and update [[wikilinks]] across the vault.
+              dry_run: bool = False, force: bool = False, update_links: bool = False) -> dict:
+    """Move a note, optionally updating matching [[wikilinks]] across the vault.
 
     - safe_resolve on both source and destination
     - atomic_write new file with source content
     - delete old file
-    - scan all .md files for [[old_stem]] wikilinks and replace with [[new_stem]]
+    - when update_links=True, scan all .md files for [[old_stem]] wikilinks
+      and replace with [[new_stem]]
     """
     root = Path(vault_root).expanduser().resolve()
     src = safe_resolve(root, src_path)
@@ -532,15 +537,15 @@ def move_note(vault_root: str | Path, src_path: str, dst_path: str,
     old_content = src.read_text(encoding="utf-8")
 
     if dry_run:
-        # Count wikilinks that would be updated
         old_stem = src.stem
         new_stem = dst.stem
-        links_updated = _count_wikilinks(root, old_stem)
+        links_updated = _count_wikilinks(root, old_stem) if update_links else 0
         return {
             "ok": True,
             "operation": "move",
             "old_path": rel_path(root, src),
             "new_path": rel_path(root, dst),
+            "update_links": update_links,
             "links_updated": links_updated,
             "dry_run": True,
             "changed": True,
@@ -552,16 +557,16 @@ def move_note(vault_root: str | Path, src_path: str, dst_path: str,
     # Delete old file
     src.unlink()
 
-    # Update wikilinks across vault
     old_stem = src.stem
     new_stem = dst.stem
-    links_updated = _update_wikilinks(root, old_stem, new_stem)
+    links_updated = _update_wikilinks(root, old_stem, new_stem) if update_links else 0
 
     return {
         "ok": True,
         "operation": "move",
         "old_path": rel_path(root, src),
         "new_path": rel_path(root, dst),
+        "update_links": update_links,
         "links_updated": links_updated,
         "changed": True,
     }

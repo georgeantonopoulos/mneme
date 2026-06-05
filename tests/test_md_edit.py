@@ -111,6 +111,27 @@ def test_cli_note_errors_are_json(tmp_path: Path):
     assert "path" in payload["error"].lower()
 
 
+def test_move_note_updates_wikilinks_only_when_requested(tmp_path: Path):
+    vault = tmp_path / "vault"
+    md_edit.write_note(vault, "Projects/Old.md", "# Old\n", mode="create")
+    md_edit.write_note(vault, "Index.md", "See [[Old]].\n", mode="create")
+
+    moved = md_edit.move_note(vault, "Projects/Old.md", "Archive/New.md")
+
+    assert moved["update_links"] is False
+    assert moved["links_updated"] == 0
+    assert not (vault / "Projects" / "Old.md").exists()
+    assert (vault / "Archive" / "New.md").exists()
+    assert (vault / "Index.md").read_text(encoding="utf-8") == "See [[Old]].\n"
+
+    md_edit.move_note(vault, "Archive/New.md", "Projects/Old.md")
+    updated = md_edit.move_note(vault, "Projects/Old.md", "Archive/New.md", update_links=True)
+
+    assert updated["update_links"] is True
+    assert updated["links_updated"] == 1
+    assert (vault / "Index.md").read_text(encoding="utf-8") == "See [[New]].\n"
+
+
 def test_readme_and_installer_explain_note_editing():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")

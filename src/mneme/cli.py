@@ -254,12 +254,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--date",help="Date in YYYY-MM-DD format (default: today)")
     p.add_argument("--content",help="Content for append/create actions")
     p.add_argument("--force",action="store_true")
-    p=note_sub.add_parser("move", help="Move a note and update [[wikilinks]] across vault")
+    p=note_sub.add_parser("move", help="Move a note; optionally update [[wikilinks]] across vault")
     p.add_argument("path",help="Source note path")
     p.add_argument("--to",required=True,help="Destination note path")
     p.add_argument("--vault",type=Path)
     p.add_argument("--dry-run",action="store_true")
     p.add_argument("--force",action="store_true")
+    p.add_argument("--update-links",action="store_true",help="Rewrite matching [[wikilinks]] across the vault")
     p=note_sub.add_parser("delete", help="Delete a note from the vault")
     p.add_argument("path",help="Note to delete")
     p.add_argument("--vault",type=Path)
@@ -521,7 +522,7 @@ def main(argv: list[str] | None = None) -> None:
             elif args.note_cmd == "daily":
                 result = md_edit.daily_note(vault, args.action, date=args.date, content=args.content, force=args.force)
             elif args.note_cmd == "move":
-                result = md_edit.move_note(vault, args.path, args.to, dry_run=args.dry_run, force=args.force)
+                result = md_edit.move_note(vault, args.path, args.to, dry_run=args.dry_run, force=args.force, update_links=args.update_links)
             elif args.note_cmd == "delete":
                 result = md_edit.delete_note(vault, args.path, force=args.force)
             elif args.note_cmd == "status":
