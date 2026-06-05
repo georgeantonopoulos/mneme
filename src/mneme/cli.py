@@ -233,6 +233,39 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--bullet",required=True)
     p.add_argument("--dry-run",action="store_true")
     p.add_argument("--force",action="store_true")
+    # --- New note subcommands ---
+    p=note_sub.add_parser("list", help="List .md files in a vault folder")
+    p.add_argument("path",nargs="?",default=".",help="Vault-relative folder path (default: vault root)")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--pattern",help="Optional glob pattern (e.g. '*.md')")
+    p=note_sub.add_parser("search", help="Search vault by filename (case-insensitive substring)")
+    p.add_argument("query",help="Substring to search for in filenames")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--folder",help="Limit scope to a vault-relative folder")
+    p=note_sub.add_parser("search-content", help="Full-text content search across vault .md files")
+    p.add_argument("query",help="Text to search for")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--folder",help="Limit scope to a vault-relative folder")
+    p.add_argument("--max-results",type=int,default=10,help="Maximum number of results (default: 10)")
+    p.add_argument("--context",type=int,default=3,help="Number of context lines (default: 3)")
+    p=note_sub.add_parser("daily", help="Convenience for daily notes (memory/YYYY-MM-DD.md)")
+    p.add_argument("action",choices=["read","append","create"],help="Action: read, append, or create")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--date",help="Date in YYYY-MM-DD format (default: today)")
+    p.add_argument("--content",help="Content for append/create actions")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("move", help="Move a note and update [[wikilinks]] across vault")
+    p.add_argument("path",help="Source note path")
+    p.add_argument("--to",required=True,help="Destination note path")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--dry-run",action="store_true")
+    p.add_argument("--force",action="store_true")
+    p=note_sub.add_parser("delete", help="Delete a note from the vault")
+    p.add_argument("path",help="Note to delete")
+    p.add_argument("--vault",type=Path)
+    p.add_argument("--force",action="store_true",required=True,help="Required to confirm deletion")
+    p=note_sub.add_parser("status", help="Vault overview: total notes, folders, recent files")
+    p.add_argument("--vault",type=Path)
     p=sub.add_parser("resolve", help="Write a research-resolution JSON payload to Markdown and weighted graph edges")
     p.add_argument("--vault",type=Path)
     p.add_argument("--db",type=Path)
@@ -478,6 +511,21 @@ def main(argv: list[str] | None = None) -> None:
                 result = md_edit.upsert_section(vault,args.path,args.heading,args.content,level=args.level,dry_run=args.dry_run,force=args.force)
             elif args.note_cmd == "add-bullet":
                 result = md_edit.add_bullet(vault,args.path,args.heading,args.bullet,dry_run=args.dry_run,force=args.force)
+            elif args.note_cmd == "list":
+                folder = args.path if args.path and args.path != "." else None
+                result = md_edit.list_notes(vault, path=folder, pattern=args.pattern)
+            elif args.note_cmd == "search":
+                result = md_edit.search_notes(vault, args.query, folder=args.folder)
+            elif args.note_cmd == "search-content":
+                result = md_edit.search_content(vault, args.query, folder=args.folder, max_results=args.max_results, context=args.context)
+            elif args.note_cmd == "daily":
+                result = md_edit.daily_note(vault, args.action, date=args.date, content=args.content, force=args.force)
+            elif args.note_cmd == "move":
+                result = md_edit.move_note(vault, args.path, args.to, dry_run=args.dry_run, force=args.force)
+            elif args.note_cmd == "delete":
+                result = md_edit.delete_note(vault, args.path, force=args.force)
+            elif args.note_cmd == "status":
+                result = md_edit.vault_status(vault)
             else:
                 raise ValueError(f"unknown note command: {args.note_cmd}")
         except Exception as exc:
