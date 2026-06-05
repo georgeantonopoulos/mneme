@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
 
 from ..core import now_iso
+from ..html_visible import extract_visible_text
 from .base import SenseEvent
 
 
@@ -106,6 +107,8 @@ class GwsSense:
             str(row.get("snippet") or row.get("body") or row.get("description") or row.get("notes") or ""),
         ]
         text = "\n".join(part for part in text_parts if part).strip() or title
+        if "<" in text and ">" in text:
+            text = extract_visible_text(text)
         observed_at = str(row.get("observed_at") or row.get("date") or row.get("updated") or row.get("start") or now_iso())
         uri = row.get("uri") or row.get("url") or row.get("htmlLink") or row.get("link")
         digest = hashlib.sha1(f"{self.sense_id}:{event_type}:{source_id}:{text[:200]}".encode()).hexdigest()[:24]
