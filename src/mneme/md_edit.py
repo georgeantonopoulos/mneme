@@ -512,7 +512,7 @@ def daily_note(vault_root: str | Path, action: str, date: str | None = None,
 
 # Architecture note: Mneme treats Markdown wikilinks as navigational source
 # syntax, not the primary semantic graph. Moving a note should therefore be
-# cheap by default; eager vault-wide wikilink rewrites are opt-in for Obsidian
+# cheap by default; eager vault-wide wikilink rewrites are opt-in for link-aware editors
 # style workflows that need click-through links to stay current immediately.
 def move_note(vault_root: str | Path, src_path: str, dst_path: str,
               dry_run: bool = False, force: bool = False, update_links: bool = False) -> dict:

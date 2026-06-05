@@ -112,6 +112,8 @@ def top_level(path: str | None) -> str | None:
 
 def mark_cross_boundary_edges(conn: sqlite3.Connection) -> int:
     ensure_hierarchy_schema(conn)
+    # Reset first so killed/removed-path edges cannot retain stale cross-boundary flags.
+    conn.execute("UPDATE edges SET cross_boundary=0")
     rows = conn.execute(
         """SELECT e.id,s.path,d.path
            FROM edges e
@@ -145,7 +147,7 @@ def derive_path(source_path: str | None, node_type: str | None, node_name: str |
     path = Path(source)
     parts = [part for part in source.split("/") if part]
     if parts:
-        first = parts[0].lower()
+        first = parts[0].lower().lstrip(".")
         stem = slug(Path(parts[-1]).stem)
         mapping = {
             "projects": "project",

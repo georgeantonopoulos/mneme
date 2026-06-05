@@ -777,8 +777,10 @@ def clear_graph_for_rebuild(conn: sqlite3.Connection, preserve_thoughts: bool = 
     if preserved_nodes:
         node_placeholders = ','.join('?' for _ in preserved_nodes)
         conn.execute(f"DELETE FROM nodes WHERE id NOT IN ({node_placeholders})", tuple(preserved_nodes))
+        conn.execute(f"DELETE FROM path_index WHERE node_id NOT IN ({node_placeholders})", tuple(preserved_nodes))
     else:
         conn.execute("DELETE FROM nodes")
+        conn.execute("DELETE FROM path_index")
     return {
         "preserved_active_edges": conn.execute("SELECT count(*) FROM edges WHERE status='active'").fetchone()[0],
         "preserved_killed_edges": conn.execute("SELECT count(*) FROM edges WHERE status='killed'").fetchone()[0],
@@ -1243,7 +1245,9 @@ def _resolve_query_paths(conn: sqlite3.Connection, tokens: set[str]) -> dict[str
             if overlap:
                 scores[str(path)] = scores.get(str(path), 0.0) + float(overlap * 3)
                 parent = str(path).rsplit("/", 1)[0] if "/" in str(path) else str(path)
-                scores[parent] = scores.get(parent, 0.0) + float(overlap)
+                parent_overlap, _parent_matched = _lexical_overlap(tokens, parent)
+                if parent_overlap:
+                    scores[parent] = scores.get(parent, 0.0) + float(parent_overlap)
     return dict(sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:10])
 
 
@@ -1452,7 +1456,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     lexical_observation_rows = conn.execute(
         f"""SELECT o.id,o.note_id,o.kind,o.text,o.source_path,o.score,o.created_at,n.name,n.type,n.updated_at,n.path
             FROM observations o JOIN nodes n ON n.id=o.note_id
-            WHERE {obs_where}
+            WHERE ({obs_where})
               {"AND (" + obs_path_clause + ")" if path_filter_active else ""}
             ORDER BY o.score DESC,o.created_at DESC LIMIT 700""",
         obs_params + (obs_path_params if path_filter_active else []),

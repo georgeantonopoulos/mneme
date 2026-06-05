@@ -5,7 +5,8 @@ from pathlib import Path
 
 from mneme.cli import main
 from mneme.consolidate import consolidate_graph
-from mneme.core import add_observation, init_db, retrieve_context, upsert_edge, upsert_node
+from mneme.brain import brain_report
+from mneme.core import add_observation, clear_graph_for_rebuild, init_db, retrieve_context, upsert_edge, upsert_node
 from mneme.hierarchy import derive_path, get_node_path, get_subtree_node_ids, mark_cross_boundary_edges, migrate_add_paths, set_node_path
 
 
@@ -160,3 +161,82 @@ def test_cli_path_commands(tmp_path: Path, capsys):
     assert '"ok": true' in capsys.readouterr().out
     main(["path", "validate", "--db", str(db)])
     assert '"ok": true' in capsys.readouterr().out
+
+
+def test_clear_graph_for_rebuild_removes_path_index_for_deleted_nodes(tmp_path: Path):
+    db = _db(tmp_path)
+    conn = sqlite3.connect(db)
+    node = upsert_node(conn, "project", "Deleted Node", "projects/deleted.md")
+    set_node_path(conn, node, "project/deleted")
+    conn.commit()
+
+    assert get_subtree_node_ids(conn, "project") == {node}
+    clear_graph_for_rebuild(conn)
+    conn.commit()
+
+    assert conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM path_index").fetchone()[0] == 0
+    assert get_subtree_node_ids(conn, "project") == set()
+    conn.close()
+
+
+def test_lexical_observation_path_filter_applies_to_all_or_terms(tmp_path: Path):
+    db = _db(tmp_path)
+    conn = sqlite3.connect(db)
+    target = upsert_node(conn, "project", "AlphaOnly", "projects/alphaonly.md")
+    unrelated = upsert_node(conn, "project", "Unrelated Topic", "projects/unrelated.md")
+    set_node_path(conn, target, "project/alphaonly")
+    set_node_path(conn, unrelated, "project/unrelated")
+    add_observation(conn, target, "fact", "AlphaOnly relevant signal.", "projects/alphaonly.md", 1.0)
+    # This matches the prompt lexically in o.text, but its node is outside the resolved alphaonly subtree.
+    add_observation(conn, unrelated, "fact", "AlphaOnly noisy unrelated signal.", "projects/unrelated.md", 99.0)
+    conn.commit()
+    conn.close()
+
+    result = retrieve_context(db, "AlphaOnly", max_items=10)
+    assert result["retrieval"]["path_filter_active"] is True
+    rendered = "\n".join(f"{item.get('title')} {item.get('snippet')}" for item in result["items"])
+    assert "AlphaOnly" in rendered
+    assert "Unrelated Topic" not in rendered
+
+
+def test_cli_path_set_recomputes_cross_boundary_edges(tmp_path: Path, capsys):
+    db = _db(tmp_path)
+    conn = sqlite3.connect(db)
+    a = upsert_node(conn, "project", "Move Source", "projects/move-source.md")
+    b = upsert_node(conn, "project", "Move Dest", "projects/move-dest.md")
+    set_node_path(conn, a, "project/a")
+    set_node_path(conn, b, "project/b")
+    edge = upsert_edge(conn, a, b, "relates_to", "projects/move-source.md", "Source relates to dest.", 0.9, status="active")
+    mark_cross_boundary_edges(conn)
+    conn.commit()
+    assert conn.execute("SELECT cross_boundary FROM edges WHERE id=?", (edge,)).fetchone()[0] == 0
+    conn.close()
+
+    main(["path", "set", "--db", str(db), "--node", "Move Dest", "--path", "vendor/b"])
+    capsys.readouterr()
+
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT cross_boundary FROM edges WHERE id=?", (edge,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_brain_report_cortical_ignores_stale_path_rows_and_killed_edges(tmp_path: Path):
+    db = _db(tmp_path)
+    conn = sqlite3.connect(db)
+    a = upsert_node(conn, "project", "Report Source", "projects/report-source.md")
+    b = upsert_node(conn, "vendor", "Report Vendor", "vendors/report-vendor.md")
+    set_node_path(conn, a, "project/report-source")
+    set_node_path(conn, b, "vendor/report-vendor")
+    killed = upsert_edge(conn, a, b, "relates_to", "projects/report-source.md", "Old killed bridge.", 0.9, status="killed")
+    # Simulate stale denormalized index data left by an old bug.
+    conn.execute("INSERT OR REPLACE INTO path_index(path,node_id,depth) VALUES('stale/private-node','deleted-node',2)")
+    conn.execute("UPDATE edges SET cross_boundary=1 WHERE id=?", (killed,))
+    conn.commit()
+    conn.close()
+
+    report = brain_report(db)
+    cortical = report["cortical"]
+    assert "stale" not in cortical["zones"]
+    assert cortical["cross_boundary_edges"] == 0
+    assert cortical["validation"]["stale_path_index_entries"] == 1

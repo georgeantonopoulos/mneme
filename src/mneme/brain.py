@@ -355,13 +355,55 @@ def brain_label_matches(conn: sqlite3.Connection, prompt: str, *, limit: int = 1
     return {"run_id": run_id, "matches": selected, "by_target": by_target}
 
 
+def _cortical_summary(conn: sqlite3.Connection) -> dict:
+    # Import lazily to avoid making brain-labeling depend on hierarchy at module import time.
+    from .hierarchy import ensure_hierarchy_schema, validate_paths
+
+    ensure_hierarchy_schema(conn)
+    total_nodes = int(conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
+    top_paths = conn.execute(
+        """
+        SELECT SUBSTR(pi.path, 1, INSTR(pi.path || '/', '/')-1) AS zone,
+               COUNT(DISTINCT pi.node_id)
+        FROM path_index pi
+        JOIN nodes n ON n.id=pi.node_id
+        WHERE pi.depth=1
+        GROUP BY zone
+        ORDER BY COUNT(DISTINCT pi.node_id) DESC
+        """
+    ).fetchall()
+    uncategorized = int(conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE path LIKE 'uncategorized/%'"
+    ).fetchone()[0])
+    cross_boundary = int(conn.execute(
+        "SELECT COUNT(*) FROM edges WHERE cross_boundary=1 AND COALESCE(status,'candidate') != 'killed'"
+    ).fetchone()[0])
+    cortical_zones = {
+        zone: {
+            "nodes": count,
+            "pct": round(100 * count / total_nodes, 1) if total_nodes else 0,
+        }
+        for zone, count in top_paths
+    }
+    return {
+        "zones": cortical_zones,
+        "zone_count": len(cortical_zones),
+        "total_nodes": total_nodes,
+        "uncategorized": uncategorized,
+        "uncategorized_pct": round(100 * uncategorized / total_nodes, 1) if total_nodes else 0,
+        "cross_boundary_edges": cross_boundary,
+        "validation": validate_paths(conn),
+    }
+
+
 def brain_report(db_path: Path, *, limit: int = 20) -> dict:
     conn = sqlite3.connect(db_path)
     ensure_brain_tables(conn)
     run_id = _latest_brain_label_run_id(conn)
     if not run_id:
+        cortical_summary = _cortical_summary(conn)
         conn.close()
-        return {"run_id": None, "empty_reason": "No brain label run exists yet."}
+        return {"run_id": None, "empty_reason": "No brain label run exists yet.", "cortical": cortical_summary}
     row = conn.execute(
         "SELECT source_consolidation_run_id FROM brain_label_runs WHERE id=?",
         (run_id,),
@@ -403,37 +445,7 @@ def brain_report(db_path: Path, *, limit: int = 20) -> dict:
             "coverage": round(ratio, 3),
             "depth": depth,
         }
-    # Cortical zone map from hierarchy paths
-    from .hierarchy import path_tree, validate_paths, ensure_hierarchy_schema
-    ensure_hierarchy_schema(conn)
-    top_paths = conn.execute(
-        "SELECT SUBSTR(path, 1, INSTR(path || '/', '/')-1) AS zone, COUNT(DISTINCT node_id) "
-        "FROM path_index WHERE depth=1 GROUP BY zone ORDER BY COUNT(DISTINCT node_id) DESC"
-    ).fetchall()
-    total_nodes = int(conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
-    uncategorized = int(conn.execute(
-        "SELECT COUNT(*) FROM nodes WHERE path LIKE 'uncategorized/%'"
-    ).fetchone()[0])
-    cross_boundary = int(conn.execute(
-        "SELECT COUNT(*) FROM edges WHERE cross_boundary=1"
-    ).fetchone()[0])
-    validation = validate_paths(conn)
-    cortical_zones = {
-        zone: {
-            "nodes": count,
-            "pct": round(100 * count / total_nodes, 1) if total_nodes else 0,
-        }
-        for zone, count in top_paths
-    }
-    cortical_summary = {
-        "zones": cortical_zones,
-        "zone_count": len(cortical_zones),
-        "total_nodes": total_nodes,
-        "uncategorized": uncategorized,
-        "uncategorized_pct": round(100 * uncategorized / total_nodes, 1) if total_nodes else 0,
-        "cross_boundary_edges": cross_boundary,
-        "validation": validation,
-    }
+    cortical_summary = _cortical_summary(conn)
     vague = []
     for target_type, label_json, _summary_json, _provenance_json in rows:
         labels = json.loads(label_json or "[]")

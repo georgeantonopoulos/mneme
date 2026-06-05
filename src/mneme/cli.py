@@ -10,7 +10,7 @@ from .consolidate import LabelerConfig, consolidate_graph
 from .contract import check_db_contract
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, generate_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
-from .hierarchy import get_node_path, get_subtree_node_ids, migrate_add_paths, path_tree, rebuild_path_index, set_node_path, validate_paths
+from .hierarchy import get_node_path, get_subtree_node_ids, mark_cross_boundary_edges, migrate_add_paths, path_tree, rebuild_path_index, set_node_path, validate_paths
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
@@ -657,6 +657,7 @@ def main(argv: list[str] | None = None) -> None:
                 node_id, node_type, node_name = _resolve_node_arg(conn, args.node)
                 set_node_path(conn, node_id, args.path)
                 rebuild_path_index(conn)
+                mark_cross_boundary_edges(conn)
                 conn.commit()
                 print(json.dumps({"ok": True, "node": {"id": node_id, "type": node_type, "name": node_name}, "path": get_node_path(conn, node_id)}, indent=2, ensure_ascii=False))
                 return
