@@ -1,3 +1,6 @@
+import logging
+
+from mneme import html_visible
 from mneme.html_visible import extract_visible_and_hidden, extract_visible_text
 
 
@@ -109,3 +112,33 @@ def test_extract_visible_and_hidden_returns_expected_tuple():
     result = extract_visible_and_hidden("<p>Shown</p><div style='display:none'>Hidden</div>")
 
     assert result == ("Shown", ["Hidden"])
+
+
+def test_extract_visible_text_falls_back_without_lxml(monkeypatch):
+    monkeypatch.setattr(html_visible, "_LXML_AVAILABLE", False)
+    monkeypatch.setattr(html_visible, "_LXML_WARNING_LOGGED", False)
+
+    text = extract_visible_text("<p>Shown</p><div style='display:none'>Fallback still includes hidden</div>")
+
+    assert text == "Shown Fallback still includes hidden"
+
+
+def test_extract_visible_and_hidden_returns_no_hidden_without_lxml(monkeypatch):
+    monkeypatch.setattr(html_visible, "_LXML_AVAILABLE", False)
+    monkeypatch.setattr(html_visible, "_LXML_WARNING_LOGGED", False)
+
+    result = extract_visible_and_hidden("<p>Shown</p><div style='display:none'>Hidden</div>")
+
+    assert result == ("Shown Hidden", [])
+
+
+def test_missing_lxml_fallback_logs_warning_once(monkeypatch, caplog):
+    monkeypatch.setattr(html_visible, "_LXML_AVAILABLE", False)
+    monkeypatch.setattr(html_visible, "_LXML_WARNING_LOGGED", False)
+
+    with caplog.at_level(logging.WARNING, logger="mneme.html_visible"):
+        extract_visible_text("<p>Shown</p>")
+        extract_visible_text("<p>Shown again</p>")
+
+    messages = [record.message for record in caplog.records]
+    assert messages == ["lxml is not installed; falling back to regex-only HTML text extraction"]

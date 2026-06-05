@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import re
+import logging
+from typing import Any
 
-from lxml import html
+try:
+    from lxml import html
+except ModuleNotFoundError:
+    html = None  # type: ignore[assignment]
+    _LXML_AVAILABLE = False
+else:
+    _LXML_AVAILABLE = True
 
 
+logger = logging.getLogger(__name__)
+_LXML_WARNING_LOGGED = False
 _TAG_RE = re.compile(r"<[^>]+>")
 _SPACE_RE = re.compile(r"\s+")
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
@@ -23,8 +33,12 @@ def extract_visible_and_hidden(html_text: str) -> tuple[str, list[str]]:
         return "", []
     if "<" not in html_text or ">" not in html_text:
         return _normalize_text(html_text), []
+    if not _LXML_AVAILABLE:
+        _warn_lxml_unavailable_once()
+        return _fallback_text(html_text), []
 
     try:
+        assert html is not None
         root = html.fragment_fromstring(html_text, create_parent="div")
     except Exception:
         return _fallback_text(html_text), []
@@ -57,7 +71,15 @@ def _fallback_text(html_text: str) -> str:
     return _normalize_text(_TAG_RE.sub(" ", without_comments))
 
 
-def _is_hidden(element: html.HtmlElement) -> bool:
+def _warn_lxml_unavailable_once() -> None:
+    global _LXML_WARNING_LOGGED
+    if _LXML_WARNING_LOGGED:
+        return
+    logger.warning("lxml is not installed; falling back to regex-only HTML text extraction")
+    _LXML_WARNING_LOGGED = True
+
+
+def _is_hidden(element: Any) -> bool:
     if "hidden" in element.attrib:
         return True
 

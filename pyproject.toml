@@ -20,7 +20,8 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "lxml>=4.9"]
+html = ["lxml>=4.9"]
 
 [project.scripts]
 mneme = "mneme.cli:main"
