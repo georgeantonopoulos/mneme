@@ -10,14 +10,14 @@ description: Canonical skill for Mneme — single memory system for retrieval, w
 Before running any mneme command, resolve vault/db/out paths. In sandboxed environments (Codex, CI, containers), `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` may not be set. Always discover paths first:
 
 ```bash
-mneme doctor --json
+mneme doctor
 ```
 
-This returns JSON with `settings.vault`, `settings.db`, and `settings.out`. Extract and use those values as `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` respectively. Example:
+This outputs JSON by default with `settings.vault`, `settings.db`, and `settings.out`. Extract and use those values as `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` respectively. Example:
 
 ```bash
-VAULT=$(mneme doctor --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['vault'])")
-MNEME_DB=$(mneme doctor --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['db'])")
+VAULT=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['vault'])")
+MNEME_DB=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['db'])")
 ```
 
 Use these resolved paths in all subsequent `--vault`, `--db`, and `--out` flags. Do **not** assume env vars are set.
@@ -228,7 +228,7 @@ Rules:
 - **`obsidian-cli daily:write` does NOT exist** — use `daily:create` or `daily:append`
 - **`mneme forget` before private graph surgery** — use `mneme forget --db <path> --days-threshold 30` for bulk cleanup of past-dated observations before resorting to `kill-synapse`
 - **Don't escalate suppressed MEMORY.md items** — if an item was suppressed/snoozed, do not re-escalate it
-- **Never use OpenRouter for cron** — pin to `ollama-cloud/glm-5.1:cloud` or equivalent stable provider
+- **Never use OpenRouter for cron** — pin to `ollama-cloud/glm-5.2:cloud` or equivalent stable provider
 - **Observation age penalty uses wrong timestamp** after rebuild — always derive dates from source path or content text, never from `created_at` alone
 - **Stale observation pollution** — `mneme update` re-ingesting historical notes gives observations today's `created_at` but old dates in text. Use `mneme forget` to clean past-dated observations. Archive old daily notes before full vault re-ingestion
 - **User-confirmed resolution requires immediate writeback** — do not just acknowledge in chat. Run correction loop, record feedback, and verify

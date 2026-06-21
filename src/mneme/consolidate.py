@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sqlite3
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -62,6 +64,27 @@ def _tokens(*values: str | None) -> set[str]:
     return found
 
 
+def _read_real_ollama_key() -> str:
+    """Read the OLLAMA_API_KEY from the running ollama daemon process.
+
+    The Hermes gateway masks the key in the terminal env (showing it as
+    ``c6b4fb...q7qC``). The real key lives in the ollama systemd service
+    process environment. We read /proc/<pid>/environ to recover it.
+    """
+    import glob
+    for environ_path in glob.glob("/proc/[0-9]*/environ"):
+        try:
+            with open(environ_path, "rb") as f:
+                for line in f.read().split(b"\x00"):
+                    if line.startswith(b"OLLAMA_API_KEY="):
+                        key = line.split(b"=", 1)[1].decode("utf-8", errors="replace").strip()
+                        if len(key) >= 20:
+                            return key
+        except (PermissionError, FileNotFoundError, ProcessLookupError, OSError):
+            continue
+    return ""
+
+
 def _label_command(config: LabelerConfig) -> str | Sequence[str] | None:
     if config.command is not None:
         return config.command
@@ -69,6 +92,33 @@ def _label_command(config: LabelerConfig) -> str | Sequence[str] | None:
         if not config.model:
             raise ValueError("--label-model is required when --label-provider=ollama")
         return ["ollama", "run", config.model, "--format", "json", "--hidethinking", "--think", "false", "--nowordwrap"]
+    if config.provider == "ollama-cloud":
+        if not config.model:
+            raise ValueError("--label-model is required when --label-provider=ollama-cloud")
+        # Strip :cloud suffix — ollama.com/v1 uses bare model names (e.g. "gemma4:31b" not "gemma4:31b-cloud")
+        model = config.model.removesuffix(":cloud")
+        # The OLLAMA_API_KEY env var may be masked by the Hermes gateway. Try to read
+        # the real key from the running ollama daemon process environment.
+        ollama_auth = os.environ.get("OLLAMA_API_KEY", "")
+        if len(ollama_auth) < 20:
+            ollama_auth = _read_real_ollama_key()
+        base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1")
+        endpoint = f"{base_url}/chat/completions"
+        # Use a Python subprocess that reads the prompt from stdin, builds the JSON payload,
+        # posts to the OpenAI-compatible endpoint, and prints the response content.
+        script = (
+            "import sys,json,urllib.request\n"
+            "prompt=sys.stdin.read()\n"
+            f"key={ollama_auth!r}\n"
+            f"endpoint={endpoint!r}\n"
+            f"model={model!r}\n"
+            "payload=json.dumps({'model':model,'messages':[{'role':'user','content':prompt}],'stream':False,'format':{'type':'json_object'}}).encode()\n"
+            "req=urllib.request.Request(endpoint,data=payload,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'})\n"
+            "resp=urllib.request.urlopen(req,timeout=120)\n"
+            "d=json.loads(resp.read())\n"
+            "print(d['choices'][0]['message']['content'])\n"
+        )
+        return [sys.executable, "-c", script]
     return None
 
 

@@ -441,9 +441,10 @@ def edge_creation_thinking(relation: str, source_path: str, evidence: str, confi
 def log_edge_event(conn, edge_id: str, event: str, actor: str, thinking: dict) -> str:
     ts = now_iso()
     payload = json.dumps(thinking, ensure_ascii=False, sort_keys=True)
-    event_id = hashlib.sha1(f"{edge_id}:{event}:{actor}:{payload}:{ts}".encode()).hexdigest()[:20]
+    # Include a uuid4 suffix to guarantee uniqueness even when ts collides
+    event_id = hashlib.sha1(f"{edge_id}:{event}:{actor}:{payload}:{ts}:{uuid.uuid4().hex}".encode()).hexdigest()[:20]
     conn.execute(
-        "INSERT INTO edge_debug_log(id,edge_id,event,actor,thinking_json,created_at) VALUES(?,?,?,?,?,?)",
+        "INSERT OR IGNORE INTO edge_debug_log(id,edge_id,event,actor,thinking_json,created_at) VALUES(?,?,?,?,?,?)",
         (event_id, edge_id, event, actor, payload, ts),
     )
     return event_id
