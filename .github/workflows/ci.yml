@@ -27,6 +27,16 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Run runtime tests with hostile Mneme env
+        env:
+          MNEME_DB: /tmp/hostile-ci-db.sqlite
+          MNEME_VAULT: /tmp/hostile-ci-vault
+          MNEME_OUT: /tmp/hostile-ci-out
+        run: python -m pytest tests/test_runtime_and_packets.py tests/test_cli_contracts.py -q
+
+      - name: Run skill drift checker
+        run: python scripts/skill_drift_check.py
+
       - name: Run smoke test
         run: mneme run-once --vault ./examples/vault --db /tmp/mneme_smoke.sqlite --out /tmp/mneme_smoke_out
 

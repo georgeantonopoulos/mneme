@@ -100,6 +100,12 @@ def required_path(args, name: str) -> Path:
     return result
 
 
+def require_absolute_out_path(path: Path, *, flag: str = "--out") -> Path:
+    if not path.is_absolute():
+        raise SystemExit(f"{flag} must be an absolute path when rendering cards; got {path}")
+    return path
+
+
 def hints_from_args(args):
     return resolve_hints(args)
 
@@ -716,7 +722,7 @@ def main(argv: list[str] | None = None) -> None:
             return
     if args.cmd == "thought":
         db_path = required_path(args, "db")
-        out_path = path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out"
+        out_path = require_absolute_out_path(path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out")
         generated = generate_proactive_thought(db_path, hints=hints_from_args(args), hops=args.hops)
         image = render_card(generated, out_path)
         thought_id = save_thought(db_path, generated, str(image))
@@ -744,8 +750,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "surface":
         db_path = required_path(args, "db")
         surfaced = surface_thoughts(db_path, args.prompt, limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_candidates=not args.no_candidates)
-        out_path = path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out"
         if args.render or args.out:
+            out_path = require_absolute_out_path(path_from_config(args, "out", required=False) or Path.home() / ".local" / "share" / "mneme" / "out")
             thoughts = surfaced.get("thoughts", []) if isinstance(surfaced, dict) else surfaced
             for i, thought in enumerate(thoughts):
                 # Ensure thought has the keys render_card needs (title, insight, action, path)
@@ -876,7 +882,7 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(top_physarum_edges(db_path, args.run_id, args.limit), indent=2, ensure_ascii=False))
             return
     db_path = required_path(args,"db")
-    out_path = required_path(args,"out")
+    out_path = require_absolute_out_path(required_path(args,"out"))
     stats = ingest_vault(required_path(args,"vault"),db_path,hints_from_args(args),args.max_notes,rebuild=not args.append,follow_symlinks=args.follow_symlinks) if args.cmd == "run-once" else {}
     generated=generate_proactive_thought(db_path,hints=hints_from_args(args),hops=args.hops)
     image=render_card(generated,out_path)
