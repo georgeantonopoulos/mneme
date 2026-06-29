@@ -15,6 +15,7 @@ class Args:
 
 
 def test_runtime_path_resolution_args_env_config_order(tmp_path, monkeypatch):
+    monkeypatch.delenv("MNEME_DB", raising=False)
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"db": str(tmp_path / "config.sqlite")}), encoding="utf-8")
     args = Args()
