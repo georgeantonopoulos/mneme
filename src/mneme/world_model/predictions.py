@@ -8,9 +8,31 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from mneme.core import _bridge_match_score, _sense_bridge_terms, init_db, now_iso
-
 from .schema import ensure_world_model_schema
+
+
+def now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _sense_bridge_terms(*parts: str) -> set[str]:
+    text = " ".join(p or "" for p in parts).lower()
+    words = re.findall(r"[a-z0-9][a-z0-9_-]{2,}", text)
+    stop = {"the", "and", "for", "with", "that", "this", "from", "into", "still", "needs", "need", "follow", "update", "task", "event", "email", "calendar", "notion", "open"}
+    return {word for word in words if word not in stop}
+
+
+def _bridge_match_score(candidate_terms: set[str], event_terms: set[str]) -> float:
+    if not candidate_terms or not event_terms:
+        return 0.0
+    overlap = candidate_terms & event_terms
+    return len(overlap) / max(3, min(len(candidate_terms), 12))
+
+
+def _init_db(conn: sqlite3.Connection) -> None:
+    from mneme.core import init_db
+
+    init_db(conn)
 
 PREDICTION_TYPES = {"confirmation_expected", "no_news_expected"}
 TERMS_FIELDS = (
@@ -108,7 +130,7 @@ def _row_dict(row: sqlite3.Row | None) -> dict | None:
 def _open_conn(db_path: Path | str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    init_db(conn)
+    _init_db(conn)
     ensure_world_model_schema(conn)
     return conn
 
@@ -117,7 +139,7 @@ def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    init_db(conn)
+    _init_db(conn)
     ensure_world_model_schema(conn)
     try:
         if not isinstance(payload, dict):
@@ -179,7 +201,7 @@ def due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: st
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    init_db(conn)
+    _init_db(conn)
     ensure_world_model_schema(conn)
     try:
         before_iso = parse_before(before)
@@ -285,7 +307,7 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    init_db(conn)
+    _init_db(conn)
     ensure_world_model_schema(conn)
     try:
         row = conn.execute("SELECT * FROM world_predictions WHERE id=?", (prediction_id,)).fetchone()
@@ -347,7 +369,7 @@ def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, befo
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    init_db(conn)
+    _init_db(conn)
     ensure_world_model_schema(conn)
     try:
         effective_now = now or (parse_before(before) if before else None)
