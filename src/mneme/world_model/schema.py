@@ -6,8 +6,10 @@ import sqlite3
 def ensure_world_model_schema(conn: sqlite3.Connection) -> None:
     """Create durable world-model tables.
 
-    These tables are durable state, not rebuildable graph cache. Graph ID columns
-    are best-effort hints; denormalized text columns carry the durable meaning.
+    These tables intentionally live outside ``init_db()``. Graph rows are a
+    rebuildable cache; world-model rows are durable state created only by
+    world-model writers. Graph ID columns are best-effort hints; denormalized
+    text columns carry the durable meaning across rebuilds.
     """
 
     conn.executescript(
@@ -82,5 +84,6 @@ def ensure_world_model_schema(conn: sqlite3.Connection) -> None:
           created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_wa_actor ON world_actions(actor, created_at);
+        CREATE INDEX IF NOT EXISTS idx_wa_source ON world_actions(source_path);
         """
     )
