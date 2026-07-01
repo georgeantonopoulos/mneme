@@ -70,6 +70,14 @@ class EdgeWriteDecision:
     contract_payload: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class AssertionWriteDecision:
+    status: str
+    blocked: bool = False
+    reasons: list[str] = field(default_factory=list)
+    contract_payload: dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class ContractReport:
     status: str
@@ -164,6 +172,62 @@ def enforce_edge_write(
     return EdgeWriteDecision(status=status, strength=strength, reasons=reasons, contract_payload=payload)
 
 
+def enforce_assertion_write(
+    *,
+    predicate: str,
+    requested_status: str,
+    evidence_text: str | None,
+    confidence: float,
+    certainty: str | None,
+    source_type: str,
+    metadata: dict[str, Any] | None,
+) -> AssertionWriteDecision:
+    policy = relationship_policy(predicate)
+    metadata = metadata or {}
+    requested_status = requested_status or "candidate"
+    certainty = str(certainty or "").lower()
+    confidence = float(confidence or 0.0)
+    reasons: list[str] = []
+    evidence_ok = bool((evidence_text or "").strip())
+    active_certainty = certainty in {"confirmed", "certain", "user_confirmed", "absolutely_certain"}
+    validated = explicit_validation(
+        {**metadata, "research_resolution": metadata.get("research_resolution", True)},
+        source_type=source_type,
+        evidence_text=evidence_text,
+        confidence=confidence,
+    )
+    status = requested_status
+    if requested_status != "current":
+        status = "candidate"
+        reasons.append("not_current")
+    if not evidence_ok:
+        status = "candidate"
+        reasons.append("missing_evidence")
+    if not active_certainty:
+        status = "candidate"
+        reasons.append("certainty_not_confirmed")
+    if confidence < 0.9:
+        status = "candidate"
+        reasons.append("confidence_below_threshold")
+    if policy.requires_validation and not validated:
+        status = "candidate"
+        reasons.append("requires_explicit_validation")
+
+    payload = {
+        "name": CONTRACT_NAME,
+        "version": CONTRACT_VERSION,
+        "rules": MANDATORY_RULES,
+        "predicate": predicate,
+        "category": policy.category,
+        "requires_validation": policy.requires_validation,
+        "requested_status": requested_status,
+        "status": status,
+        "explicit_validation": validated,
+        "reasons": reasons,
+    }
+    return AssertionWriteDecision(status=status, blocked=status != "current", reasons=reasons, contract_payload=payload)
+
+
 def truth_policy_for_edge(
     *,
     status: str | None,
@@ -231,7 +295,7 @@ def check_db_contract(db_path: Path) -> ContractReport:
     conn.row_factory = sqlite3.Row
     failures: list[str] = []
     warnings: list[str] = []
-    checked = {"edges": 0, "active_edges": 0, "killed_edges": 0}
+    checked = {"edges": 0, "active_edges": 0, "killed_edges": 0, "world_state_assertions": 0}
     try:
         rows = conn.execute(
             "SELECT id,relation,status,evidence_text,confidence,source_type,metadata_json FROM edges"
@@ -259,6 +323,29 @@ def check_db_contract(db_path: Path) -> ContractReport:
             failures.append(f"edge:{row['id']} active {policy.category} relation lacks evidence")
         if row["status"] == "active" and not policy.known:
             warnings.append(f"edge:{row['id']} uses unknown relation {row['relation']!r}")
+    try:
+        assertion_rows = conn.execute(
+            "SELECT id,subject_name,predicate,status,evidence_text,confidence,certainty FROM world_state_assertions"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        assertion_rows = []
+    current_keys: dict[tuple[str, str], str] = {}
+    for row in assertion_rows:
+        checked["world_state_assertions"] += 1
+        policy = relationship_policy(row["predicate"])
+        if row["status"] == "current":
+            key = (str(row["subject_name"]).casefold(), row["predicate"])
+            if key in current_keys:
+                failures.append(f"world_state_assertion:{row['id']} duplicates current {row['subject_name']!r}/{row['predicate']!r}")
+            current_keys[key] = row["id"]
+            if not (row["evidence_text"] or "").strip():
+                failures.append(f"world_state_assertion:{row['id']} current assertion lacks evidence")
+            if float(row["confidence"] or 0.0) < 0.9:
+                failures.append(f"world_state_assertion:{row['id']} current assertion confidence below 0.9")
+            if str(row["certainty"] or "").lower() not in {"confirmed", "certain", "user_confirmed", "absolutely_certain"}:
+                failures.append(f"world_state_assertion:{row['id']} current assertion certainty is not confirmed")
+        if not policy.known:
+            warnings.append(f"world_state_assertion:{row['id']} uses unknown predicate {row['predicate']!r}")
     conn.close()
     return ContractReport(status="fail" if failures else "pass", failures=failures, warnings=warnings, checked=checked)
 
