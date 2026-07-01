@@ -20,6 +20,7 @@ from .contract import (
 )
 from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_path
 from .retrieval import score_observation_candidate
+from .world_model import delete_world_model_source
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
@@ -2843,9 +2844,13 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
         conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))
         conn.execute("DELETE FROM edges WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM nodes WHERE source_path=?", (source_path,))
+        world_model_removed = delete_world_model_source(conn, source_path)
         conn.commit()
+    else:
+        world_model_removed = delete_world_model_source(conn, source_path)
+        conn.rollback()
     conn.close()
-    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts}
+    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts, "world_model_removed": world_model_removed}
 
 
 def forget_past_dates(db_path: Path, *, days_threshold: int = 30, dry_run: bool = False) -> dict:
