@@ -2871,7 +2871,6 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
         raise ValueError("forget_source only removes mneme:// scoped test or agent memory sources")
     conn = sqlite3.connect(db_path)
     init_db(conn)
-    ensure_world_model_schema(conn)
     counts = {
         "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (source_path,)).fetchone()[0],
         "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
