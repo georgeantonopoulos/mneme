@@ -20,6 +20,8 @@ from .contract import (
 )
 from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_path
 from .retrieval import score_observation_candidate
+from .world_model.schema import ensure_world_model_schema
+from .world_model.state import upsert_assertion
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
@@ -683,6 +685,7 @@ def research_payload_from_note(text: str) -> dict | None:
 
 
 def write_research_edges(conn: sqlite3.Connection, note_path: str, payload: dict, active_threshold: float = 0.9, actor: str = "mneme") -> list[dict]:
+    ensure_world_model_schema(conn)
     created = []
     for claim in payload.get("claims") or []:
         subject = claim["subject"]
@@ -722,7 +725,27 @@ def write_research_edges(conn: sqlite3.Connection, note_path: str, payload: dict
                 "rationale": "User-initiated research created this weighted graph edge; active only if sourced, confirmed, and above threshold.",
                 "active_threshold": active_threshold,
             })
-        created.append({"id": edge_id, "src": subject, "predicate": relation, "dst": obj, "status": status, "strength": strength, "confidence": confidence})
+        assertion_result = None
+        if status == "active":
+            assertion_result = upsert_assertion(
+                conn,
+                {**claim, "predicate": relation, "object": obj, "metadata": {**(claim.get("metadata") or {}), "research_resolution": True}},
+                source_path=note_path,
+                source_edge_id=edge_id,
+                subject_node_id=src,
+                valid_from=payload.get("date"),
+                active=True,
+            )
+        created.append({
+            "id": edge_id,
+            "src": subject,
+            "predicate": relation,
+            "dst": obj,
+            "status": status,
+            "strength": strength,
+            "confidence": confidence,
+            "assertion_id": assertion_result.get("id") if assertion_result else None,
+        })
     return created
 
 
@@ -2142,10 +2165,12 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
     nodes_in = payload.get("nodes") or []
     edges_in = payload.get("edges") or []
     observations_in = payload.get("observations") or []
+    assertions_in = payload.get("assertions") or []
     created_nodes: dict[str, str] = {}
     out_nodes = []
     out_edges = []
     out_observations = []
+    out_assertions = []
     conn = sqlite3.connect(db_path)
     init_db(conn)
     try:
@@ -2215,6 +2240,18 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
             out_observations.append({"node": created_nodes[node_ref], "kind": kind, "text": text[:1000]})
             if not dry_run:
                 add_observation(conn, created_nodes[node_ref], kind, text, source_path, float(obs.get("score", default_score)))
+        for assertion in assertions_in:
+            subject_ref = str(assertion.get("subject_ref") or assertion.get("subject_node") or "")
+            subject_node_id = created_nodes.get(subject_ref) if subject_ref else None
+            result = upsert_assertion(
+                conn,
+                assertion,
+                source_path=source_path,
+                subject_node_id=subject_node_id,
+                valid_from=assertion.get("valid_from") or payload.get("date"),
+                active=claim_status(assertion) == "active",
+            )
+            out_assertions.append(result)
         if dry_run:
             conn.rollback()
         else:
@@ -2228,6 +2265,7 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
         "nodes": out_nodes,
         "edges": out_edges,
         "observations": out_observations,
+        "assertions": out_assertions,
     }
 
 
@@ -2833,19 +2871,26 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
         raise ValueError("forget_source only removes mneme:// scoped test or agent memory sources")
     conn = sqlite3.connect(db_path)
     init_db(conn)
+    ensure_world_model_schema(conn)
     counts = {
         "observations": conn.execute("SELECT COUNT(*) FROM observations WHERE source_path=?", (source_path,)).fetchone()[0],
         "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
         "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (source_path,)).fetchone()[0],
     }
+    world_counts = {
+        "world_state_assertions": conn.execute("SELECT COUNT(*) FROM world_state_assertions WHERE source_path=?", (source_path,)).fetchone()[0],
+        "world_actions": conn.execute("SELECT COUNT(*) FROM world_actions WHERE source_path=?", (source_path,)).fetchone()[0],
+    }
     if not dry_run:
+        conn.execute("DELETE FROM world_state_assertions WHERE source_path=?", (source_path,))
+        conn.execute("DELETE FROM world_actions WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM observations WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))
         conn.execute("DELETE FROM edges WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM nodes WHERE source_path=?", (source_path,))
         conn.commit()
     conn.close()
-    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts}
+    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts, "world_removed": world_counts}
 
 
 def forget_past_dates(db_path: Path, *, days_threshold: int = 30, dry_run: bool = False) -> dict:
