@@ -17,6 +17,7 @@ from .runtime import default_config_path, load_runtime_config, resolve_hints, re
 from .senses.gws import GwsSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
+from .world_model import add_prediction, check_prediction, due_predictions, world_tick
 
 
 def _ensure_verbose_retrieval_fields(result: dict) -> dict:
@@ -493,6 +494,22 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--min-match-score",type=float,default=0.34)
     p.add_argument("--dry-run",action="store_true")
     p.add_argument("--json",action="store_true")
+    predict=sub.add_parser("predict", help="Manage deterministic world-model predictions")
+    predict_sub=predict.add_subparsers(dest="predict_cmd", required=True)
+    p=predict_sub.add_parser("add", help="Add a structured prediction")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--file",required=True,type=Path)
+    p=predict_sub.add_parser("due", help="List open predictions due for checking")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--before",help="ISO timestamp or duration like 4h, 7d, or 2w")
+    p=predict_sub.add_parser("check", help="Check one prediction deterministically")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--id",required=True,dest="prediction_id")
+    world=sub.add_parser("world", help="Run world-model maintenance")
+    world_sub=world.add_subparsers(dest="world_cmd", required=True)
+    p=world_sub.add_parser("tick", help="Check due world-model predictions")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--before",help="ISO timestamp or duration like 4h, 7d, or 2w")
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -629,6 +646,22 @@ def main(argv: list[str] | None = None) -> None:
                 print(json.dumps(result, indent=2, ensure_ascii=False))
             else:
                 print("[SILENT]" if result.get("revalidated", 0) == 0 else json.dumps(result, ensure_ascii=False))
+            return
+    if args.cmd == "predict":
+        db_path = required_path(args, "db")
+        if args.predict_cmd == "add":
+            payload = json.loads(args.file.read_text(encoding="utf-8"))
+            print(json.dumps(add_prediction(db_path, payload), indent=2, ensure_ascii=False))
+            return
+        if args.predict_cmd == "due":
+            print(json.dumps(due_predictions(db_path, before=args.before), indent=2, ensure_ascii=False))
+            return
+        if args.predict_cmd == "check":
+            print(json.dumps(check_prediction(db_path, args.prediction_id), indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "world":
+        if args.world_cmd == "tick":
+            print(json.dumps(world_tick(required_path(args, "db"), before=args.before), indent=2, ensure_ascii=False))
             return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
