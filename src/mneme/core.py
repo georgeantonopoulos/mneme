@@ -20,7 +20,7 @@ from .contract import (
 )
 from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_path
 from .retrieval import score_observation_candidate
-from .world_model.schema import ensure_world_model_schema
+from .world_model.schema import delete_world_model_source, ensure_world_model_schema
 from .world_model.state import upsert_assertion
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -2877,20 +2877,24 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
         "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
         "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (source_path,)).fetchone()[0],
     }
-    world_counts = {
-        "world_state_assertions": conn.execute("SELECT COUNT(*) FROM world_state_assertions WHERE source_path=?", (source_path,)).fetchone()[0],
-        "world_actions": conn.execute("SELECT COUNT(*) FROM world_actions WHERE source_path=?", (source_path,)).fetchone()[0],
-    }
+    world_model_removed = delete_world_model_source(conn, source_path)
     if not dry_run:
-        conn.execute("DELETE FROM world_state_assertions WHERE source_path=?", (source_path,))
-        conn.execute("DELETE FROM world_actions WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM observations WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))
         conn.execute("DELETE FROM edges WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM nodes WHERE source_path=?", (source_path,))
         conn.commit()
+    else:
+        conn.rollback()
     conn.close()
-    return {"ok": True, "dry_run": dry_run, "source_path": source_path, "removed": counts, "world_removed": world_counts}
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "source_path": source_path,
+        "removed": counts,
+        "world_removed": world_model_removed,
+        "world_model_removed": world_model_removed,
+    }
 
 
 def forget_past_dates(db_path: Path, *, days_threshold: int = 30, dry_run: bool = False) -> dict:

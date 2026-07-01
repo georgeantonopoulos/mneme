@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
+WORLD_MODEL_TABLES = (
+    "world_state_assertions",
+    "world_predictions",
+    "world_actions",
+)
+
 
 def ensure_world_model_schema(conn: sqlite3.Connection) -> None:
     """Create durable world-model tables.
@@ -87,3 +93,54 @@ def ensure_world_model_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_wa_source ON world_actions(source_path);
         """
     )
+
+
+def _existing_world_model_tables(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?,?,?)",
+        WORLD_MODEL_TABLES,
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def delete_world_model_source(conn: sqlite3.Connection, source_path: str) -> dict[str, int]:
+    """Cascade an explicit mneme:// source forget into durable world-model rows.
+
+    This is intentionally a no-op until the schema exists, so graph-only callers
+    do not create world-model tables as a side effect.
+    """
+
+    existing = _existing_world_model_tables(conn)
+    counts = {table: 0 for table in WORLD_MODEL_TABLES}
+    if "world_predictions" in existing and "world_state_assertions" in existing:
+        counts["world_predictions"] = conn.execute(
+            """
+            SELECT COUNT(*) FROM world_predictions
+            WHERE subject_assertion_id IN (
+                SELECT id FROM world_state_assertions WHERE source_path=?
+            )
+            """,
+            (source_path,),
+        ).fetchone()[0]
+        conn.execute(
+            """
+            DELETE FROM world_predictions
+            WHERE subject_assertion_id IN (
+                SELECT id FROM world_state_assertions WHERE source_path=?
+            )
+            """,
+            (source_path,),
+        )
+    if "world_state_assertions" in existing:
+        counts["world_state_assertions"] = conn.execute(
+            "SELECT COUNT(*) FROM world_state_assertions WHERE source_path=?",
+            (source_path,),
+        ).fetchone()[0]
+        conn.execute("DELETE FROM world_state_assertions WHERE source_path=?", (source_path,))
+    if "world_actions" in existing:
+        counts["world_actions"] = conn.execute(
+            "SELECT COUNT(*) FROM world_actions WHERE source_path=?",
+            (source_path,),
+        ).fetchone()[0]
+        conn.execute("DELETE FROM world_actions WHERE source_path=?", (source_path,))
+    return counts
