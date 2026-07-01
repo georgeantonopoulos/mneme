@@ -2877,7 +2877,7 @@ def forget_source(db_path: Path, source_path: str, *, dry_run: bool = False) -> 
         "edges": conn.execute("SELECT COUNT(*) FROM edges WHERE source_path=?", (source_path,)).fetchone()[0],
         "nodes": conn.execute("SELECT COUNT(*) FROM nodes WHERE source_path=?", (source_path,)).fetchone()[0],
     }
-    world_model_removed = delete_world_model_source(conn, source_path)
+    world_model_removed = delete_world_model_source(conn, source_path, dry_run=dry_run)
     if not dry_run:
         conn.execute("DELETE FROM observations WHERE source_path=?", (source_path,))
         conn.execute("DELETE FROM edge_debug_log WHERE edge_id IN (SELECT id FROM edges WHERE source_path=?)", (source_path,))

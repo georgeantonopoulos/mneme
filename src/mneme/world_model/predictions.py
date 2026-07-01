@@ -135,6 +135,15 @@ def _open_conn(db_path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def _prediction_table_exists(conn: sqlite3.Connection) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='world_predictions'"
+        ).fetchone()
+        is not None
+    )
+
+
 def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[str, Any]) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
@@ -198,12 +207,14 @@ def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[
 
 
 def due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: str | None = None) -> list[dict]:
+    if not isinstance(conn_or_path, sqlite3.Connection) and not Path(conn_or_path).exists():
+        return []
     close = not isinstance(conn_or_path, sqlite3.Connection)
-    conn = _open_conn(conn_or_path) if close else conn_or_path
+    conn = sqlite3.connect(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    _init_db(conn)
-    ensure_world_model_schema(conn)
     try:
+        if not _prediction_table_exists(conn):
+            return []
         before_iso = parse_before(before)
         rows = conn.execute(
             """SELECT * FROM world_predictions

@@ -103,7 +103,7 @@ def _existing_world_model_tables(conn: sqlite3.Connection) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def delete_world_model_source(conn: sqlite3.Connection, source_path: str) -> dict[str, int]:
+def delete_world_model_source(conn: sqlite3.Connection, source_path: str, *, dry_run: bool = False) -> dict[str, int]:
     """Cascade an explicit mneme:// source forget into durable world-model rows.
 
     This is intentionally a no-op until the schema exists, so graph-only callers
@@ -122,25 +122,28 @@ def delete_world_model_source(conn: sqlite3.Connection, source_path: str) -> dic
             """,
             (source_path,),
         ).fetchone()[0]
-        conn.execute(
-            """
-            DELETE FROM world_predictions
-            WHERE subject_assertion_id IN (
-                SELECT id FROM world_state_assertions WHERE source_path=?
+        if not dry_run:
+            conn.execute(
+                """
+                DELETE FROM world_predictions
+                WHERE subject_assertion_id IN (
+                    SELECT id FROM world_state_assertions WHERE source_path=?
+                )
+                """,
+                (source_path,),
             )
-            """,
-            (source_path,),
-        )
     if "world_state_assertions" in existing:
         counts["world_state_assertions"] = conn.execute(
             "SELECT COUNT(*) FROM world_state_assertions WHERE source_path=?",
             (source_path,),
         ).fetchone()[0]
-        conn.execute("DELETE FROM world_state_assertions WHERE source_path=?", (source_path,))
+        if not dry_run:
+            conn.execute("DELETE FROM world_state_assertions WHERE source_path=?", (source_path,))
     if "world_actions" in existing:
         counts["world_actions"] = conn.execute(
             "SELECT COUNT(*) FROM world_actions WHERE source_path=?",
             (source_path,),
         ).fetchone()[0]
-        conn.execute("DELETE FROM world_actions WHERE source_path=?", (source_path,))
+        if not dry_run:
+            conn.execute("DELETE FROM world_actions WHERE source_path=?", (source_path,))
     return counts

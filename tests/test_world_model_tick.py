@@ -41,5 +41,11 @@ def test_world_tick_checks_due_predictions(tmp_path: Path):
     result = world_tick(db, before="2026-07-02T12:00:00+00:00")
 
     assert result["ok"] is True
+    assert result["graph"]["candidates_updated"] >= 1
     assert result["predictions"]["checked"] == 1
     assert result["predictions"]["results"][0]["status"] == "confirmed"
+
+    conn = sqlite3.connect(db)
+    candidate_count = conn.execute("SELECT COUNT(*) FROM thought_candidates").fetchone()[0]
+    conn.close()
+    assert candidate_count >= 1

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from mneme.cli import main
-from mneme.core import ingest_sense_events
+from mneme.core import ingest_sense_events, init_db
 from mneme.senses.base import SenseEvent
 from mneme.world_model.predictions import add_prediction, check_prediction, due_predictions
 
@@ -138,6 +138,26 @@ def test_rejects_uncheckable_match_json(tmp_path: Path):
                 "expires_at": "2026-07-02T00:00:00+00:00",
             },
         )
+
+
+def test_due_predictions_does_not_create_world_model_schema_for_empty_db(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.commit()
+    conn.close()
+
+    assert due_predictions(db, before="2026-07-02T12:00:00+00:00") == []
+
+    conn = sqlite3.connect(db)
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'world_%'"
+        )
+    }
+    conn.close()
+    assert tables == set()
 
 
 def test_cli_predict_add_due_and_check(tmp_path: Path, capsys):

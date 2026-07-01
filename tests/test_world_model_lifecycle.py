@@ -134,3 +134,18 @@ def test_explicit_scoped_forget_cascades_world_model_rows(tmp_path):
         "world_actions": 1,
     }
     assert _world_counts(db) == {"assertions": 0, "predictions": 0, "actions": 0}
+
+
+def test_explicit_scoped_forget_dry_run_preserves_world_model_rows(tmp_path):
+    db = tmp_path / "mneme.sqlite"
+    _seed_world_model_rows(db)
+
+    result = forget_source(db, "mneme://test/fictional-project", dry_run=True)
+
+    assert result["dry_run"] is True
+    assert result["world_model_removed"] == {
+        "world_state_assertions": 1,
+        "world_predictions": 1,
+        "world_actions": 1,
+    }
+    assert _world_counts(db) == {"assertions": 1, "predictions": 1, "actions": 1}
