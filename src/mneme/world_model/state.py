@@ -273,3 +273,122 @@ def write_assertions(
             )
         )
     return written
+
+
+def _dict_row(row: sqlite3.Row) -> dict[str, Any]:
+    data = dict(row)
+    try:
+        data["metadata_json"] = json.loads(data.get("metadata_json") or "{}")
+    except Exception:
+        data["metadata_json"] = {}
+    return data
+
+def list_assertions(
+    conn_or_path: sqlite3.Connection | str,
+    *,
+    status: str | None = "current",
+    state_type: str | None = None,
+    subject: str | None = None,
+) -> list[dict[str, Any]]:
+    close = not isinstance(conn_or_path, sqlite3.Connection)
+    conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_world_model_schema(conn)
+        clauses = []
+        params: list[Any] = []
+        if status:
+            clauses.append("status=?")
+            params.append(status)
+        if state_type:
+            clauses.append("state_type=?")
+            params.append(state_type)
+        if subject:
+            clauses.append("subject_name LIKE ?")
+            params.append(f"%{subject}%")
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        rows = conn.execute(
+            "SELECT * FROM world_state_assertions" + where + " ORDER BY lower(subject_name), predicate, COALESCE(valid_from, created_at), id",
+            params,
+        ).fetchall()
+        return [_dict_row(row) for row in rows]
+    finally:
+        if close:
+            conn.close()
+
+def explain_assertion(conn_or_path: sqlite3.Connection | str, assertion_id: str) -> dict[str, Any]:
+    close = not isinstance(conn_or_path, sqlite3.Connection)
+    conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_world_model_schema(conn)
+        row = conn.execute("SELECT * FROM world_state_assertions WHERE id=?", (assertion_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"assertion not found: {assertion_id}")
+        chain_ids = []
+        current = row
+        while current is not None and current["supersedes_id"]:
+            chain_ids.append(current["supersedes_id"])
+            current = conn.execute("SELECT * FROM world_state_assertions WHERE id=?", (current["supersedes_id"],)).fetchone()
+        forward_ids = []
+        current = row
+        while current is not None and current["superseded_by_id"]:
+            forward_ids.append(current["superseded_by_id"])
+            current = conn.execute("SELECT * FROM world_state_assertions WHERE id=?", (current["superseded_by_id"],)).fetchone()
+        source_edge_alive = False
+        if row["source_edge_id"]:
+            source_edge_alive = conn.execute("SELECT 1 FROM edges WHERE id=?", (row["source_edge_id"],)).fetchone() is not None
+        subject_node_alive = False
+        if row["subject_node_id"]:
+            subject_node_alive = conn.execute("SELECT 1 FROM nodes WHERE id=?", (row["subject_node_id"],)).fetchone() is not None
+        return {
+            "assertion": _dict_row(row),
+            "supersedes_chain": chain_ids,
+            "superseded_by_chain": forward_ids,
+            "hints": {"source_edge_alive": source_edge_alive, "subject_node_alive": subject_node_alive},
+        }
+    finally:
+        if close:
+            conn.close()
+
+def backfill_from_research_edges(conn_or_path: sqlite3.Connection | str, *, dry_run: bool = False) -> dict[str, Any]:
+    close = not isinstance(conn_or_path, sqlite3.Connection)
+    conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_world_model_schema(conn)
+        rows = conn.execute(
+            """SELECT e.id edge_id,e.relation,e.source_path,e.evidence_text,e.confidence,e.source_type,e.metadata_json,
+                      s.id subject_node_id,s.name subject_name,s.type subject_type,d.name object_name,d.type object_type
+               FROM edges e
+               JOIN nodes s ON s.id=e.src_id
+               JOIN nodes d ON d.id=e.dst_id
+               WHERE e.status='active' AND e.metadata_json LIKE '%research_resolution%'
+               ORDER BY e.source_path,e.id"""
+        ).fetchall()
+        written = []
+        for row in rows:
+            metadata = {}
+            try:
+                metadata = json.loads(row["metadata_json"] or "{}")
+            except Exception:
+                metadata = {}
+            claim = {
+                "subject": row["subject_name"],
+                "subject_type": row["subject_type"] or "entity",
+                "predicate": row["relation"],
+                "object": row["object_name"],
+                "object_type": row["object_type"] or "entity",
+                "certainty": metadata.get("certainty") or "confirmed",
+                "confidence": float(row["confidence"] or 0.0),
+                "evidence": row["evidence_text"] or "",
+                "source_type": row["source_type"] or "research",
+                "metadata": {"research_resolution": True, "backfilled": True},
+            }
+            written.append(upsert_assertion(conn, claim, source_path=row["source_path"], source_edge_id=row["edge_id"], subject_node_id=row["subject_node_id"], active=True))
+        if close:
+            conn.rollback() if dry_run else conn.commit()
+        return {"ok": True, "dry_run": dry_run, "scanned": len(rows), "written": written, "created_or_updated": sum(1 for item in written if item.get("id"))}
+    finally:
+        if close:
+            conn.close()

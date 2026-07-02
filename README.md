@@ -83,7 +83,7 @@ The new **world model** is a small durable layer above the rebuildable graph. Th
 
 - **State**: `world_state_assertions` records current, source-backed beliefs such as “Person X belongs to Organisation Y”. Assertions reuse the same validation contract as active research edges, so low-confidence observations do not become durable facts.
 - **Prediction**: `world_predictions` records future expectations in structured JSON. Checks are deterministic against stored `sense_events` and observations — no LLM judgement.
-- **Action**: `world_actions` is a ledger table for external side effects once public producers exist. In v1 the schema exists, but producers are intentionally conservative.
+- **Action**: `world_actions` is a ledger table for external side effects. The public helper enforces that side-effectful records carry a provider handle (`external_ref` or `tool_call_id`) before they can be stored.
 
 The point is not to replace the graph. It is to let agents ask: “What do I currently believe?”, “What did I expect to happen?”, and “Did new evidence confirm or miss that expectation?” See [docs/world-model-v1.md](docs/world-model-v1.md) for the design notes.
 
@@ -262,9 +262,11 @@ mneme resolve --file research-resolution.json
 World-model predictions can be added and checked deterministically:
 
 ```bash
+mneme state list --db /tmp/mneme.sqlite --subject "school"
+mneme state explain ASSERTION_ID --db /tmp/mneme.sqlite
 mneme predict add --db /tmp/mneme.sqlite --file prediction.json
 mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
-mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00 --dry-run
 ```
 
 You can keep multiple configs if needed:
@@ -410,7 +412,7 @@ The world-model commands are opt-in and local. They create/use three tables in t
 |---|---|---|
 | `world_state_assertions` | Durable current beliefs that survive graph rebuilds | `mneme resolve` / `remember_graph` assertions when claim validation passes |
 | `world_predictions` | Machine-checkable expectations about future sensed evidence | `mneme predict add` |
-| `world_actions` | External-action ledger for future side-effect producers | schema only in v1 |
+| `world_actions` | External-action ledger with side-effect handle enforcement | `record_action()` helper; higher-level producers can call it later |
 
 A minimal prediction file looks like this:
 
@@ -432,13 +434,19 @@ A minimal prediction file looks like this:
 Commands:
 
 ```bash
+# current durable beliefs
+mneme state list --db /tmp/mneme.sqlite --status current
+mneme state explain ASSERTION_ID --db /tmp/mneme.sqlite
+mneme state backfill --db /tmp/mneme.sqlite --dry-run
+
+# deterministic expectations
 mneme predict add --db /tmp/mneme.sqlite --file prediction.json
 mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
-mneme predict check --db /tmp/mneme.sqlite --id example-school-confirmation
-mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme predict check --db /tmp/mneme.sqlite --id example-school-confirmation --dry-run
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00 --dry-run
 ```
 
-`mneme world tick` runs the normal graph tick first, then checks due predictions and returns both reports:
+`mneme world tick` runs the normal graph tick first, checks due predictions, reports lapsed open-loop assertions, runs the DB contract checks, and returns an attention list. Use `--dry-run` to evaluate prediction transitions without committing them:
 
 ```json
 {
@@ -453,7 +461,10 @@ Safety rules:
 - Default rebuild/update paths preserve world-model rows.
 - Only explicit scoped `mneme://...` forgets cascade into world-model rows.
 - `predict due` is read/list behavior and does not create world-model tables on a graph-only DB.
-- `predict check` is intentionally mutating because it records prediction outcome/status.
+- `predict check` is intentionally mutating unless `--dry-run` is passed because it records prediction outcome/status.
+- Prediction IDs are content-hash deterministic when the payload omits `id`, so replayed `resolve` payloads do not duplicate expectations.
+- A missed prediction linked to `subject_assertion_id` weakens that assertion's confidence once, using the fixed v1 factor.
+- Retrieval/preflight can include world-model rows with explicit `truth_policy` values such as `current_state_assertion`, `open_prediction`, and `missed_prediction`.
 - Prediction matching is structured/deterministic over stored `sense_events` and observations.
 
 ### Generate one thought from an existing DB

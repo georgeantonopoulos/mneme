@@ -4,7 +4,7 @@ import datetime as dt
 import json
 import re
 import sqlite3
-import uuid
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -118,6 +118,21 @@ def validate_match_json(match_json: Any) -> dict:
     return criteria
 
 
+
+def prediction_content_id(payload: dict[str, Any], match_json: dict[str, Any]) -> str:
+    """Deterministic id for idempotent prediction replay from durable payloads."""
+    key = {
+        "title": str(payload.get("title") or "").strip(),
+        "prediction_type": payload.get("prediction_type", "confirmation_expected"),
+        "subject_assertion_id": payload.get("subject_assertion_id"),
+        "source_action_id": payload.get("source_action_id"),
+        "match_json": match_json,
+        "check_after": str(payload.get("check_after") or ""),
+        "expires_at": str(payload.get("expires_at") or ""),
+    }
+    raw = json.dumps(key, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha1(("wp:" + raw).encode("utf-8")).hexdigest()[:24]
+
 def _row_dict(row: sqlite3.Row | None) -> dict | None:
     if row is None:
         return None
@@ -174,13 +189,25 @@ def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[
         metadata = payload.get("metadata_json", payload.get("metadata", {}))
         if not isinstance(metadata, dict):
             raise ValueError("metadata_json must be an object")
-        prediction_id = str(payload.get("id") or uuid.uuid4().hex)
+        prediction_id = str(payload.get("id") or prediction_content_id(payload, match_json))
         ts = now_iso()
         conn.execute(
             """INSERT INTO world_predictions(
                  id,title,prediction_type,subject_assertion_id,source_action_id,match_json,
                  check_after,expires_at,confidence,status,metadata_json,created_at,updated_at
-               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET
+                 title=excluded.title,
+                 prediction_type=excluded.prediction_type,
+                 subject_assertion_id=excluded.subject_assertion_id,
+                 source_action_id=excluded.source_action_id,
+                 match_json=excluded.match_json,
+                 check_after=excluded.check_after,
+                 expires_at=excluded.expires_at,
+                 confidence=excluded.confidence,
+                 metadata_json=excluded.metadata_json,
+                 updated_at=excluded.updated_at
+            """,
             (
                 prediction_id,
                 title.strip(),
@@ -314,7 +341,7 @@ def _terminal_status(prediction_type: str, matched: bool, expired: bool, sense_s
     return "open"
 
 
-def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_id: str, *, now: str | None = None) -> dict:
+def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_id: str, *, now: str | None = None, dry_run: bool = False) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
@@ -324,6 +351,8 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
         row = conn.execute("SELECT * FROM world_predictions WHERE id=?", (prediction_id,)).fetchone()
         if row is None:
             raise ValueError(f"prediction not found: {prediction_id}")
+        if dry_run:
+            conn.execute("SAVEPOINT mneme_prediction_dry_run")
         checked_at = now or now_iso()
         try:
             criteria = validate_match_json(json.loads(row["match_json"] or "{}"))
@@ -334,9 +363,12 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
                 "UPDATE world_predictions SET status=?, outcome_summary=?, checked_at=?, updated_at=? WHERE id=?",
                 (status, outcome, checked_at, checked_at, prediction_id),
             )
+            if dry_run:
+                conn.execute("ROLLBACK TO mneme_prediction_dry_run")
+                conn.execute("RELEASE mneme_prediction_dry_run")
             if close:
                 conn.commit()
-            return {"id": prediction_id, "status": status, "outcome_summary": outcome, "matches": []}
+            return {"id": prediction_id, "status": status, "outcome_summary": outcome, "matches": [], "dry_run": dry_run}
         matches = _candidate_events(conn, criteria, row)
         best = matches[0] if matches else None
         sense_seen = conn.execute("SELECT 1 FROM sense_events WHERE sense_type=? LIMIT 1", (criteria["sense_type"],)).fetchone() is not None
@@ -354,6 +386,33 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
         else:
             outcome_summary = "expired without matching sense event"
             outcome_id = None
+        confidence_coupled = False
+        if row["status"] == "open" and status == "missed" and row["subject_assertion_id"]:
+            assertion = conn.execute(
+                "SELECT confidence,metadata_json FROM world_state_assertions WHERE id=?",
+                (row["subject_assertion_id"],),
+            ).fetchone()
+            if assertion is not None:
+                metadata = {}
+                try:
+                    metadata = json.loads(assertion["metadata_json"] or "{}")
+                except json.JSONDecodeError:
+                    metadata = {}
+                old_confidence = float(assertion["confidence"] or 0.0)
+                new_confidence = max(0.1, round(old_confidence * 0.8, 6))
+                new_status = "current" if new_confidence >= 0.9 else "contradicted"
+                metadata.setdefault("prediction_misses", []).append({
+                    "prediction_id": prediction_id,
+                    "checked_at": checked_at,
+                    "old_confidence": old_confidence,
+                    "new_confidence": new_confidence,
+                    "new_status": new_status,
+                })
+                conn.execute(
+                    "UPDATE world_state_assertions SET confidence=?, status=?, metadata_json=?, updated_at=? WHERE id=?",
+                    (new_confidence, new_status, json.dumps(metadata, sort_keys=True, ensure_ascii=False), checked_at, row["subject_assertion_id"]),
+                )
+                confidence_coupled = True
         conn.execute(
             """UPDATE world_predictions
                SET status=?, outcome_sense_event_id=COALESCE(?, outcome_sense_event_id),
@@ -361,6 +420,9 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
                WHERE id=?""",
             (status, outcome_id, outcome_summary, checked_at, checked_at, prediction_id),
         )
+        if dry_run:
+            conn.execute("ROLLBACK TO mneme_prediction_dry_run")
+            conn.execute("RELEASE mneme_prediction_dry_run")
         if close:
             conn.commit()
         return {
@@ -370,13 +432,15 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
             "outcome_sense_event_id": outcome_id,
             "outcome_summary": outcome_summary,
             "matches": matches,
+            "confidence_coupled": confidence_coupled,
+            "dry_run": dry_run,
         }
     finally:
         if close:
             conn.close()
 
 
-def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: str | None = None, now: str | None = None) -> dict:
+def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: str | None = None, now: str | None = None, dry_run: bool = False) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
@@ -385,10 +449,10 @@ def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, befo
     try:
         effective_now = now or (parse_before(before) if before else None)
         due = due_predictions(conn, before=before or now)
-        checked = [check_prediction(conn, item["id"], now=effective_now) for item in due]
+        checked = [check_prediction(conn, item["id"], now=effective_now, dry_run=dry_run) for item in due]
         if close:
-            conn.commit()
-        return {"ok": True, "due": len(due), "checked": len(checked), "results": checked}
+            conn.rollback() if dry_run else conn.commit()
+        return {"ok": True, "dry_run": dry_run, "due": len(due), "checked": len(checked), "results": checked}
     finally:
         if close:
             conn.close()

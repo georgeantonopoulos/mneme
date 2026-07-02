@@ -21,6 +21,7 @@ from .contract import (
 from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_path
 from .retrieval import score_observation_candidate
 from .world_model.schema import delete_world_model_source, ensure_world_model_schema
+from .world_model.predictions import add_prediction
 from .world_model.state import upsert_assertion
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -762,9 +763,19 @@ def write_research_resolution(vault: Path, db_path: Path, payload: dict | str, a
     conn = sqlite3.connect(db_path)
     init_db(conn)
     created = write_research_edges(conn, note_path, payload, active_threshold, actor="mneme")
+    predictions = []
+    for prediction in payload.get("predictions") or []:
+        predictions.append(add_prediction(conn, prediction))
     conn.commit()
     conn.close()
-    return {"note_path": written["path"], "claims_written": len(created), "edges": created, "written": True}
+    return {
+        "note_path": written["path"],
+        "claims_written": len(created),
+        "edges": created,
+        "predictions_written": len(predictions),
+        "predictions": predictions,
+        "written": True,
+    }
 
 
 def clear_graph_for_rebuild(conn: sqlite3.Connection, preserve_thoughts: bool = False) -> dict:
@@ -1457,6 +1468,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         tokens = _query_tokens(" ".join(hints))
     min_overlap = 2 if len(tokens) >= 3 else 1
     conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     ensure_hierarchy_schema(conn)
     matched_paths = _resolve_query_paths(conn, tokens)
     path_node_ids: set[str] = set()
@@ -1562,6 +1574,72 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
 
     items: list[dict] = []
     skipped: list[dict] = []
+    world_edge_ids: set[str] = set()
+    try:
+        world_rows = conn.execute(
+            """SELECT id,subject_name,predicate,object_name,object_value,state_type,status,confidence,certainty,
+                      evidence_text,source_path,source_edge_id,valid_until,updated_at
+               FROM world_state_assertions
+               WHERE status='current'
+               ORDER BY confidence DESC, updated_at DESC
+               LIMIT 200"""
+        ).fetchall()
+    except sqlite3.OperationalError:
+        world_rows = []
+    for row in world_rows:
+        values = [row["subject_name"], row["predicate"], row["object_name"], row["object_value"], row["evidence_text"], row["source_path"]]
+        overlap, matched = _lexical_overlap(tokens, *values)
+        if overlap < min_overlap and tokens:
+            continue
+        if row["source_edge_id"]:
+            world_edge_ids.add(row["source_edge_id"])
+        title = f"{row['subject_name']} {row['predicate']} {row['object_name'] or row['object_value']}"
+        items.append({
+            "kind": "world_state_assertion",
+            "id": row["id"],
+            "title": title,
+            "source_path": row["source_path"],
+            "snippet": (row["evidence_text"] or "")[:500],
+            "score": round(24.0 + float(row["confidence"] or 0) * 10 + overlap * 3, 2),
+            "matched_terms": matched,
+            "status": row["status"],
+            "truth_policy": "current_state_assertion",
+            "state_type": row["state_type"],
+            "confidence": float(row["confidence"] or 0),
+            "certainty": row["certainty"],
+            "subject": row["subject_name"],
+            "predicate": row["predicate"],
+            "object": row["object_name"] or row["object_value"],
+            "source_edge_id": row["source_edge_id"],
+            "valid_until": row["valid_until"],
+        })
+    try:
+        prediction_rows = conn.execute(
+            """SELECT id,title,prediction_type,status,confidence,outcome_summary,check_after,expires_at,metadata_json
+               FROM world_predictions
+               WHERE status IN ('open','missed','unverifiable')
+               ORDER BY check_after,id LIMIT 100"""
+        ).fetchall()
+    except sqlite3.OperationalError:
+        prediction_rows = []
+    for row in prediction_rows:
+        overlap, matched = _lexical_overlap(tokens, row["title"], row["outcome_summary"], row["prediction_type"], row["status"])
+        if overlap < min_overlap and row["status"] == "open":
+            continue
+        items.append({
+            "kind": "world_prediction",
+            "id": row["id"],
+            "title": row["title"],
+            "source_path": "mneme://world/predictions",
+            "snippet": row["outcome_summary"] or f"{row['prediction_type']} due {row['check_after']} expires {row['expires_at']}",
+            "score": round((18.0 if row["status"] in {"missed", "unverifiable"} else 10.0) + overlap * 3 + float(row["confidence"] or 0) * 4, 2),
+            "matched_terms": matched,
+            "status": row["status"],
+            "truth_policy": "missed_prediction" if row["status"] == "missed" else "open_prediction",
+            "prediction_type": row["prediction_type"],
+            "check_after": row["check_after"],
+            "expires_at": row["expires_at"],
+        })
     for obs_id, note_id, kind, text, source_path, base_score, created_at, note_name, note_type, updated_at, node_path in observation_rows:
         overlap, matched = _lexical_overlap(tokens, text, source_path, note_name)
         memory_score = memory_scores.get(obs_id, 0.0)
@@ -1647,6 +1725,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             skipped.append({"kind": "observation", "id": obs_id, "source_path": source_path, "skip_reasons": [f"matched {overlap} prompt term(s); required {min_overlap}"], "score": round(score, 2)})
 
     for edge_id, relation, status, confidence, strength, source_type, source_path, evidence_text, cross_boundary, src_id, src_type, src_name, src_path, src_hpath, dst_id, dst_type, dst_name, dst_path, dst_hpath in edge_rows:
+        if edge_id in world_edge_ids:
+            skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["deduped_by_world_state_assertion"], "status": status})
+            continue
         if status != "active" and not include_candidates:
             skipped.append({"kind": "edge", "id": edge_id, "source_path": source_path, "skip_reasons": ["candidate edge excluded"], "status": status})
             continue

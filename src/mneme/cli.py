@@ -18,6 +18,7 @@ from .senses.gws import GwsSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
 from .world_model import add_prediction, check_prediction, due_predictions, world_tick
+from .world_model.state import backfill_from_research_edges, explain_assertion, list_assertions
 
 
 def _ensure_verbose_retrieval_fields(result: dict) -> dict:
@@ -494,6 +495,19 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--min-match-score",type=float,default=0.34)
     p.add_argument("--dry-run",action="store_true")
     p.add_argument("--json",action="store_true")
+    state=sub.add_parser("state", help="Inspect durable world-model state assertions")
+    state_sub=state.add_subparsers(dest="state_cmd", required=True)
+    p=state_sub.add_parser("list", help="List state assertions")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--status",default="current")
+    p.add_argument("--type",dest="state_type")
+    p.add_argument("--subject")
+    p=state_sub.add_parser("explain", help="Explain an assertion chain and hint liveness")
+    p.add_argument("assertion_id")
+    p.add_argument("--db",type=Path)
+    p=state_sub.add_parser("backfill", help="Backfill assertions from validated research edges")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--dry-run",action="store_true")
     predict=sub.add_parser("predict", help="Manage deterministic world-model predictions")
     predict_sub=predict.add_subparsers(dest="predict_cmd", required=True)
     p=predict_sub.add_parser("add", help="Add a structured prediction")
@@ -505,11 +519,13 @@ def main(argv: list[str] | None = None) -> None:
     p=predict_sub.add_parser("check", help="Check one prediction deterministically")
     p.add_argument("--db",type=Path)
     p.add_argument("--id",required=True,dest="prediction_id")
+    p.add_argument("--dry-run",action="store_true")
     world=sub.add_parser("world", help="Run world-model maintenance")
     world_sub=world.add_subparsers(dest="world_cmd", required=True)
     p=world_sub.add_parser("tick", help="Check due world-model predictions")
     p.add_argument("--db",type=Path)
     p.add_argument("--before",help="ISO timestamp or duration like 4h, 7d, or 2w")
+    p.add_argument("--dry-run",action="store_true")
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -647,6 +663,17 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 print("[SILENT]" if result.get("revalidated", 0) == 0 else json.dumps(result, ensure_ascii=False))
             return
+    if args.cmd == "state":
+        db_path = required_path(args, "db")
+        if args.state_cmd == "list":
+            print(json.dumps(list_assertions(db_path, status=args.status, state_type=args.state_type, subject=args.subject), indent=2, ensure_ascii=False))
+            return
+        if args.state_cmd == "explain":
+            print(json.dumps(explain_assertion(db_path, args.assertion_id), indent=2, ensure_ascii=False))
+            return
+        if args.state_cmd == "backfill":
+            print(json.dumps(backfill_from_research_edges(db_path, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
     if args.cmd == "predict":
         db_path = required_path(args, "db")
         if args.predict_cmd == "add":
@@ -657,11 +684,11 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps(due_predictions(db_path, before=args.before), indent=2, ensure_ascii=False))
             return
         if args.predict_cmd == "check":
-            print(json.dumps(check_prediction(db_path, args.prediction_id), indent=2, ensure_ascii=False))
+            print(json.dumps(check_prediction(db_path, args.prediction_id, dry_run=args.dry_run), indent=2, ensure_ascii=False))
             return
     if args.cmd == "world":
         if args.world_cmd == "tick":
-            print(json.dumps(world_tick(required_path(args, "db"), before=args.before), indent=2, ensure_ascii=False))
+            print(json.dumps(world_tick(required_path(args, "db"), before=args.before, dry_run=args.dry_run), indent=2, ensure_ascii=False))
             return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))
