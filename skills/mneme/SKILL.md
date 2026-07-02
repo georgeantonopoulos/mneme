@@ -97,6 +97,7 @@ Rules:
 - If a prediction is linked to a `subject_assertion_id`, a miss weakens that assertion once. Do not manually apply a second confidence penalty.
 - Do not use candidate graph edges as current truth when a conflicting current world assertion exists.
 - `world_actions` rows for side-effectful actions must include an `external_ref` or `tool_call_id`; otherwise the action is not durable enough to trust.
+- Use `mneme action record --db "$MNEME_DB" --file /tmp/action.json` after integrations create tasks, calendar events, drafts, reminders, cron jobs, or other external side effects.
 
 ### Auto-Pruning After Surfacing
 

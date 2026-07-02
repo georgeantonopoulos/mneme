@@ -260,6 +260,13 @@ side effect, it should call the action-recording helper with an external
 provider reference or tool-call ID so `world_actions` becomes an auditable action
 ledger rather than chat history archaeology.
 
+```bash
+mneme action record --db "$DB" --file action.json
+```
+
+Side-effectful actions must include `external_ref` or `tool_call_id`; otherwise
+the contract rejects the record.
+
 ### Hook directive ordering in Hermes
 
 If the Hermes deployment uses a pre-LLM hook that injects a Mneme

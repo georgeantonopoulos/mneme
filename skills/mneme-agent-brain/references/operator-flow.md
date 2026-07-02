@@ -83,6 +83,14 @@ Interpretation rules:
 
 When research or a user-confirmed correction creates a future expectation, write it as a prediction. Prefer embedding `predictions[]` in the same `mneme resolve` payload as the claims. For standalone expectations, use `mneme predict add --file prediction.json`.
 
+When an integration performs a real side effect, record it in the action ledger:
+
+```bash
+mneme action record --db "$DB" --file action.json
+```
+
+The payload must include `external_ref` or `tool_call_id` for side-effectful actions.
+
 ## 6. Retrieve Context
 
 Use retrieval for prompt-time context:

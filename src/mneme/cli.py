@@ -18,6 +18,7 @@ from .senses.gws import GwsSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
 from .world_model import add_prediction, check_prediction, due_predictions, world_tick
+from .world_model.actions import record_action
 from .world_model.state import backfill_from_research_edges, explain_assertion, list_assertions
 
 
@@ -526,6 +527,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--db",type=Path)
     p.add_argument("--before",help="ISO timestamp or duration like 4h, 7d, or 2w")
     p.add_argument("--dry-run",action="store_true")
+    action=sub.add_parser("action", help="Record durable world-model action ledger entries")
+    action_sub=action.add_subparsers(dest="action_cmd", required=True)
+    p=action_sub.add_parser("record", help="Record an external or internal action from JSON")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--file",type=Path,help="JSON action payload; omit to read stdin")
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -689,6 +695,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "world":
         if args.world_cmd == "tick":
             print(json.dumps(world_tick(required_path(args, "db"), before=args.before, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "action":
+        if args.action_cmd == "record":
+            raw = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
+            payload = json.loads(raw)
+            print(json.dumps(record_action(required_path(args, "db"), payload), indent=2, ensure_ascii=False))
             return
     if args.cmd == "candidates":
         print(json.dumps(list_thought_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args)), indent=2, ensure_ascii=False))

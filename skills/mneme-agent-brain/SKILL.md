@@ -124,6 +124,14 @@ mneme world tick --db "$DB" --before "$NOW" --dry-run
 
 Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs.
 
+Record durable action ledger entries when an integration performs a side effect:
+
+```bash
+mneme action record --db "$DB" --file action.json
+```
+
+Side-effectful actions must include `external_ref` or `tool_call_id`; otherwise Mneme rejects the action as unauditable.
+
 Surface thoughts from retrieval:
 
 ```bash
