@@ -20,7 +20,7 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - thought-path generation and rendered cards
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, and edge explanation
+- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, edge explanation, and world-model prediction checks
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
@@ -76,6 +76,16 @@ A line between two nodes is not automatically a fact. Mneme separates:
 - **Semantic relationships** — e.g. `belongs_to`, `located_in`, `part_of`, `father_of`. These are marked as requiring validation before an agent treats them as real-world claims.
 
 This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
+
+### World model layer
+
+The new **world model** is a small durable layer above the rebuildable graph. The graph remains Mneme's perception/index: it can be rebuilt from Markdown and senses. The world model stores state that should survive graph churn:
+
+- **State**: `world_state_assertions` records current, source-backed beliefs such as “Person X belongs to Organisation Y”. Assertions reuse the same validation contract as active research edges, so low-confidence observations do not become durable facts.
+- **Prediction**: `world_predictions` records future expectations in structured JSON. Checks are deterministic against stored `sense_events` and observations — no LLM judgement.
+- **Action**: `world_actions` is a ledger table for external side effects once public producers exist. In v1 the schema exists, but producers are intentionally conservative.
+
+The point is not to replace the graph. It is to let agents ask: “What do I currently believe?”, “What did I expect to happen?”, and “Did new evidence confirm or miss that expectation?” See [docs/world-model-v1.md](docs/world-model-v1.md) for the design notes.
 
 ## What a thought card looks like
 
@@ -249,6 +259,14 @@ Research results can be written back as evidence packs plus weighted graph edges
 mneme resolve --file research-resolution.json
 ```
 
+World-model predictions can be added and checked deterministically:
+
+```bash
+mneme predict add --db /tmp/mneme.sqlite --file prediction.json
+mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+```
+
 You can keep multiple configs if needed:
 
 ```bash
@@ -382,6 +400,61 @@ Minimal payload:
 Safety rule: only sourced, confirmed/certain claims at or above `--active-threshold` (`0.90` by default) become `active` edges. Pending, unsupported, or lower-confidence claims become `candidate` edges. Candidate edges are stored for audit and follow-up, but graph walks/thoughts ignore them so unresolved claims do not become proactive “truth.”
 
 The command accepts JSON via `--file` or stdin, which keeps the interface simple for future Node/npm wrappers.
+
+
+### World model: durable state and deterministic predictions
+
+The world-model commands are opt-in and local. They create/use three tables in the same SQLite database:
+
+| Table | Purpose | v1 producer |
+|---|---|---|
+| `world_state_assertions` | Durable current beliefs that survive graph rebuilds | `mneme resolve` / `remember_graph` assertions when claim validation passes |
+| `world_predictions` | Machine-checkable expectations about future sensed evidence | `mneme predict add` |
+| `world_actions` | External-action ledger for future side-effect producers | schema only in v1 |
+
+A minimal prediction file looks like this:
+
+```json
+{
+  "id": "example-school-confirmation",
+  "title": "School confirmation should arrive",
+  "prediction_type": "confirmation_expected",
+  "match_json": {
+    "sense_type": "md",
+    "observation_terms_all": ["school", "confirmation"]
+  },
+  "check_after": "2026-07-01T00:00:00+00:00",
+  "expires_at": "2026-07-03T00:00:00+00:00",
+  "confidence": 0.8
+}
+```
+
+Commands:
+
+```bash
+mneme predict add --db /tmp/mneme.sqlite --file prediction.json
+mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme predict check --db /tmp/mneme.sqlite --id example-school-confirmation
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+```
+
+`mneme world tick` runs the normal graph tick first, then checks due predictions and returns both reports:
+
+```json
+{
+  "ok": true,
+  "graph": {"candidates_updated": 4, "observations_considered": 5},
+  "predictions": {"ok": true, "due": 1, "checked": 1, "results": []}
+}
+```
+
+Safety rules:
+
+- Default rebuild/update paths preserve world-model rows.
+- Only explicit scoped `mneme://...` forgets cascade into world-model rows.
+- `predict due` is read/list behavior and does not create world-model tables on a graph-only DB.
+- `predict check` is intentionally mutating because it records prediction outcome/status.
+- Prediction matching is structured/deterministic over stored `sense_events` and observations.
 
 ### Generate one thought from an existing DB
 
