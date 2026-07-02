@@ -57,7 +57,7 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
 
     work_db = _dry_run_copy(db_path) if dry_run else db_path
     graph_report = tick(work_db)
-    prediction_report = check_due_predictions(work_db, before=before, dry_run=False)
+    prediction_report = check_due_predictions(work_db, before=before, dry_run=dry_run)
     lapsed = _lapsed_open_loops(work_db, before=before)
     contract = check_db_contract(work_db).to_dict()
     attention = []

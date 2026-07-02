@@ -202,8 +202,9 @@ curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scrip
 mkdir -p ~/.hermes/skills
 ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-agent-brain
 
-# 3. Smoke-test the wiring (the helper runs the full brain harness
-#    so Hermes can tell whether the latest brain is usable).
+# 3. Smoke-test the wiring. The helper runs the full brain harness,
+#    including contract check, world tick dry-run, retrieval, surface,
+#    and agent preflight.
 MNEME_BRAIN_DEPTH=smoke ~/.local/share/mneme/scripts/hermes_brain_ready.sh /tmp/mneme_smoke.sqlite
 ```
 
@@ -222,6 +223,42 @@ ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-age
 The full operator runbook (env-var overrides, profile isolation, brain
 harness depths) lives at
 [`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md).
+
+### Hermes world-model loop
+
+The Mneme skill is intentionally vault-agnostic: it never assumes a particular
+folder layout, private database path, or user's notes. Hermes operators provide
+`$DB`, `$VAULT`, and `$PROMPT`; the skill describes the portable state/action/
+prediction loop that any Mneme-backed agent can run.
+
+Before Hermes uses Mneme context in an answer or action, run preflight:
+
+```bash
+mneme agent preflight --db "$DB" --prompt "$PROMPT"
+```
+
+For tasks that depend on current state or expected future evidence, inspect the
+world model first:
+
+```bash
+mneme state list --db "$DB" --status current
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$DB" --before "$NOW"
+mneme world tick --db "$DB" --before "$NOW" --dry-run
+```
+
+Use `world tick --dry-run` during interactive operation so the agent can see
+lapsed open loops, due predictions, contract status, and attention items without
+changing prediction state. Run mutating `world tick` from explicit maintenance
+jobs when you want open predictions to become `confirmed`, `missed`, or
+`unverifiable`.
+
+When a source-backed resolution creates a future expectation, write it into the
+same payload with `predictions[]`; for standalone expectations use
+`mneme predict add --file prediction.json`. When an integration records a real
+side effect, it should call the action-recording helper with an external
+provider reference or tool-call ID so `world_actions` becomes an auditable action
+ledger rather than chat history archaeology.
 
 ### Hook directive ordering in Hermes
 

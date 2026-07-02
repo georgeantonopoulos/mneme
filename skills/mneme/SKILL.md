@@ -55,6 +55,49 @@ mneme feedback <thought_id> --accept|--deny|--snooze 7d|--kill --reason "..." --
 
 Never let killed edges drive answers. Candidate/pending facts must be visibly tentative.
 
+## World Model Loop
+
+Use the world model when an agent needs durable current state, explicit future expectations, or a pre-action safety check. The world model is vault-agnostic and lives in the same SQLite DB as the graph:
+
+- `world_state_assertions`: current source-backed assertions that should survive graph rebuilds
+- `world_predictions`: deterministic expectations about future sensed evidence
+- `world_actions`: records of external side effects when a producer supplies a durable provider/tool handle
+
+Before answering or acting on memory-backed context, run preflight and inspect the returned truth policies:
+
+```bash
+mneme agent preflight --db "$MNEME_DB" --prompt "$PROMPT"
+```
+
+Operational commands:
+
+```bash
+# inspect current durable state
+mneme state list --db "$MNEME_DB" --status current
+mneme state explain ASSERTION_ID --db "$MNEME_DB"
+mneme state backfill --db "$MNEME_DB" --dry-run
+
+# manage deterministic expectations
+mneme predict add --db "$MNEME_DB" --file /tmp/prediction.json
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$MNEME_DB" --before "$NOW"
+mneme predict check --db "$MNEME_DB" --before "$NOW" --dry-run
+
+# compose graph tick + prediction checks + attention report
+mneme world tick --db "$MNEME_DB" --before "$NOW" --dry-run
+```
+
+Rules:
+
+- Use `mneme resolve` for user-confirmed corrections and source-backed research; validated claims are dual-written into current world assertions.
+- Include `predictions[]` in a `mneme resolve` payload when the research creates an expectation that later evidence should confirm, contradict, or fail to appear.
+- Omit prediction IDs unless a stable external ID exists; Mneme derives deterministic content-hash IDs to avoid duplicate replay.
+- Prefer `world tick --dry-run` during interactive use. Run mutating `world tick` only in explicit maintenance jobs or when the user asks to update prediction state.
+- Treat `open_prediction`, `missed_prediction`, `unverifiable_prediction`, and `current_state_assertion` truth policies as operational state, not decorative metadata.
+- If a prediction is linked to a `subject_assertion_id`, a miss weakens that assertion once. Do not manually apply a second confidence penalty.
+- Do not use candidate graph edges as current truth when a conflicting current world assertion exists.
+- `world_actions` rows for side-effectful actions must include an `external_ref` or `tool_call_id`; otherwise the action is not durable enough to trust.
+
 ### Auto-Pruning After Surfacing
 
 After explaining a surfaced item, assess whether it is still an open loop. Apply feedback automatically:

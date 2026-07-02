@@ -29,7 +29,7 @@ metadata:
 
 ## Overview
 
-Mneme turns a Markdown vault into an auditable SQLite neural map for agents. Use it as a local-first brain: ingest notes, consolidate graph structure, label clusters/nodes/synapses/relationships through a swappable model harness, retrieve prompt-time context, surface thoughts, and add temporary graph memory without editing existing Markdown.
+Mneme turns a Markdown vault into an auditable SQLite neural map for agents. Use it as a local-first brain: ingest notes, consolidate graph structure, maintain durable world-model state, label clusters/nodes/synapses/relationships through a swappable model harness, retrieve prompt-time context, surface thoughts, and add temporary graph memory without editing existing Markdown.
 
 The default philosophy is evidence first. Retrieval may include candidate synapses, but candidate-only edges are not facts. Temporary agent memory must use a `mneme://` source path so it can be removed as one unit.
 
@@ -55,6 +55,8 @@ Hard rules:
 8. User dismissal weakens surfacing by default. Kill only when the user or evidence says the relationship is false.
 9. Temporary agent memory must use `mneme://` and must be removable as one unit.
 10. Do not edit Markdown notes unless the user explicitly asks for vault writeback.
+11. Current world-model assertions outrank candidate graph edges when they conflict.
+12. Open, missed, or unverifiable predictions are operational state. Inspect them before actions that depend on expected future evidence.
 
 ## When To Use
 
@@ -63,6 +65,7 @@ Hard rules:
 - You want retrieval-backed thought surfacing rather than a random graph walk.
 - You need to add short-lived test or working memory without modifying existing vault notes.
 - You need to validate that retrieval, synapses, clusters, labels, and surfaced thoughts work together.
+- You need a state/action/prediction loop: current assertions, future expectations, and durable records of external side effects.
 
 Do not use this skill to make unreviewed edits to user Markdown. Use `mneme remember add/remove` for temporary graph memory, and use `mneme note` or `mneme resolve` only when the user explicitly wants vault writeback.
 
@@ -110,6 +113,17 @@ Retrieve context:
 mneme retrieve --db "$DB" --prompt "$PROMPT" --max-items 8
 ```
 
+Inspect world-model state before acting on memory-backed context:
+
+```bash
+mneme state list --db "$DB" --status current
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$DB" --before "$NOW"
+mneme world tick --db "$DB" --before "$NOW" --dry-run
+```
+
+Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs.
+
 Surface thoughts from retrieval:
 
 ```bash
@@ -139,9 +153,10 @@ The script must complete these steps:
 2. `mneme brain label`
 3. `mneme brain report`
 4. `mneme contract check`
-5. `mneme retrieve`
-6. `mneme surface`
-7. `mneme agent preflight`
+5. `mneme world tick --dry-run`
+6. `mneme retrieve`
+7. `mneme surface`
+8. `mneme agent preflight`
 
 Use `MNEME_BRAIN_DEPTH=smoke` for quick validation, `default` for normal runs, `deep` for a broader active frontier, and `full` only when the database is small enough or runtime is acceptable.
 
@@ -184,6 +199,7 @@ Treat `graph_memory_review` as a keep-or-forget prompt for `mneme://` memory. Tr
 - [ ] `mneme doctor` passes or the explicit `--vault` and `--db` paths are correct.
 - [ ] `scripts/hermes_brain_ready.sh "$DB" "$PROMPT"` exits 0.
 - [ ] `mneme agent preflight --db "$DB" --prompt "$PROMPT"` returns `contract.status: pass`.
+- [ ] `mneme world tick --db "$DB" --before "$NOW" --dry-run` returns `ok: true` without mutating prediction state.
 - [ ] `mneme retrieve` returns relevant items with `truth_policy`.
 - [ ] `mneme surface` returns thoughts with `surface` metadata.
 - [ ] Temporary `mneme://` memory can be added, surfaced, removed, and verified as zero remaining rows.

@@ -84,6 +84,12 @@ fi
 
 "$PYTHON_BIN" -m mneme.cli brain report --db "$DB_PATH"
 "$PYTHON_BIN" -m mneme.cli contract check --db "$DB_PATH"
+NOW_ISO="$($PYTHON_BIN - <<'PY'
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat())
+PY
+)"
+"$PYTHON_BIN" -m mneme.cli world tick --db "$DB_PATH" --before "$NOW_ISO" --dry-run
 "$PYTHON_BIN" -m mneme.cli retrieve --db "$DB_PATH" --prompt "$PROMPT" --max-items 5
 "$PYTHON_BIN" -m mneme.cli surface --db "$DB_PATH" --prompt "$PROMPT" --limit "$SURFACE_LIMIT"
 "$PYTHON_BIN" -m mneme.cli agent preflight --db "$DB_PATH" --prompt "$PROMPT" --max-items 5 --surface-limit "$SURFACE_LIMIT"

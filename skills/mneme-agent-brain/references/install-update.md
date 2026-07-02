@@ -126,6 +126,7 @@ mneme consolidate
 mneme brain label
 mneme brain report
 mneme contract check
+mneme world tick --dry-run
 mneme retrieve
 mneme surface
 mneme agent preflight
@@ -140,6 +141,16 @@ mneme agent preflight --db "$DB" --prompt "$PROMPT"
 Use Mneme memory as factual grounding only when the returned
 `contract.status` is `pass`.
 
+Before actions that depend on expected future evidence, Hermes should inspect
+the world model without mutating it:
+
+```bash
+mneme state list --db "$DB" --status current
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$DB" --before "$NOW"
+mneme world tick --db "$DB" --before "$NOW" --dry-run
+```
+
 ## Update Checklist
 
 - [ ] Run the Mneme installer or update the checkout with `git pull --ff-only`.
@@ -147,6 +158,7 @@ Use Mneme memory as factual grounding only when the returned
 - [ ] Refresh the complete `skills/mneme-agent-brain/` directory if Hermes uses copied skills.
 - [ ] Export `MNEME_REPO` when the skill directory is outside the Mneme checkout.
 - [ ] Run `mneme contract check --db "$DB"`.
+- [ ] Run `mneme world tick --db "$DB" --before "$NOW" --dry-run`.
 - [ ] Run the skill smoke helper with `MNEME_BRAIN_DEPTH=smoke`.
 - [ ] Run `mneme agent preflight --db "$DB" --prompt "$PROMPT"` and confirm `contract.status` is `pass`.
 
