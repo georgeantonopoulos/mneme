@@ -81,7 +81,7 @@ mneme state backfill --db "$MNEME_DB" --dry-run
 mneme predict add --db "$MNEME_DB" --file /tmp/prediction.json
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$MNEME_DB" --before "$NOW"
-mneme predict check --db "$MNEME_DB" --before "$NOW" --dry-run
+mneme predict check --db "$MNEME_DB" --id PREDICTION_ID --dry-run
 
 # compose graph tick + prediction checks + attention report
 mneme world tick --db "$MNEME_DB" --before "$NOW" --dry-run

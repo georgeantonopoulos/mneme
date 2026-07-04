@@ -142,11 +142,12 @@ def _row_dict(row: sqlite3.Row | None) -> dict | None:
     return result
 
 
-def _open_conn(db_path: Path | str) -> sqlite3.Connection:
+def _open_conn(db_path: Path | str, *, skip_schema: bool = False) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    _init_db(conn)
-    ensure_world_model_schema(conn)
+    if not skip_schema:
+        _init_db(conn)
+        ensure_world_model_schema(conn)
     return conn
 
 
@@ -343,10 +344,11 @@ def _terminal_status(prediction_type: str, matched: bool, expired: bool, sense_s
 
 def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_id: str, *, now: str | None = None, dry_run: bool = False) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
-    conn = _open_conn(conn_or_path) if close else conn_or_path
+    conn = _open_conn(conn_or_path, skip_schema=dry_run) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    _init_db(conn)
-    ensure_world_model_schema(conn)
+    if not dry_run:
+        _init_db(conn)
+        ensure_world_model_schema(conn)
     try:
         row = conn.execute("SELECT * FROM world_predictions WHERE id=?", (prediction_id,)).fetchone()
         if row is None:
@@ -442,10 +444,11 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
 
 def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: str | None = None, now: str | None = None, dry_run: bool = False) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
-    conn = _open_conn(conn_or_path) if close else conn_or_path
+    conn = _open_conn(conn_or_path, skip_schema=dry_run) if close else conn_or_path
     conn.row_factory = sqlite3.Row
-    _init_db(conn)
-    ensure_world_model_schema(conn)
+    if not dry_run:
+        _init_db(conn)
+        ensure_world_model_schema(conn)
     try:
         effective_now = now or (parse_before(before) if before else None)
         due = due_predictions(conn, before=before or now)
