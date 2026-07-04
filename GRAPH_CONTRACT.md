@@ -48,6 +48,33 @@ ingest, writeback, validation, retrieval, and thought generation.
 8. Dismissal feedback should weaken, not automatically delete, a surfaced relationship. If a user declines a proposed thought/action, reduce the relevant edge/synapse strength and record the feedback event; kill/tombstone only when the feedback or evidence says the relationship is false.
 9. Open-task discovery must distinguish “source-contained observation exists” from “task is currently live”. Old daily-note rows, imported tracker rows, and candidate edges require fresh confirming evidence before an agent says they are still open, overdue, requested, or stalled.
 
+## World Model Layer
+
+The world model is a durable layer above the rebuildable graph. It does not replace the graph; it stores state that should survive graph churn.
+
+### Tables
+
+| Table | Purpose | Producer |
+|---|---|---|
+| `world_state_assertions` | Current, source-backed beliefs (subject/predicate/object + evidence + confidence). Reuses the same claim validation as active research edges. | `mneme resolve` / `remember_graph` assertions; `mneme state backfill` promotion. |
+| `world_predictions` | Machine-checkable expectations about future sensed evidence. Checks are deterministic against `sense_events` and observations — no LLM judgement. | `mneme predict add`; `predictions[]` in `mneme resolve` payloads. |
+| `world_actions` | External-side-effect ledger. Requires `external_ref` or `tool_call_id` for side-effectful actions. | `mneme action record`; integration producers. |
+
+### Relationship To The Graph
+
+- The graph remains the perception/index layer: it can be rebuilt from Markdown and senses.
+- World-model rows reference graph evidence by `source_path` and optional `source_edge_id`, but graph IDs are hints only. World-model rows survive graph rebuilds.
+- Assertions reuse the same validation contract as active research edges: a current assertion should only come from confirmed/evidence-backed claims at or above the active threshold.
+- Retrieval/preflight can include world-model rows with explicit `truth_policy` values: `current_state_assertion`, `open_prediction`, `missed_prediction`, `unverifiable_prediction`.
+- Current world-model assertions outrank candidate graph edges when they conflict.
+
+### Lifecycle
+
+- Default `ingest`, `update`, and soft `forget` paths must not delete world-model rows.
+- Only an explicit scoped `mneme://` forget cascades into world-model tables.
+- Predictions transition deterministically: `open` → `confirmed` / `missed` / `unverifiable` based on stored evidence and clock time.
+- A missed prediction linked to `subject_assertion_id` weakens that assertion's confidence once.
+
 ## Compatibility Invariants
 
 These invariants are the minimum bar for keeping public Mneme aligned with private dogfood runtimes while preserving privacy:

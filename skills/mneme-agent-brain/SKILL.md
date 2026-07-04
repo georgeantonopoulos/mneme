@@ -1,7 +1,7 @@
 ---
 name: mneme-agent-brain
 description: Use when an agent needs to build, label, retrieve from, surface thoughts from, or safely write temporary memory into a Mneme graph-backed Markdown vault.
-version: 1.0.0
+version: 1.1.0
 author: Mneme contributors
 license: MIT
 platforms:

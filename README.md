@@ -20,7 +20,8 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - thought-path generation and rendered cards
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, edge explanation, and world-model prediction checks
+- World-model layer: durable state assertions, deterministic predictions, and an auditable action ledger on top of the graph
+- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, edge explanation, world-model state/prediction/action management, and agent preflight
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
@@ -821,12 +822,12 @@ Near-term:
 - graph workbench API/server
 - active/candidate/killed edge lifecycle helpers
 - canonical entity/alias resolution
-- prompt-time retrieval CLI/API
-- contradiction and stale open-loop detection
+- world-model action ledger producers (calendar, tasks, email, cron)
+- semantic/latent embedding layer for fuzzy recall over claims and state
 
 Longer-term:
 
 - richer render themes
 - agent framework adapters
-- optional vector search for fuzzy recall
 - optional graph-native projection while keeping SQLite as the local audit ledger
+- cross-vault world-model federation
