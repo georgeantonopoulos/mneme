@@ -154,7 +154,8 @@ def upsert_assertion(
 
     row_id = assertion_id(subject_name, predicate, object_name, object_value, source_path)
     existing = conn.execute("SELECT * FROM world_state_assertions WHERE id=?", (row_id,)).fetchone()
-    if existing and existing["status"] in {"killed", "contradicted"} and not _is_explicit_reassertion(certainty, source_type, metadata):
+    explicit_reassertion = _is_explicit_reassertion(certainty, source_type, metadata)
+    if existing and existing["status"] in {"killed", "contradicted"} and not explicit_reassertion:
         return {"id": row_id, "status": existing["status"], "blocked": True, "reasons": ["blocked_recreation"]}
 
     replacement_status = _replacement_status(source_type, metadata)
@@ -220,8 +221,8 @@ def upsert_assertion(
           object_value=excluded.object_value,
           state_type=excluded.state_type,
           status=CASE
-            WHEN world_state_assertions.status='killed' AND excluded.certainty != 'user_confirmed' THEN world_state_assertions.status
-            WHEN world_state_assertions.status='contradicted' AND excluded.certainty != 'user_confirmed' THEN world_state_assertions.status
+            WHEN world_state_assertions.status='killed' AND ?=0 THEN world_state_assertions.status
+            WHEN world_state_assertions.status='contradicted' AND ?=0 THEN world_state_assertions.status
             ELSE excluded.status
           END,
           confidence=max(world_state_assertions.confidence, excluded.confidence),
@@ -236,7 +237,7 @@ def upsert_assertion(
           metadata_json=excluded.metadata_json,
           updated_at=excluded.updated_at
         """,
-        values,
+        values + (1 if explicit_reassertion else 0, 1 if explicit_reassertion else 0),
     )
     current_id = recompute_current(conn, subject_name, predicate)
     row = conn.execute("SELECT status FROM world_state_assertions WHERE id=?", (row_id,)).fetchone()
@@ -289,12 +290,15 @@ def list_assertions(
     status: str | None = "current",
     state_type: str | None = None,
     subject: str | None = None,
+    order_by: str = "subject",
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = sqlite3.connect(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
     try:
-        ensure_world_model_schema(conn)
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='world_state_assertions'").fetchone() is None:
+            return []
         clauses = []
         params: list[Any] = []
         if status:
@@ -307,10 +311,20 @@ def list_assertions(
             clauses.append("subject_name LIKE ?")
             params.append(f"%{subject}%")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        rows = conn.execute(
-            "SELECT * FROM world_state_assertions" + where + " ORDER BY lower(subject_name), predicate, COALESCE(valid_from, created_at), id",
-            params,
-        ).fetchall()
+        order_options = {
+            "subject": "lower(subject_name), predicate, COALESCE(valid_from, created_at), id",
+            "updated_at_desc": "updated_at DESC, created_at DESC, id",
+            "created_at_desc": "created_at DESC, updated_at DESC, id",
+        }
+        if order_by not in order_options:
+            raise ValueError(f"unsupported assertion order_by: {order_by}")
+        sql = "SELECT * FROM world_state_assertions" + where + " ORDER BY " + order_options[order_by]
+        if limit is not None:
+            if limit < 0:
+                raise ValueError("limit must be non-negative")
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
         return [_dict_row(row) for row in rows]
     finally:
         if close:

@@ -130,7 +130,7 @@ Record durable action ledger entries when an integration performs a side effect:
 mneme action record --db "$DB" --file action.json
 ```
 
-Side-effectful actions must include `external_ref` or `tool_call_id`; otherwise Mneme rejects the action as unauditable.
+Side-effectful actions must set `side_effect_level` to a non-`none` value and include `external_ref` or `tool_call_id`; otherwise Mneme rejects the action as unauditable.
 
 Surface thoughts from retrieval:
 

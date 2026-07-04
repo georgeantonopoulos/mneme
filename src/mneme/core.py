@@ -2324,6 +2324,9 @@ def remember_graph(db_path: Path, payload: dict | str, *, dry_run: bool = False)
         for assertion in assertions_in:
             subject_ref = str(assertion.get("subject_ref") or assertion.get("subject_node") or "")
             subject_node_id = created_nodes.get(subject_ref) if subject_ref else None
+            if dry_run:
+                out_assertions.append({"id": None, "status": "dry_run", "blocked": False, "reasons": ["dry_run"]})
+                continue
             result = upsert_assertion(
                 conn,
                 assertion,

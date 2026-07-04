@@ -243,14 +243,19 @@ def due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: st
     try:
         if not _prediction_table_exists(conn):
             return []
-        before_iso = parse_before(before)
+        before_dt = _parse_iso(parse_before(before), field="before")
         rows = conn.execute(
             """SELECT * FROM world_predictions
-               WHERE status='open' AND check_after <= ?
-               ORDER BY check_after,id""",
-            (before_iso,),
+               WHERE status='open'
+               ORDER BY id"""
         ).fetchall()
-        return [_row_dict(row) or {} for row in rows]
+        due_rows = [
+            row
+            for row in rows
+            if _parse_iso(row["check_after"], field="world_predictions.check_after") <= before_dt
+        ]
+        due_rows.sort(key=lambda row: (_parse_iso(row["check_after"], field="world_predictions.check_after"), row["id"]))
+        return [_row_dict(row) or {} for row in due_rows]
     finally:
         if close:
             conn.close()

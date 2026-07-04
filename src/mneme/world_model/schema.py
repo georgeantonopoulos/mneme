@@ -112,26 +112,27 @@ def delete_world_model_source(conn: sqlite3.Connection, source_path: str, *, dry
 
     existing = _existing_world_model_tables(conn)
     counts = {table: 0 for table in WORLD_MODEL_TABLES}
-    if "world_predictions" in existing and "world_state_assertions" in existing:
-        counts["world_predictions"] = conn.execute(
-            """
-            SELECT COUNT(*) FROM world_predictions
-            WHERE subject_assertion_id IN (
-                SELECT id FROM world_state_assertions WHERE source_path=?
+    if "world_predictions" in existing:
+        prediction_clauses = []
+        prediction_params = []
+        if "world_state_assertions" in existing:
+            prediction_clauses.append(
+                "subject_assertion_id IN (SELECT id FROM world_state_assertions WHERE source_path=?)"
             )
-            """,
-            (source_path,),
-        ).fetchone()[0]
-        if not dry_run:
-            conn.execute(
-                """
-                DELETE FROM world_predictions
-                WHERE subject_assertion_id IN (
-                    SELECT id FROM world_state_assertions WHERE source_path=?
-                )
-                """,
-                (source_path,),
+            prediction_params.append(source_path)
+        if "world_actions" in existing:
+            prediction_clauses.append(
+                "source_action_id IN (SELECT id FROM world_actions WHERE source_path=?)"
             )
+            prediction_params.append(source_path)
+        prediction_where = " OR ".join(prediction_clauses)
+        if prediction_where:
+            counts["world_predictions"] = conn.execute(
+                "SELECT COUNT(*) FROM world_predictions WHERE " + prediction_where,
+                prediction_params,
+            ).fetchone()[0]
+        if prediction_where and not dry_run:
+            conn.execute("DELETE FROM world_predictions WHERE " + prediction_where, prediction_params)
     if "world_state_assertions" in existing:
         counts["world_state_assertions"] = conn.execute(
             "SELECT COUNT(*) FROM world_state_assertions WHERE source_path=?",

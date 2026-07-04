@@ -38,7 +38,7 @@ def agent_preflight(
         include_candidates=include_candidates,
     )
     world = {
-        "current_assertions": list_assertions(db_path, status="current")[:20],
+        "current_assertions": list_assertions(db_path, status="current", order_by="updated_at_desc", limit=20),
         "due_predictions": due_predictions(db_path)[:20],
     }
     db_report = check_db_contract(db_path)
