@@ -20,7 +20,7 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - thought-path generation and rendered cards
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
-- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, and edge explanation
+- CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, edge explanation, and world-model prediction checks
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
 
@@ -76,6 +76,16 @@ A line between two nodes is not automatically a fact. Mneme separates:
 - **Semantic relationships** — e.g. `belongs_to`, `located_in`, `part_of`, `father_of`. These are marked as requiring validation before an agent treats them as real-world claims.
 
 This keeps the graph useful without letting weak co-occurrence or casual links become hallucinated truth.
+
+### World model layer
+
+The new **world model** is a small durable layer above the rebuildable graph. The graph remains Mneme's perception/index: it can be rebuilt from Markdown and senses. The world model stores state that should survive graph churn:
+
+- **State**: `world_state_assertions` records current, source-backed beliefs such as “Person X belongs to Organisation Y”. Assertions reuse the same validation contract as active research edges, so low-confidence observations do not become durable facts.
+- **Prediction**: `world_predictions` records future expectations in structured JSON. Checks are deterministic against stored `sense_events` and observations — no LLM judgement.
+- **Action**: `world_actions` is a ledger table for external side effects. The public helper enforces that side-effectful records carry a provider handle (`external_ref` or `tool_call_id`) before they can be stored.
+
+The point is not to replace the graph. It is to let agents ask: “What do I currently believe?”, “What did I expect to happen?”, and “Did new evidence confirm or miss that expectation?” See [docs/world-model-v1.md](docs/world-model-v1.md) for the design notes.
 
 ## What a thought card looks like
 
@@ -192,8 +202,9 @@ curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scrip
 mkdir -p ~/.hermes/skills
 ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-agent-brain
 
-# 3. Smoke-test the wiring (the helper runs the full brain harness
-#    so Hermes can tell whether the latest brain is usable).
+# 3. Smoke-test the wiring. The helper runs the full brain harness,
+#    including contract check, world tick dry-run, retrieval, surface,
+#    and agent preflight.
 MNEME_BRAIN_DEPTH=smoke ~/.local/share/mneme/scripts/hermes_brain_ready.sh /tmp/mneme_smoke.sqlite
 ```
 
@@ -212,6 +223,49 @@ ln -sfn ~/.local/share/mneme/skills/mneme-agent-brain ~/.hermes/skills/mneme-age
 The full operator runbook (env-var overrides, profile isolation, brain
 harness depths) lives at
 [`skills/mneme-agent-brain/references/install-update.md`](skills/mneme-agent-brain/references/install-update.md).
+
+### Hermes world-model loop
+
+The Mneme skill is intentionally vault-agnostic: it never assumes a particular
+folder layout, private database path, or user's notes. Hermes operators provide
+`$DB`, `$VAULT`, and `$PROMPT`; the skill describes the portable state/action/
+prediction loop that any Mneme-backed agent can run.
+
+Before Hermes uses Mneme context in an answer or action, run preflight:
+
+```bash
+mneme agent preflight --db "$DB" --prompt "$PROMPT"
+```
+
+For tasks that depend on current state or expected future evidence, inspect the
+world model first:
+
+```bash
+mneme state list --db "$DB" --status current
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$DB" --before "$NOW"
+mneme world tick --db "$DB" --before "$NOW" --dry-run
+```
+
+Use `world tick --dry-run` during interactive operation so the agent can see
+lapsed open loops, due predictions, contract status, and attention items without
+changing prediction state. Run mutating `world tick` from explicit maintenance
+jobs when you want open predictions to become `confirmed`, `missed`, or
+`unverifiable`.
+
+When a source-backed resolution creates a future expectation, write it into the
+same payload with `predictions[]`; for standalone expectations use
+`mneme predict add --file prediction.json`. When an integration records a real
+side effect, it should call the action-recording helper with an external
+provider reference or tool-call ID so `world_actions` becomes an auditable action
+ledger rather than chat history archaeology.
+
+```bash
+mneme action record --db "$DB" --file action.json
+```
+
+Side-effectful actions must include `external_ref` or `tool_call_id`; otherwise
+the contract rejects the record.
 
 ### Hook directive ordering in Hermes
 
@@ -247,6 +301,16 @@ Research results can be written back as evidence packs plus weighted graph edges
 
 ```bash
 mneme resolve --file research-resolution.json
+```
+
+World-model predictions can be added and checked deterministically:
+
+```bash
+mneme state list --db /tmp/mneme.sqlite --subject "school"
+mneme state explain ASSERTION_ID --db /tmp/mneme.sqlite
+mneme predict add --db /tmp/mneme.sqlite --file prediction.json
+mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00 --dry-run
 ```
 
 You can keep multiple configs if needed:
@@ -382,6 +446,70 @@ Minimal payload:
 Safety rule: only sourced, confirmed/certain claims at or above `--active-threshold` (`0.90` by default) become `active` edges. Pending, unsupported, or lower-confidence claims become `candidate` edges. Candidate edges are stored for audit and follow-up, but graph walks/thoughts ignore them so unresolved claims do not become proactive “truth.”
 
 The command accepts JSON via `--file` or stdin, which keeps the interface simple for future Node/npm wrappers.
+
+
+### World model: durable state and deterministic predictions
+
+The world-model commands are opt-in and local. They create/use three tables in the same SQLite database:
+
+| Table | Purpose | v1 producer |
+|---|---|---|
+| `world_state_assertions` | Durable current beliefs that survive graph rebuilds | `mneme resolve` / `remember_graph` assertions when claim validation passes |
+| `world_predictions` | Machine-checkable expectations about future sensed evidence | `mneme predict add` |
+| `world_actions` | External-action ledger with side-effect handle enforcement | `record_action()` helper; higher-level producers can call it later |
+
+A minimal prediction file looks like this:
+
+```json
+{
+  "id": "example-school-confirmation",
+  "title": "School confirmation should arrive",
+  "prediction_type": "confirmation_expected",
+  "match_json": {
+    "sense_type": "md",
+    "observation_terms_all": ["school", "confirmation"]
+  },
+  "check_after": "2026-07-01T00:00:00+00:00",
+  "expires_at": "2026-07-03T00:00:00+00:00",
+  "confidence": 0.8
+}
+```
+
+Commands:
+
+```bash
+# current durable beliefs
+mneme state list --db /tmp/mneme.sqlite --status current
+mneme state explain ASSERTION_ID --db /tmp/mneme.sqlite
+mneme state backfill --db /tmp/mneme.sqlite --dry-run
+
+# deterministic expectations
+mneme predict add --db /tmp/mneme.sqlite --file prediction.json
+mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
+mneme predict check --db /tmp/mneme.sqlite --id example-school-confirmation --dry-run
+mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00 --dry-run
+```
+
+`mneme world tick` runs the normal graph tick first, checks due predictions, reports lapsed open-loop assertions, runs the DB contract checks, and returns an attention list. Use `--dry-run` to evaluate prediction transitions without committing them:
+
+```json
+{
+  "ok": true,
+  "graph": {"candidates_updated": 4, "observations_considered": 5},
+  "predictions": {"ok": true, "due": 1, "checked": 1, "results": []}
+}
+```
+
+Safety rules:
+
+- Default rebuild/update paths preserve world-model rows.
+- Only explicit scoped `mneme://...` forgets cascade into world-model rows.
+- `predict due` is read/list behavior and does not create world-model tables on a graph-only DB.
+- `predict check` is intentionally mutating unless `--dry-run` is passed because it records prediction outcome/status.
+- Prediction IDs are content-hash deterministic when the payload omits `id`, so replayed `resolve` payloads do not duplicate expectations.
+- A missed prediction linked to `subject_assertion_id` weakens that assertion's confidence once, using the fixed v1 factor.
+- Retrieval/preflight can include world-model rows with explicit `truth_policy` values such as `current_state_assertion`, `open_prediction`, and `missed_prediction`.
+- Prediction matching is structured/deterministic over stored `sense_events` and observations.
 
 ### Generate one thought from an existing DB
 

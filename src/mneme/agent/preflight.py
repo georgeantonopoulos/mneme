@@ -5,6 +5,8 @@ from typing import Any
 
 from ..contract import AGENT_RULES, CONTRACT_NAME, CONTRACT_VERSION, check_db_contract, validate_retrieval_pack
 from ..core import DEFAULT_HINTS, retrieve_context, surface_thoughts
+from ..world_model.predictions import due_predictions
+from ..world_model.state import list_assertions
 from ..path_classifier import classify_path
 
 
@@ -35,6 +37,10 @@ def agent_preflight(
         hints=hints,
         include_candidates=include_candidates,
     )
+    world = {
+        "current_assertions": list_assertions(db_path, status="current", order_by="updated_at_desc", limit=20),
+        "due_predictions": due_predictions(db_path)[:20],
+    }
     db_report = check_db_contract(db_path)
     retrieval_report = validate_retrieval_pack(context)
     warnings = list(db_report.warnings) + list(retrieval_report.warnings)
@@ -51,6 +57,7 @@ def agent_preflight(
         "agent_rules": AGENT_RULES,
         "route": route,
         "context": context,
+        "world": world,
         "surface": surface,
         "warnings": warnings,
         "failures": failures,

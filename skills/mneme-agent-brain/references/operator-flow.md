@@ -62,7 +62,36 @@ mneme agent preflight --db "$DB" --prompt "$PROMPT"
 
 Use only the returned context and surfaced thoughts. If `contract.status` is not `pass`, do not use Mneme memory as factual grounding.
 
-## 5. Retrieve Context
+## 5. World Model Check
+
+Before acting on memory-backed context, inspect durable state and due predictions. Keep interactive checks dry-run unless the task explicitly requires updating prediction status:
+
+```bash
+mneme state list --db "$DB" --status current
+NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
+mneme predict due --db "$DB" --before "$NOW"
+mneme world tick --db "$DB" --before "$NOW" --dry-run
+```
+
+Interpretation rules:
+
+- `current_state_assertion` is durable state and can outrank candidate graph edges.
+- `open_prediction` is an expected future observation; do not treat it as confirmed fact.
+- `missed_prediction` means the expected evidence did not arrive in time; inspect linked assertions before relying on them.
+- `unverifiable_prediction` means the DB lacks the sensed evidence needed to check the expectation.
+- Side-effectful `world_actions` need a provider reference or tool-call handle before they should be trusted as a durable action record.
+
+When research or a user-confirmed correction creates a future expectation, write it as a prediction. Prefer embedding `predictions[]` in the same `mneme resolve` payload as the claims. For standalone expectations, use `mneme predict add --file prediction.json`.
+
+When an integration performs a real side effect, record it in the action ledger:
+
+```bash
+mneme action record --db "$DB" --file action.json
+```
+
+The payload must include `external_ref` or `tool_call_id` for side-effectful actions.
+
+## 6. Retrieve Context
 
 Use retrieval for prompt-time context:
 
@@ -76,8 +105,10 @@ Read `truth_policy` before treating a synapse as factual:
 - `active_validated_claim`: an active relationship can guide reasoning.
 - `candidate_only`: a possible relationship; review before trusting.
 - `killed`: excluded from retrieval.
+- `current_state_assertion`: durable world-model state.
+- `open_prediction`, `missed_prediction`, `unverifiable_prediction`: expectation state, not factual confirmation.
 
-## 6. Surface Thoughts
+## 7. Surface Thoughts
 
 Use surface for proactive thought candidates from the same retrieval path:
 
@@ -87,7 +118,7 @@ mneme surface --db "$DB" --prompt "$PROMPT" --limit "${MNEME_SURFACE_LIMIT:-5}"
 
 Prefer surfaced thoughts when deciding what to inspect next. Use rendered `mneme thought` cards only when a visual card is the desired output.
 
-## 7. Add Temporary Graph Memory
+## 8. Add Temporary Graph Memory
 
 Use `mneme://` memory for tests and agent working state:
 
@@ -111,7 +142,7 @@ mneme remember remove --db "$DB" --source-path mneme://test/hermes-validation
 
 The remove command refuses non-`mneme://` sources by design.
 
-## 8. Full Readiness Check
+## 9. Full Readiness Check
 
 Run the repo script when available:
 
@@ -126,9 +157,9 @@ Depth presets:
 - `deep`: all discovered clusters plus broader active frontier.
 - `full`: every eligible target, for small DBs or long runs.
 
-The script is successful only if contract check, preflight, retrieval, and surfaced thought output all work.
+The script is successful only if contract check, preflight, retrieval, surfaced thought output, and `mneme world tick --dry-run` all work. The world tick check proves prediction checking and world-model attention reporting without mutating state.
 
-## 9. Privacy Gate
+## 10. Privacy Gate
 
 Before committing:
 

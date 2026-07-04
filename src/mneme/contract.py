@@ -27,6 +27,8 @@ AGENT_RULES = [
     "Treat provenance_not_fact as navigation or source context, not real-world truth.",
     "Treat source_contained_observation as evidence that a source said something, not proof it is currently true.",
     "Treat old open loops as historical unless fresh evidence confirms they are live.",
+    "Treat current_state_assertion as best current belief with provenance; treat superseded_state as history.",
+    "Treat open_prediction and missed_prediction as expectation records, not observed facts.",
     "Use mneme:// memory for temporary agent state.",
     "Only write Markdown when the user explicitly asks.",
 ]
@@ -65,6 +67,14 @@ class RelationshipPolicy:
 class EdgeWriteDecision:
     status: str
     strength: float
+    blocked: bool = False
+    reasons: list[str] = field(default_factory=list)
+    contract_payload: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AssertionWriteDecision:
+    status: str
     blocked: bool = False
     reasons: list[str] = field(default_factory=list)
     contract_payload: dict[str, Any] = field(default_factory=dict)
@@ -164,6 +174,62 @@ def enforce_edge_write(
     return EdgeWriteDecision(status=status, strength=strength, reasons=reasons, contract_payload=payload)
 
 
+def enforce_assertion_write(
+    *,
+    predicate: str,
+    requested_status: str,
+    evidence_text: str | None,
+    confidence: float,
+    certainty: str | None,
+    source_type: str,
+    metadata: dict[str, Any] | None,
+) -> AssertionWriteDecision:
+    policy = relationship_policy(predicate)
+    metadata = metadata or {}
+    requested_status = requested_status or "candidate"
+    certainty = str(certainty or "").lower()
+    confidence = float(confidence or 0.0)
+    reasons: list[str] = []
+    evidence_ok = bool((evidence_text or "").strip())
+    active_certainty = certainty in {"confirmed", "certain", "user_confirmed", "absolutely_certain"}
+    validated = explicit_validation(
+        {**metadata, "research_resolution": metadata.get("research_resolution", True)},
+        source_type=source_type,
+        evidence_text=evidence_text,
+        confidence=confidence,
+    )
+    status = requested_status
+    if requested_status != "current":
+        status = "candidate"
+        reasons.append("not_current")
+    if not evidence_ok:
+        status = "candidate"
+        reasons.append("missing_evidence")
+    if not active_certainty:
+        status = "candidate"
+        reasons.append("certainty_not_confirmed")
+    if confidence < 0.9:
+        status = "candidate"
+        reasons.append("confidence_below_threshold")
+    if policy.requires_validation and not validated:
+        status = "candidate"
+        reasons.append("requires_explicit_validation")
+
+    payload = {
+        "name": CONTRACT_NAME,
+        "version": CONTRACT_VERSION,
+        "rules": MANDATORY_RULES,
+        "predicate": predicate,
+        "category": policy.category,
+        "requires_validation": policy.requires_validation,
+        "requested_status": requested_status,
+        "status": status,
+        "explicit_validation": validated,
+        "reasons": reasons,
+    }
+    return AssertionWriteDecision(status=status, blocked=status != "current", reasons=reasons, contract_payload=payload)
+
+
 def truth_policy_for_edge(
     *,
     status: str | None,
@@ -208,11 +274,17 @@ def validate_retrieval_pack(pack: dict[str, Any]) -> ContractReport:
     return ContractReport(status="fail" if failures else "pass", failures=failures, warnings=warnings, checked=checked)
 
 
-def validate_agent_action(action: dict[str, Any], context_item: dict[str, Any]) -> ContractReport:
+def validate_agent_action(action: dict[str, Any], context_item: dict[str, Any] | None = None) -> ContractReport:
+    context_item = context_item or {}
     truth_policy = context_item.get("truth_policy")
     failures: list[str] = []
     if truth_policy in {"candidate_only", "excluded"} and action.get("phrased_as_fact"):
         failures.append("agent action treats tentative or excluded memory as fact")
+    side_effect_level = str(action.get("side_effect_level") or "none")
+    if side_effect_level != "none" and not (action.get("external_ref") or action.get("tool_call_id")):
+        failures.append("side-effectful action requires external_ref or tool_call_id")
+    if action.get("status") == "verified" and not (action.get("verified_by_prediction") or action.get("user_confirmed")):
+        failures.append("verified action requires confirmed prediction or user confirmation")
     return ContractReport(status="fail" if failures else "pass", failures=failures, checked={"actions": 1})
 
 
@@ -231,7 +303,7 @@ def check_db_contract(db_path: Path) -> ContractReport:
     conn.row_factory = sqlite3.Row
     failures: list[str] = []
     warnings: list[str] = []
-    checked = {"edges": 0, "active_edges": 0, "killed_edges": 0}
+    checked = {"edges": 0, "active_edges": 0, "killed_edges": 0, "world_state_assertions": 0, "world_predictions": 0, "world_actions": 0}
     try:
         rows = conn.execute(
             "SELECT id,relation,status,evidence_text,confidence,source_type,metadata_json FROM edges"
@@ -259,6 +331,63 @@ def check_db_contract(db_path: Path) -> ContractReport:
             failures.append(f"edge:{row['id']} active {policy.category} relation lacks evidence")
         if row["status"] == "active" and not policy.known:
             warnings.append(f"edge:{row['id']} uses unknown relation {row['relation']!r}")
+    try:
+        assertion_rows = conn.execute(
+            "SELECT id,subject_name,predicate,status,evidence_text,confidence,certainty FROM world_state_assertions"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        assertion_rows = []
+    current_keys: dict[tuple[str, str], str] = {}
+    for row in assertion_rows:
+        checked["world_state_assertions"] += 1
+        policy = relationship_policy(row["predicate"])
+        if row["status"] == "current":
+            key = (str(row["subject_name"]).casefold(), row["predicate"])
+            if key in current_keys:
+                failures.append(f"world_state_assertion:{row['id']} duplicates current {row['subject_name']!r}/{row['predicate']!r}")
+            current_keys[key] = row["id"]
+            if not (row["evidence_text"] or "").strip():
+                failures.append(f"world_state_assertion:{row['id']} current assertion lacks evidence")
+            if float(row["confidence"] or 0.0) < 0.9:
+                failures.append(f"world_state_assertion:{row['id']} current assertion confidence below 0.9")
+            if str(row["certainty"] or "").lower() not in {"confirmed", "certain", "user_confirmed", "absolutely_certain"}:
+                failures.append(f"world_state_assertion:{row['id']} current assertion certainty is not confirmed")
+        if not policy.known:
+            warnings.append(f"world_state_assertion:{row['id']} uses unknown predicate {row['predicate']!r}")
+    try:
+        prediction_rows = conn.execute("SELECT id,status,match_json,check_after,expires_at,confidence FROM world_predictions").fetchall()
+    except sqlite3.OperationalError:
+        prediction_rows = []
+    for row in prediction_rows:
+        checked["world_predictions"] += 1
+        if row["status"] == "open":
+            if not row["check_after"] or not row["expires_at"]:
+                failures.append(f"world_prediction:{row['id']} open prediction lacks check window")
+            if not 0 <= float(row["confidence"] or 0.0) <= 1:
+                failures.append(f"world_prediction:{row['id']} confidence out of range")
+        try:
+            match = json.loads(row["match_json"] or "{}")
+        except json.JSONDecodeError:
+            failures.append(f"world_prediction:{row['id']} invalid match_json")
+            match = {}
+        if row["status"] == "open" and not match.get("sense_type"):
+            failures.append(f"world_prediction:{row['id']} open prediction lacks match_json.sense_type")
+    try:
+        action_rows = conn.execute("SELECT id,side_effect_level,tool_call_id,external_ref,status,metadata_json FROM world_actions").fetchall()
+    except sqlite3.OperationalError:
+        action_rows = []
+    for row in action_rows:
+        checked["world_actions"] += 1
+        metadata = _loads_json(row["metadata_json"])
+        report = validate_agent_action({
+            "side_effect_level": row["side_effect_level"],
+            "tool_call_id": row["tool_call_id"],
+            "external_ref": row["external_ref"],
+            "status": row["status"],
+            "verified_by_prediction": metadata.get("verified_by_prediction"),
+            "user_confirmed": metadata.get("user_confirmed"),
+        }, {})
+        failures.extend(f"world_action:{row['id']} {failure}" for failure in report.failures)
     conn.close()
     return ContractReport(status="fail" if failures else "pass", failures=failures, warnings=warnings, checked=checked)
 

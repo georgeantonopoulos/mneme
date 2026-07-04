@@ -17,7 +17,18 @@ SKIP_SUFFIXES = {".pyc"}
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".sqlite", ".db"}
 ALLOWED_BINARY_ASSETS = {Path("assets/mneme-header.png")}
 
-ARTIFACT_PATTERNS = ["*.sqlite", "*.sqlite-*", "*.db", "*.pyc", "__pycache__", "thought_*.svg", "thought_*.png", "out"]
+ARTIFACT_PATTERNS = [
+    "*.sqlite",
+    "*.sqlite-*",
+    "*.db",
+    "*.pyc",
+    "__pycache__",
+    "thought_*.svg",
+    "thought_*.png",
+    "world-model-export*.json",
+    "world_model_export*.json",
+    "out",
+]
 BASE_PATTERNS = [
     ("email", re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)),
     ("absolute_private_path", re.compile(r"(/Users/[^/\s`\"']+/|/root/|/home/[^/]+/|[A-Za-z]:[\\/]+Users[\\/]+)", re.I)),
