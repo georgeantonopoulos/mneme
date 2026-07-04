@@ -503,6 +503,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--status",default="current")
     p.add_argument("--type",dest="state_type")
     p.add_argument("--subject")
+    p.add_argument("--order-by",dest="order_by",default="subject",help="subject | updated_at_desc | created_at_desc")
+    p.add_argument("--limit",type=int,default=None,help="Max rows to return")
     p=state_sub.add_parser("explain", help="Explain an assertion chain and hint liveness")
     p.add_argument("assertion_id")
     p.add_argument("--db",type=Path)
@@ -672,7 +674,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "state":
         db_path = required_path(args, "db")
         if args.state_cmd == "list":
-            print(json.dumps(list_assertions(db_path, status=args.status, state_type=args.state_type, subject=args.subject), indent=2, ensure_ascii=False))
+            print(json.dumps(list_assertions(db_path, status=args.status, state_type=args.state_type, subject=args.subject, order_by=args.order_by, limit=args.limit), indent=2, ensure_ascii=False))
             return
         if args.state_cmd == "explain":
             print(json.dumps(explain_assertion(db_path, args.assertion_id), indent=2, ensure_ascii=False))
