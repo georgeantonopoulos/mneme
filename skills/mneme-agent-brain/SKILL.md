@@ -207,7 +207,7 @@ Treat `graph_memory_review` as a keep-or-forget prompt for `mneme://` memory. Tr
 - [ ] `mneme doctor` passes or the explicit `--vault` and `--db` paths are correct.
 - [ ] `scripts/hermes_brain_ready.sh "$DB" "$PROMPT"` exits 0.
 - [ ] `mneme agent preflight --db "$DB" --prompt "$PROMPT"` returns `contract.status: pass`.
-- [ ] `mneme world tick --db "$DB" --before "$NOW" --dry-run` returns `ok: true` without mutating prediction state.
+- [ ] `mneme world tick --db "$DB" --before "$NOW" --dry-run` returns `dry_run: true` and leaves the original DB unchanged.
 - [ ] `mneme retrieve` returns relevant items with `truth_policy`.
 - [ ] `mneme surface` returns thoughts with `surface` metadata.
 - [ ] Temporary `mneme://` memory can be added, surfaced, removed, and verified as zero remaining rows.

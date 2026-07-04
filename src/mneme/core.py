@@ -761,13 +761,18 @@ def write_research_resolution(vault: Path, db_path: Path, payload: dict | str, a
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
-    init_db(conn)
-    created = write_research_edges(conn, note_path, payload, active_threshold, actor="mneme")
-    predictions = []
-    for prediction in payload.get("predictions") or []:
-        predictions.append(add_prediction(conn, prediction))
-    conn.commit()
-    conn.close()
+    try:
+        init_db(conn)
+        created = write_research_edges(conn, note_path, payload, active_threshold, actor="mneme")
+        predictions = []
+        for prediction in payload.get("predictions") or []:
+            predictions.append(add_prediction(conn, prediction))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {
         "note_path": written["path"],
         "claims_written": len(created),
