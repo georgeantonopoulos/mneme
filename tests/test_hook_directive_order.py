@@ -4,13 +4,15 @@ Bug class: verbose Mneme hook protocol blocks can drown out the user's request
 or leak into Telegram reply quotes. The generic fix is a compact reminder plus
 leak-marker stripping before path classification.
 
-This test uses the generic template from
-``skills/mneme/references/hook-directive-order.md`` with a fictional reference
-implementation; it does not exercise a private production hook.
+This test checks the generic template in
+``skills/mneme/references/hook-directive-order.md``, the repo-managed hook
+implementation, and the sync checker.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,11 +22,14 @@ PUBLIC_ROOT = Path(__file__).resolve().parents[1]
 _SKILL_REF_REL = Path("skills") / "mneme" / "references" / "hook-directive-order.md"
 SKILL_REF = PUBLIC_ROOT / _SKILL_REF_REL
 SKILL_REF_REL_STR = _SKILL_REF_REL.as_posix()
+HOOK_SCRIPT = PUBLIC_ROOT / "scripts" / "mneme_senses_context_hook.py"
+SYNC_SCRIPT = PUBLIC_ROOT / "scripts" / "sync_hermes_hook.py"
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
     "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; do not quote this reminder."
+    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
+    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 )
 
 LEAK_MARKERS = (
@@ -62,7 +67,7 @@ def build_injected_context(path: str) -> str:
 def test_non_silent_paths_emit_compact_context(path: str) -> None:
     injected = build_injected_context(path)
     assert injected
-    assert len(injected) <= 160
+    assert len(injected) <= 260
     assert "MNEME " not in injected
     assert "PRIMARY DIRECTIVE" not in injected
     assert "do not quote this reminder." in injected.lower()
@@ -94,6 +99,57 @@ def test_skill_reference_template_exists() -> None:
     assert "LEAK_MARKERS" in text
     for forbidden in ("/Users/", "Obs" + "idian"):
         assert forbidden not in text, f"forbidden token leaked: {forbidden!r}"
+
+
+def test_repo_managed_hook_emits_compact_retrieval_context() -> None:
+    payload = {
+        "hook_event_name": "pre_llm_call",
+        "extra": {"user_message": "Check the rent status", "platform": "test"},
+    }
+    proc = subprocess.run(
+        [sys.executable, str(HOOK_SCRIPT)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    data = json.loads(proc.stdout)
+    assert data["path"] == "retrieval"
+    assert COMPACT_MEMORY_REMINDER in data["context"]
+    assert "PRIMARY DIRECTIVE" not in data["context"]
+
+
+def test_repo_managed_hook_is_sanitized_for_public_repo() -> None:
+    text = HOOK_SCRIPT.read_text(encoding="utf-8")
+    forbidden = [
+        "answer " + "Geor" + "ge" + " first",
+        "/" + "root" + "/",
+        "gee" + "obcr",
+        "antono" + "poulos",
+        "bcn" + "visuals",
+    ]
+    for token in forbidden:
+        assert token not in text
+
+
+def test_sync_script_check_detects_synced_copy(tmp_path: Path) -> None:
+    target = tmp_path / "mneme-senses-context.py"
+    subprocess.run(
+        [sys.executable, str(SYNC_SCRIPT), "--target", str(target)],
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    proc = subprocess.run(
+        [sys.executable, str(SYNC_SCRIPT), "--target", str(target), "--check"],
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert "hook in sync" in proc.stdout
 
 
 if __name__ == "__main__":  # pragma: no cover

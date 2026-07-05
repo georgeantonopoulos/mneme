@@ -8,6 +8,7 @@
 - Action verification loop: side-effectful `mneme action record` payloads with a `verify` block and explicit `sense_type` spawn deterministic verification predictions linked back to `world_actions.prediction_id`.
 - `mneme world watch` read-only pre-failure radar for open predictions due soon with no matching evidence; `world tick` includes these as `prediction_watch` attention items.
 - `mneme eval retrieval` scored harness with hit@k, MRR, forbidden-rate, and composite score.
+- Repo-managed Hermes pre-LLM hook at `scripts/mneme_senses_context_hook.py` plus `scripts/sync_hermes_hook.py` to install/check the runtime hook copy and prevent local drift.
 
 ### Fixed
 

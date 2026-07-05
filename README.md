@@ -38,14 +38,22 @@ and are summarised in the [Hermes install](#hermes-install) section below.
 
 ### Hook injection safety
 
-Hosts that wire Mneme as a pre-LLM hook must follow the compact injection
-pattern documented at
-[`skills/mneme/references/hook-directive-order.md`](skills/mneme/references/hook-directive-order.md).
-In short: do **not** inject large `MNEME RETRIEVAL PATH` / `MNEME BOTH PATH`
-protocol blocks or long `PRIMARY DIRECTIVE` banners into every prompt. Use a
-short reminder instead — `Use memory silently when relevant. Do not quote this
-reminder.` — and strip leaked hook markers before classifying user text. The
-public test suite (`tests/test_hook_directive_order.py`) covers the invariant.
+Hosts that wire Mneme as a pre-LLM hook should use the repo-managed hook at
+[`scripts/mneme_senses_context_hook.py`](scripts/mneme_senses_context_hook.py)
+and install/check it with:
+
+```bash
+python scripts/sync_hermes_hook.py
+python scripts/sync_hermes_hook.py --check
+```
+
+The hook follows the compact injection pattern documented at
+[`skills/mneme/references/hook-directive-order.md`](skills/mneme/references/hook-directive-order.md):
+do **not** inject large `MNEME RETRIEVAL PATH` / `MNEME BOTH PATH` protocol blocks
+or long `PRIMARY DIRECTIVE` banners into every prompt. Use a short reminder that
+points agents to preflight/world state/watch, and strip leaked hook markers before
+classifying user text. The public test suite (`tests/test_hook_directive_order.py`)
+covers the invariant and executes the real repo-managed hook.
 
 ## What it does
 
@@ -292,12 +300,19 @@ mneme eval retrieval --demo --min-score 0.9
 
 If the Hermes deployment uses a pre-LLM hook that injects a Mneme
 `path` (`retrieval`, `correction`, or `both`) into the agent's system
-prompt, the hook MUST prepend the primary directive banner described in
-[Hook directive ordering](#hook-directive-ordering) above. Hermes
-hosts that omit the banner have been observed to lose the user's
-request to a Mneme writeback loop and stop responding. The public
-test `tests/test_hook_directive_order.py` pins the invariant; run it
-after any hook changes:
+prompt, install the repo-managed hook and check drift:
+
+```bash
+python scripts/sync_hermes_hook.py
+python scripts/sync_hermes_hook.py --check
+```
+
+The hook MUST keep compact reminders ahead of any Mneme operational detail and
+strip leaked hook markers before classifying user text. Hermes hosts that inject
+large manuals or omit the compact ordering have been observed to lose the user's
+request to a Mneme writeback loop and stop responding. The public test
+`tests/test_hook_directive_order.py` pins the invariant and executes the real
+repo-managed hook; run it after any hook changes:
 
 ```bash
 python -m pytest tests/test_hook_directive_order.py -v

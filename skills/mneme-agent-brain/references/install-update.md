@@ -157,6 +157,7 @@ mneme world tick --db "$DB" --before "$NOW" --dry-run
 - [ ] Run the Mneme installer or update the checkout with `git pull --ff-only`.
 - [ ] Make sure `mneme --help` works in the same environment Hermes uses.
 - [ ] Refresh the complete `skills/mneme-agent-brain/` directory if Hermes uses copied skills.
+- [ ] Sync the repo-managed hook with `python scripts/sync_hermes_hook.py` and verify `python scripts/sync_hermes_hook.py --check`.
 - [ ] Export `MNEME_REPO` when the skill directory is outside the Mneme checkout.
 - [ ] Run `mneme contract check --db "$DB"`.
 - [ ] Run `mneme world watch --db "$DB" --lead 1d`.

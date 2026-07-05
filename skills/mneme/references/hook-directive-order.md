@@ -1,6 +1,6 @@
 # Hook Injection Safety Reference
 
-When a host wires Mneme as a pre-LLM hook, the injected context must be small, non-user-facing, and ordered so the user's request always wins.
+When a host wires Mneme as a pre-LLM hook, the injected context must be small, non-user-facing, and ordered so the user's request always wins. The canonical implementation is `scripts/mneme_senses_context_hook.py`; install or check the runtime copy with `python scripts/sync_hermes_hook.py` / `python scripts/sync_hermes_hook.py --check`.
 
 ## The bug pattern
 
@@ -95,4 +95,4 @@ def build_injected_context(path: str) -> str:
 
 ## Testing
 
-See `tests/test_hook_directive_order.py` for a fixture-based test using fictional examples.
+See `tests/test_hook_directive_order.py` for compact-reminder fixtures, leak-stripping checks, public-safety checks, and execution of the real repo-managed hook plus sync checker.
