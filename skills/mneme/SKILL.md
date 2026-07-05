@@ -5,6 +5,17 @@ description: Canonical skill for Mneme — single memory system for retrieval, w
 
 # Mneme
 
+## Repo/Local Mirror Rule
+
+The Mneme skill and Hermes hook must never diverge between repo and local runtime. Update repo assets first, then sync local copies and verify drift checks are clean:
+
+```bash
+diff -qr skills/mneme "$HERMES_HOME/skills/hermes-agent/mneme"
+python scripts/sync_hermes_hook.py --check
+```
+
+Do not add private-only references, copied source files, incident logs, or operational scar tissue to the skill or hook directories. Archive custom/private operational detail into the vault instead.
+
 ## Path Discovery
 
 Before running any mneme command, resolve vault/db/out paths. In sandboxed environments (Codex, CI, containers), `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` may not be set. Always discover paths first:
