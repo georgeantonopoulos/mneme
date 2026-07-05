@@ -245,21 +245,25 @@ world model first:
 mneme state list --db "$DB" --status current
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$DB" --before "$NOW"
+mneme world watch --db "$DB" --lead 1d
 mneme world tick --db "$DB" --before "$NOW" --dry-run
 ```
 
-Use `world tick --dry-run` during interactive operation so the agent can see
-lapsed open loops, due predictions, contract status, and attention items without
-changing prediction state. Run mutating `world tick` from explicit maintenance
-jobs when you want open predictions to become `confirmed`, `missed`, or
-`unverifiable`.
+Use `world watch` as a read-only radar for open predictions that are due soon
+but have no matching evidence yet. Use `world tick --dry-run` during interactive
+operation so the agent can see lapsed open loops, due predictions, pre-failure
+watch items, contract status, and attention items without changing prediction
+state. Run mutating `world tick` from explicit maintenance jobs when you want
+open predictions to become `confirmed`, `missed`, or `unverifiable`.
 
 When a source-backed resolution creates a future expectation, write it into the
 same payload with `predictions[]`; for standalone expectations use
 `mneme predict add --file prediction.json`. When an integration records a real
 side effect, it should call the action-recording helper with an external
 provider reference or tool-call ID so `world_actions` becomes an auditable action
-ledger rather than chat history archaeology.
+ledger rather than chat history archaeology. Add an optional `verify` block with
+an explicit `sense_type` when that side effect should spawn a deterministic
+verification prediction.
 
 ```bash
 mneme action record --db "$DB" --file action.json
@@ -267,6 +271,22 @@ mneme action record --db "$DB" --file action.json
 
 Side-effectful actions must include `external_ref` or `tool_call_id`; otherwise
 the contract rejects the record.
+
+Canonicalize fragmented subject names with aliases. `alias add` affects future
+writes; `alias merge` also rewrites existing world-state assertions and
+recomputes current/superseded pointers.
+
+```bash
+mneme alias add "the landlord" "St James" --db "$DB"
+mneme alias merge "the landlord" "St James" --db "$DB" --dry-run
+mneme alias ls --db "$DB"
+```
+
+Use the scored retrieval eval whenever retrieval/world-model scoring changes:
+
+```bash
+mneme eval retrieval --demo --min-score 0.9
+```
 
 ### Hook directive ordering in Hermes
 
@@ -488,7 +508,16 @@ mneme state backfill --db /tmp/mneme.sqlite --dry-run
 mneme predict add --db /tmp/mneme.sqlite --file prediction.json
 mneme predict due --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00
 mneme predict check --db /tmp/mneme.sqlite --id example-school-confirmation --dry-run
+mneme world watch --db /tmp/mneme.sqlite --lead 1d
 mneme world tick --db /tmp/mneme.sqlite --before 2026-07-02T12:00:00+00:00 --dry-run
+
+# canonical world-state subjects
+mneme alias add "the landlord" "St James" --db /tmp/mneme.sqlite
+mneme alias merge "the landlord" "St James" --db /tmp/mneme.sqlite --dry-run
+mneme alias ls --db /tmp/mneme.sqlite
+
+# retrieval scoring regression guard
+mneme eval retrieval --demo --min-score 0.9
 ```
 
 `mneme world tick` runs the normal graph tick first, checks due predictions, reports lapsed open-loop assertions, runs the DB contract checks, and returns an attention list. Use `--dry-run` to evaluate prediction transitions without committing them:
@@ -821,7 +850,6 @@ Near-term:
 - configurable ontology files
 - graph workbench API/server
 - active/candidate/killed edge lifecycle helpers
-- canonical entity/alias resolution
 - world-model action ledger producers (calendar, tasks, email, cron)
 - semantic/latent embedding layer for fuzzy recall over claims and state
 

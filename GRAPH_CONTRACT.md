@@ -67,6 +67,7 @@ The world model is a durable layer above the rebuildable graph. It does not repl
 - Assertions reuse the same validation contract as active research edges: a current assertion should only come from confirmed/evidence-backed claims at or above the active threshold.
 - Retrieval/preflight can include world-model rows with explicit `truth_policy` values: `current_state_assertion`, `open_prediction`, `missed_prediction`, `unverifiable_prediction`.
 - Current world-model assertions outrank candidate graph edges when they conflict.
+- Canonical entity aliases (`entity_aliases`) collapse surface names onto one world-state subject before assertion IDs are computed; `merge_subject` can retroactively rewrite stored assertions and recompute current/superseded pointers.
 
 ### Lifecycle
 

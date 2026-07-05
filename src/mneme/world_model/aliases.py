@@ -28,7 +28,9 @@ Design rules
 """
 
 import datetime as dt
+import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -192,11 +194,39 @@ def merge_subject(
     from .schema import ensure_world_model_schema
     from .state import recompute_current
 
+    if dry_run and not isinstance(conn_or_path, sqlite3.Connection):
+        source_path = Path(conn_or_path)
+        if not source_path.exists():
+            return {
+                "ok": True,
+                "dry_run": True,
+                "alias": from_name,
+                "canonical": into_name,
+                "assertions_rewritten": 0,
+                "predicates_recomputed": [],
+                "current_ids": [],
+            }
+        tmp = tempfile.NamedTemporaryFile(prefix="mneme_alias_dry_run_", suffix=".sqlite", delete=False)
+        tmp_path = Path(tmp.name)
+        tmp.close()
+        try:
+            shutil.copy2(source_path, tmp_path)
+            result = merge_subject(tmp_path, from_name, into_name, source=source, confidence=confidence, dry_run=False)
+            result["dry_run"] = True
+            return result
+        finally:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = sqlite3.connect(conn_or_path) if close else conn_or_path
     conn.row_factory = sqlite3.Row
     try:
         ensure_world_model_schema(conn)
+        if dry_run:
+            conn.execute("SAVEPOINT mneme_alias_dry_run")
         ensure_alias_schema(conn)
         canonical = resolve_subject(conn, into_name)
         preview = add_alias(conn, from_name, canonical, source=source, confidence=confidence) if not dry_run else {
@@ -205,7 +235,6 @@ def merge_subject(
         }
         if dry_run:
             # Register on a savepoint so resolution/planning is accurate, then roll back.
-            conn.execute("SAVEPOINT mneme_alias_dry_run")
             add_alias(conn, from_name, canonical, source=source, confidence=confidence)
 
         affected = conn.execute(

@@ -109,6 +109,30 @@ def test_merge_subject_dry_run_mutates_nothing(tmp_path: Path):
     assert list_aliases(conn) == []
     row = conn.execute("SELECT subject_name FROM world_state_assertions WHERE id='x'").fetchone()
     assert row[0] == "the landlord"
+    assert conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entity_aliases'").fetchone() is None
+
+
+def test_merge_subject_path_dry_run_leaves_original_db_untouched(tmp_path: Path):
+    db = tmp_path / "m.sqlite"
+    conn = _conn(db)
+    conn.execute(
+        """INSERT INTO world_state_assertions(
+             id,subject_name,subject_type,predicate,object_value,state_type,status,
+             confidence,evidence_text,source_path,source_type,created_at,updated_at
+           ) VALUES('x','the landlord','entity','pays','no','belief','current',0.9,'e','n.md','research','2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')""",
+    )
+    conn.commit()
+    conn.close()
+
+    result = merge_subject(db, "the landlord", "St James", dry_run=True)
+    assert result["dry_run"] is True
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='entity_aliases'").fetchone() is None
+        row = conn.execute("SELECT subject_name FROM world_state_assertions WHERE id='x'").fetchone()
+        assert row[0] == "the landlord"
+    finally:
+        conn.close()
 
 
 def test_alias_ls_cli_does_not_shadow_sqlite_import(tmp_path: Path):

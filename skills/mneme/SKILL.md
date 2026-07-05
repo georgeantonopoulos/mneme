@@ -82,9 +82,18 @@ mneme predict add --db "$MNEME_DB" --file /tmp/prediction.json
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$MNEME_DB" --before "$NOW"
 mneme predict check --db "$MNEME_DB" --id PREDICTION_ID --dry-run
+mneme world watch --db "$MNEME_DB" --lead 1d
 
 # compose graph tick + prediction checks + attention report
 mneme world tick --db "$MNEME_DB" --before "$NOW" --dry-run
+
+# canonical entity aliases for world-model subjects
+mneme alias add "the landlord" "St James" --db "$MNEME_DB"
+mneme alias merge "the landlord" "St James" --db "$MNEME_DB" --dry-run
+mneme alias ls --db "$MNEME_DB"
+
+# scored retrieval regression harness
+mneme eval retrieval --demo --min-score 0.9
 ```
 
 Rules:
@@ -97,7 +106,10 @@ Rules:
 - If a prediction is linked to a `subject_assertion_id`, a miss weakens that assertion once. Do not manually apply a second confidence penalty.
 - Do not use candidate graph edges as current truth when a conflicting current world assertion exists.
 - `world_actions` rows for side-effectful actions must include an `external_ref` or `tool_call_id`; otherwise the action is not durable enough to trust.
-- Use `mneme action record --db "$MNEME_DB" --file /tmp/action.json` after integrations create tasks, calendar events, drafts, reminders, cron jobs, or other external side effects.
+- Use `mneme action record --db "$MNEME_DB" --file /tmp/action.json` after integrations create tasks, calendar events, drafts, reminders, cron jobs, or other external side effects. Include an optional `verify` block with explicit `sense_type` when the action should spawn a deterministic verification prediction.
+- Use `mneme world watch --db "$MNEME_DB"` as a read-only radar for open predictions that are due soon but have no matching evidence yet; `world tick` also includes these as `prediction_watch` attention items.
+- Use `mneme alias add/merge/ls` to collapse surface names onto canonical world-model subjects before or after assertions are written; `merge` rewrites stored assertions and recomputes current/superseded pointers.
+- Use `mneme eval retrieval --demo --min-score 0.9` as the scored retrieval guardrail when scorer/world-model retrieval changes land.
 
 ### Auto-Pruning After Surfacing
 

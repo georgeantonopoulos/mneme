@@ -24,7 +24,7 @@ This can fail in two ways:
 Use a compact reminder, not a protocol manual. The host should inject at most one short line, for example:
 
 ```python
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
 ```
 
 For correction/both paths, keep the reminder equally short:
@@ -32,7 +32,8 @@ For correction/both paths, keep the reminder equally short:
 ```python
 COMPACT_CORRECTION_REMINDER = (
     "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; do not quote this reminder."
+    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
+    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 )
 ```
 
@@ -46,10 +47,11 @@ Do **not** inject:
 ## Template
 
 ```python
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
     "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; do not quote this reminder."
+    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
+    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 )
 
 LEAK_MARKERS = (
@@ -61,6 +63,7 @@ LEAK_MARKERS = (
     "Internal Mneme CORRECTION PATH",
     "Internal Mneme BOTH PATH",
     "Use memory silently when relevant. Do not quote this reminder.",
+    "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder.",
     "Memory correction note:",
     "Path tag (internal):",
 )

@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added — World Model P0 hardening
+
+- `mneme alias add/merge/ls` for canonical world-model subject aliases. `merge` rewrites existing assertions and recomputes current/superseded pointers.
+- Action verification loop: side-effectful `mneme action record` payloads with a `verify` block and explicit `sense_type` spawn deterministic verification predictions linked back to `world_actions.prediction_id`.
+- `mneme world watch` read-only pre-failure radar for open predictions due soon with no matching evidence; `world tick` includes these as `prediction_watch` attention items.
+- `mneme eval retrieval` scored harness with hit@k, MRR, forbidden-rate, and composite score.
+
+### Fixed
+
+- `alias ls` CLI no longer shadows the module-level `sqlite3` import.
+
 ## [0.2.0] — 2026-07-04
 
 ### Added — World Model Layer

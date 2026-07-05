@@ -119,10 +119,11 @@ Inspect world-model state before acting on memory-backed context:
 mneme state list --db "$DB" --status current
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$DB" --before "$NOW"
+mneme world watch --db "$DB" --lead 1d
 mneme world tick --db "$DB" --before "$NOW" --dry-run
 ```
 
-Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs.
+Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs. Use `world watch` as a read-only pre-failure radar for open predictions due soon with no matching evidence.
 
 Record durable action ledger entries when an integration performs a side effect:
 
@@ -130,7 +131,21 @@ Record durable action ledger entries when an integration performs a side effect:
 mneme action record --db "$DB" --file action.json
 ```
 
-Side-effectful actions must set `side_effect_level` to a non-`none` value and include `external_ref` or `tool_call_id`; otherwise Mneme rejects the action as unauditable.
+Side-effectful actions must set `side_effect_level` to a non-`none` value and include `external_ref` or `tool_call_id`; otherwise Mneme rejects the action as unauditable. Add an optional `verify` block with explicit `sense_type` when the action should spawn its own deterministic verification prediction.
+
+Canonicalize fragmented subject names with aliases:
+
+```bash
+mneme alias add "the landlord" "St James" --db "$DB"
+mneme alias merge "the landlord" "St James" --db "$DB" --dry-run
+mneme alias ls --db "$DB"
+```
+
+Run the scored retrieval guardrail after scorer/world-model retrieval changes:
+
+```bash
+mneme eval retrieval --demo --min-score 0.9
+```
 
 Surface thoughts from retrieval:
 
