@@ -4,7 +4,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from .predictions import check_due_predictions, parse_before
+from .predictions import check_due_predictions, parse_before, prediction_watch
 
 
 def _lapsed_open_loops(db_path: Path, *, before: str | None = None) -> list[dict]:
@@ -76,12 +76,16 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
     try:
         graph_report = tick(work_db)
         prediction_report = check_due_predictions(work_db, before=before, dry_run=dry_run)
+        # Read-only pre-failure radar: predictions due soon with no evidence yet.
+        pending = prediction_watch(work_db, now=before if before else None)
         lapsed = _lapsed_open_loops(work_db, before=before)
         contract = check_db_contract(work_db).to_dict()
         attention = []
         for item in prediction_report.get("results", []):
             if item.get("status") in {"missed", "unverifiable"}:
                 attention.append({"kind": "prediction", "id": item.get("id"), "status": item.get("status"), "summary": item.get("outcome_summary")})
+        for item in pending:
+            attention.append({"kind": "prediction_watch", "id": item.get("id"), "status": "open", "summary": item.get("summary")})
         for item in lapsed:
             attention.append({"kind": "lapsed_open_loop", "id": item.get("id"), "subject": item.get("subject_name"), "valid_until": item.get("valid_until")})
         return {
@@ -89,6 +93,7 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
             "dry_run": dry_run,
             "graph": graph_report,
             "predictions": prediction_report,
+            "pending_predictions": pending,
             "lapsed_open_loops": lapsed,
             "contradictions": [],
             "contract": contract,

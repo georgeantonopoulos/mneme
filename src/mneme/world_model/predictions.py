@@ -447,6 +447,74 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
             conn.close()
 
 
+def prediction_watch(
+    conn_or_path: sqlite3.Connection | Path | str,
+    *,
+    now: str | None = None,
+    lead: str = "1d",
+) -> list[dict]:
+    """Surface open predictions that are about to fail, *before* they do.
+
+    An open prediction is "watched" when it is within ``lead`` of its
+    ``check_after`` (or already past it) but still before ``expires_at`` AND no
+    matching sense event has arrived yet. That turns the world model from a
+    ledger that reports "prediction missed" into a radar that says earlier
+    "you expected confirmation by Friday; nothing seen yet — check now."
+
+    This is intentionally read-only: it never mutates prediction status, so it
+    is safe to call inside the maintenance tick or ad hoc. Predictions that
+    already have a matching event are skipped (they will confirm on their own).
+    """
+
+    close = not isinstance(conn_or_path, sqlite3.Connection)
+    if close and not Path(conn_or_path).exists():
+        return []
+    conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    conn.row_factory = sqlite3.Row
+    try:
+        if not _prediction_table_exists(conn):
+            return []
+        now_iso_value = now or now_iso()
+        now_dt = _parse_iso(now_iso_value, field="now")
+        lead_dt = _parse_iso(_duration_from_now(lead) if re.match(r"^\s*\d+\s*[hdw]\s*$", lead.lower()) else lead, field="lead")
+        # Convert the resolved lead timestamp back into a horizon relative to now.
+        horizon = now_dt + (lead_dt - dt.datetime.now(dt.timezone.utc))
+        rows = conn.execute(
+            "SELECT * FROM world_predictions WHERE status='open' ORDER BY check_after,id"
+        ).fetchall()
+        watched: list[dict] = []
+        for row in rows:
+            check_dt = _parse_iso(row["check_after"], field="check_after")
+            expires_dt = _parse_iso(row["expires_at"], field="expires_at")
+            if now_dt >= expires_dt:
+                continue  # already expired; check_due_predictions owns this
+            if check_dt > horizon:
+                continue  # not due within the lead window yet
+            try:
+                criteria = validate_match_json(json.loads(row["match_json"] or "{}"))
+            except Exception:
+                continue
+            if _candidate_events(conn, criteria, row):
+                continue  # evidence already present; it will confirm normally
+            watched.append(
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "prediction_type": row["prediction_type"],
+                    "sense_type": criteria.get("sense_type"),
+                    "source_id": criteria.get("source_id"),
+                    "check_after": row["check_after"],
+                    "expires_at": row["expires_at"],
+                    "source_action_id": row["source_action_id"],
+                    "summary": f"Expected confirmation by {row['expires_at']}; no {criteria.get('sense_type')} evidence yet.",
+                }
+            )
+        return watched
+    finally:
+        if close:
+            conn.close()
+
+
 def check_due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: str | None = None, now: str | None = None, dry_run: bool = False) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = _open_conn(conn_or_path, skip_schema=dry_run) if close else conn_or_path

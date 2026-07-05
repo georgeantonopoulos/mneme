@@ -529,11 +529,40 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--db",type=Path)
     p.add_argument("--before",help="ISO timestamp or duration like 4h, 7d, or 2w")
     p.add_argument("--dry-run",action="store_true")
+    p=world_sub.add_parser("watch", help="Surface open predictions about to fail, before they miss (read-only)")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--lead",default="1d",help="How far ahead to look, e.g. 4h, 1d, 2w")
     action=sub.add_parser("action", help="Record durable world-model action ledger entries")
     action_sub=action.add_subparsers(dest="action_cmd", required=True)
     p=action_sub.add_parser("record", help="Record an external or internal action from JSON")
     p.add_argument("--db",type=Path)
     p.add_argument("--file",type=Path,help="JSON action payload; omit to read stdin")
+    aliasp=sub.add_parser("alias", help="Manage canonical entity aliases for world-model subjects")
+    alias_sub=aliasp.add_subparsers(dest="alias_cmd", required=True)
+    p=alias_sub.add_parser("add", help="Register alias -> canonical (affects future writes)")
+    p.add_argument("--db",type=Path)
+    p.add_argument("alias")
+    p.add_argument("canonical")
+    p.add_argument("--source",default="manual")
+    p.add_argument("--confidence",type=float,default=1.0)
+    p=alias_sub.add_parser("merge", help="Alias a subject and rewrite existing assertions onto the canonical entity")
+    p.add_argument("--db",type=Path)
+    p.add_argument("from_name")
+    p.add_argument("into_name")
+    p.add_argument("--dry-run",action="store_true")
+    p=alias_sub.add_parser("ls", help="List registered aliases")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--canonical")
+
+    evalp=sub.add_parser("eval", help="Scored evaluation harnesses")
+    eval_sub=evalp.add_subparsers(dest="eval_cmd", required=True)
+    p=eval_sub.add_parser("retrieval", help="Score retrieval quality (hit@k, MRR, forbidden-hit rate)")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--cases",type=Path,help="JSON list of retrieval cases")
+    p.add_argument("--demo",action="store_true",help="Run against the bundled fixture DB")
+    p.add_argument("-k",type=int,default=3)
+    p.add_argument("--min-score",type=float,default=None,help="Exit non-zero if composite score < this")
+
     harness=sub.add_parser("harness", help="Minimal provider-neutral agent harness")
     harness_sub=harness.add_subparsers(dest="harness_cmd", required=True)
     p=harness_sub.add_parser("run", help="Run a prompt through a provider command")
@@ -697,6 +726,48 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "world":
         if args.world_cmd == "tick":
             print(json.dumps(world_tick(required_path(args, "db"), before=args.before, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+        if args.world_cmd == "watch":
+            from .world_model.predictions import prediction_watch
+            print(json.dumps(prediction_watch(required_path(args, "db"), lead=args.lead), indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "alias":
+        db_path = required_path(args, "db")
+        from .world_model.aliases import add_alias, list_aliases, merge_subject
+        from .world_model.schema import ensure_world_model_schema
+        if args.alias_cmd == "add":
+            conn = sqlite3.connect(db_path)
+            try:
+                ensure_world_model_schema(conn)
+                result = add_alias(conn, args.alias, args.canonical, source=args.source, confidence=args.confidence)
+                conn.commit()
+            finally:
+                conn.close()
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return
+        if args.alias_cmd == "merge":
+            print(json.dumps(merge_subject(db_path, args.from_name, args.into_name, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+        if args.alias_cmd == "ls":
+            conn = sqlite3.connect(db_path)
+            try:
+                result = list_aliases(conn, canonical=args.canonical)
+            finally:
+                conn.close()
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return
+    if args.cmd == "eval":
+        if args.eval_cmd == "retrieval":
+            from . import reteval
+            if args.demo:
+                report = reteval.run_demo(k=args.k)
+            else:
+                db_path = required_path(args, "db")
+                cases = reteval.load_cases(args.cases) if args.cases else reteval.DEMO_CASES
+                report = reteval.run_retrieval_eval(db_path, cases, k=args.k)
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+            if args.min_score is not None and report["score"] < args.min_score:
+                raise SystemExit(1)
             return
     if args.cmd == "action":
         if args.action_cmd == "record":

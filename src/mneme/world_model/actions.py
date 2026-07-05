@@ -59,12 +59,36 @@ def record_action(conn_or_path: sqlite3.Connection | Path | str, payload: dict[s
                 created_at,
             ),
         )
+        # Close the loop: side-effectful actions that declare a `verify` block
+        # spawn the prediction that will later confirm them. Anchored on the
+        # action's created_at, so replay is idempotent. Opt-in only.
+        spawned_prediction_id = None
+        verify_spec = payload.get("verify") or metadata.get("verify")
+        if verify_spec and str(payload.get("side_effect_level") or "none") != "none":
+            from mneme.world_model.verification import spawn_verification_prediction
+
+            action_row = {
+                "id": action_id,
+                "title": payload.get("title"),
+                "action_type": payload.get("action_type"),
+                "created_at": created_at,
+                "verify": verify_spec,
+            }
+            prediction = spawn_verification_prediction(conn, action_row)
+            if prediction:
+                spawned_prediction_id = prediction.get("id")
+                conn.execute(
+                    "UPDATE world_actions SET prediction_id=? WHERE id=?",
+                    (spawned_prediction_id, action_id),
+                )
         if close:
             conn.commit()
         row = conn.execute("SELECT * FROM world_actions WHERE id=?", (action_id,)).fetchone()
         result = dict(row)
         result["metadata_json"] = json.loads(result.get("metadata_json") or "{}")
         result["assertion_ids_json"] = json.loads(result.get("assertion_ids_json") or "[]")
+        if spawned_prediction_id:
+            result["spawned_prediction_id"] = spawned_prediction_id
         return result
     finally:
         if close:

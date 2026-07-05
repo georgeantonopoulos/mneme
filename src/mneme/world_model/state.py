@@ -13,6 +13,9 @@ from mneme.world_model.schema import ensure_world_model_schema
 ENTITY_OBJECT_TYPES = {"entity", "person", "project", "place", "event", "organization", "note", "wikilink"}
 
 
+from .aliases import resolve_subject
+
+
 def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -79,6 +82,7 @@ def _same_object(row: sqlite3.Row, object_name: str | None, object_value: str | 
 def recompute_current(conn: sqlite3.Connection, subject_name: str, predicate: str) -> str | None:
     ensure_world_model_schema(conn)
     conn.row_factory = sqlite3.Row
+    subject_name = resolve_subject(conn, subject_name)
     rows = conn.execute(
         """
         SELECT * FROM world_state_assertions
@@ -129,6 +133,9 @@ def upsert_assertion(
     subject_name = str(assertion.get("subject") or assertion.get("subject_name") or "").strip()
     if not subject_name:
         raise ValueError("assertion requires subject")
+    # Collapse surface forms ("St James" / "the landlord") onto one canonical
+    # entity so the id and current-pointer reconciliation below don't fragment.
+    subject_name = resolve_subject(conn, subject_name)
     predicate = str(assertion.get("predicate") or assertion.get("relation") or "related_to").strip()
     object_name, object_value = _object_fields(assertion)
     confidence = float(assertion.get("confidence") or 0.0)
