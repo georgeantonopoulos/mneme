@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import argparse, json, os, sys
+import argparse, json, os, sqlite3, sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from . import md_edit
@@ -801,8 +801,6 @@ def main(argv: list[str] | None = None) -> None:
         if args.path_cmd == "migrate":
             print(json.dumps(migrate_add_paths(db_path), indent=2, ensure_ascii=False))
             return
-        import sqlite3
-
         with sqlite3.connect(db_path) as conn:
             if args.path_cmd == "set":
                 node_id, node_type, node_name = _resolve_node_arg(conn, args.node)

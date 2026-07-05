@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import sqlite3
 from pathlib import Path
 
@@ -106,4 +109,22 @@ def test_merge_subject_dry_run_mutates_nothing(tmp_path: Path):
     assert list_aliases(conn) == []
     row = conn.execute("SELECT subject_name FROM world_state_assertions WHERE id='x'").fetchone()
     assert row[0] == "the landlord"
+
+
+def test_alias_ls_cli_does_not_shadow_sqlite_import(tmp_path: Path):
+    db = tmp_path / "m.sqlite"
+    conn = _conn(db)
+    add_alias(conn, "the landlord", "St James")
+    conn.commit()
+    conn.close()
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "mneme.cli", "alias", "ls", "--db", str(db)],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(proc.stdout) == [
+        {"alias": "the landlord", "canonical": "St James", "source": "manual", "confidence": 1.0}
+    ]
 
