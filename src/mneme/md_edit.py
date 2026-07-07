@@ -312,9 +312,11 @@ def search_content(vault_root: str | Path, query: str, folder: str | Path | None
     if rg_available:
         cmd = [
             "rg", "--no-heading", "--line-number", "--with-filename",
+            "--fixed-strings",
             "--max-count", str(max_results),
             "--context", str(context),
             "--ignore-case",
+            "--",
             query,
             str(search_root),
         ]
@@ -328,8 +330,9 @@ def search_content(vault_root: str | Path, query: str, folder: str | Path | None
     if not rg_available:
         # Fallback to grep
         cmd = [
-            "grep", "-r", "-n", "-i",
+            "grep", "-r", "-n", "-i", "-F",
             "--context", str(context),
+            "--",
             query,
             str(search_root),
         ]

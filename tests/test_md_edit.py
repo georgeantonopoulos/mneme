@@ -132,6 +132,17 @@ def test_move_note_updates_wikilinks_only_when_requested(tmp_path: Path):
     assert (vault / "Index.md").read_text(encoding="utf-8") == "See [[New]].\n"
 
 
+def test_search_content_treats_dash_prefixed_query_as_text(tmp_path: Path):
+    vault = tmp_path / "vault"
+    md_edit.write_note(vault, "Tasks.md", "- [ ] Pay invoice\n", mode="create")
+
+    result = md_edit.search_content(vault, "- [ ]")
+
+    assert result["matches"]
+    assert result["matches"][0]["path"] == "Tasks.md"
+    assert result["matches"][0]["line_text"] == "- [ ] Pay invoice"
+
+
 def test_readme_and_installer_explain_note_editing():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
