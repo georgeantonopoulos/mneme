@@ -17,7 +17,7 @@ from .runtime import default_config_path, load_runtime_config, resolve_hints, re
 from .senses.gws import GwsSense
 from .senses.registry import available_senses, build_sense_from_config
 from .source_packets import store_packet
-from .world_model import add_prediction, check_prediction, due_predictions, world_tick
+from .world_model import add_prediction, check_prediction, detect_state_conflicts, due_predictions, world_tick
 from .world_model.actions import record_action
 from .world_model.state import backfill_from_research_edges, explain_assertion, list_assertions
 
@@ -511,6 +511,8 @@ def main(argv: list[str] | None = None) -> None:
     p=state_sub.add_parser("backfill", help="Backfill assertions from validated research edges")
     p.add_argument("--db",type=Path)
     p.add_argument("--dry-run",action="store_true")
+    p=state_sub.add_parser("conflicts", help="List evidence that disagrees with current durable state")
+    p.add_argument("--db",type=Path)
     predict=sub.add_parser("predict", help="Manage deterministic world-model predictions")
     predict_sub=predict.add_subparsers(dest="predict_cmd", required=True)
     p=predict_sub.add_parser("add", help="Add a structured prediction")
@@ -710,6 +712,9 @@ def main(argv: list[str] | None = None) -> None:
             return
         if args.state_cmd == "backfill":
             print(json.dumps(backfill_from_research_edges(db_path, dry_run=args.dry_run), indent=2, ensure_ascii=False))
+            return
+        if args.state_cmd == "conflicts":
+            print(json.dumps(detect_state_conflicts(db_path), indent=2, ensure_ascii=False))
             return
     if args.cmd == "predict":
         db_path = required_path(args, "db")

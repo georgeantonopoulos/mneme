@@ -57,6 +57,8 @@ Hard rules:
 10. Do not edit Markdown notes unless the user explicitly asks for vault writeback.
 11. Current world-model assertions outrank candidate graph edges when they conflict.
 12. Open, missed, or unverifiable predictions are operational state. Inspect them before actions that depend on expected future evidence.
+13. `world.contradictions` means newly perceived evidence disagrees with current durable state. Preserve both sides, keep candidate challengers tentative, and resolve from source evidence or user confirmation.
+14. Graph-edge contradiction checks require explicit single-value metadata (`conflict_policy: exclusive` or `cardinality: one`). Never infer cardinality from predicate wording.
 
 ## When To Use
 
@@ -117,6 +119,7 @@ Inspect world-model state before acting on memory-backed context:
 
 ```bash
 mneme state list --db "$DB" --status current
+mneme state conflicts --db "$DB"
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$DB" --before "$NOW"
 mneme world watch --db "$DB" --lead 1d

@@ -68,6 +68,7 @@ Before acting on memory-backed context, inspect durable state and due prediction
 
 ```bash
 mneme state list --db "$DB" --status current
+mneme state conflicts --db "$DB"
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$DB" --before "$NOW"
 mneme world watch --db "$DB" --lead 1d
@@ -81,6 +82,7 @@ Interpretation rules:
 - `missed_prediction` means the expected evidence did not arrive in time; inspect linked assertions before relying on them.
 - `unverifiable_prediction` means the DB lacks the sensed evidence needed to check the expectation.
 - `prediction_watch` attention means an open prediction is due soon and has no matching evidence yet; it is a radar item, not a failure transition.
+- `evidence_conflict` means newly perceived graph evidence disagrees with current durable state. Inspect both evidence packets; candidate challengers remain tentative until source-backed resolution or user confirmation.
 - Side-effectful `world_actions` need a provider reference or tool-call handle before they should be trusted as a durable action record.
 
 When research or a user-confirmed correction creates a future expectation, write it as a prediction. Prefer embedding `predictions[]` in the same `mneme resolve` payload as the claims. For standalone expectations, use `mneme predict add --file prediction.json`.

@@ -21,6 +21,7 @@ Mneme is an **alpha** public package. The public repository contains the sanitiz
 - SVG/PNG thought-card rendering
 - privacy-first rebuild defaults and scans
 - World-model layer: durable state assertions, deterministic predictions, and an auditable action ledger on top of the graph
+- Non-mutating contradiction radar for newly sensed evidence that disagrees with current durable state
 - CLI commands for ingestion, retrieval, thought surfacing, scoped graph memory, research resolution writeback, edge explanation, world-model state/prediction/action management, and agent preflight
 
 The private dogfood runtime is also exploring active synapse validation, graph workbench UX, and prompt-time retrieval. Those patterns are documented below as design direction, but only shipped public CLI commands are listed in the CLI section.
@@ -95,6 +96,16 @@ The new **world model** is a small durable layer above the rebuildable graph. Th
 - **Action**: `world_actions` is a ledger table for external side effects. The public helper enforces that side-effectful records carry a provider handle (`external_ref` or `tool_call_id`) before they can be stored.
 
 The point is not to replace the graph. It is to let agents ask: “What do I currently believe?”, “What did I expect to happen?”, and “Did new evidence confirm or miss that expectation?” See [docs/world-model-v1.md](docs/world-model-v1.md) for the design notes.
+
+The contradiction radar enforces a related principle: **suppression applies to
+recall, not perception**. Current state remains authoritative until new evidence
+passes the assertion gate, but disagreeing active or candidate graph evidence is
+returned in preflight/world-tick contradiction and attention reports. Historical
+edges already represented by superseded, contradicted, or killed assertions are
+excluded so old state changes do not become permanent alert noise.
+Edge comparison is opt-in for single-valued assertions via
+`metadata.conflict_policy: "exclusive"` (or `metadata.cardinality: "one"`), so
+multi-valued predicates such as purchases or memberships do not create false alarms.
 
 ## What a thought card looks like
 
@@ -251,6 +262,8 @@ world model first:
 
 ```bash
 mneme state list --db "$DB" --status current
+mneme state conflicts --db "$DB"
+mneme state explain ASSERTION_ID --db "$DB"
 NOW=$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())')
 mneme predict due --db "$DB" --before "$NOW"
 mneme world watch --db "$DB" --lead 1d

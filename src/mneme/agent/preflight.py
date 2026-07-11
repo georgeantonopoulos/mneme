@@ -7,6 +7,7 @@ from ..contract import AGENT_RULES, CONTRACT_NAME, CONTRACT_VERSION, check_db_co
 from ..core import DEFAULT_HINTS, retrieve_context, surface_thoughts
 from ..world_model.predictions import due_predictions
 from ..world_model.state import list_assertions
+from ..world_model.conflicts import detect_state_conflicts
 from ..path_classifier import classify_path
 
 
@@ -40,10 +41,13 @@ def agent_preflight(
     world = {
         "current_assertions": list_assertions(db_path, status="current", order_by="updated_at_desc", limit=20),
         "due_predictions": due_predictions(db_path)[:20],
+        "contradictions": detect_state_conflicts(db_path)[:20],
     }
     db_report = check_db_contract(db_path)
     retrieval_report = validate_retrieval_pack(context)
     warnings = list(db_report.warnings) + list(retrieval_report.warnings)
+    if world["contradictions"]:
+        warnings.append(f"{len(world['contradictions'])} world-state contradiction(s) require review")
     failures = list(db_report.failures) + list(retrieval_report.failures)
     status = "pass" if not failures else "fail"
     return {

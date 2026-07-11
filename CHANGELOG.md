@@ -9,10 +9,13 @@
 - `mneme world watch` read-only pre-failure radar for open predictions due soon with no matching evidence; `world tick` includes these as `prediction_watch` attention items.
 - `mneme eval retrieval` scored harness with hit@k, MRR, forbidden-rate, and composite score.
 - Repo-managed Hermes pre-LLM hook at `scripts/mneme_senses_context_hook.py` plus `scripts/sync_hermes_hook.py` to install/check the runtime hook copy and prevent local drift.
+- Read-only world-state contradiction radar via `mneme state conflicts`, `world tick`, and agent preflight. Newly perceived active/candidate evidence remains visible without automatically replacing current durable state; historical assertion edges are filtered to prevent alert loops.
 
 ### Fixed
 
 - `alias ls` CLI no longer shadows the module-level `sqlite3` import.
+- The repo-managed Hermes hook now emits the same compact correction reminder tested by the suite, applies deterministic negation/future guards before optional model classification, and contains no deployment-specific wording.
+- Canonical skill path discovery now maps `settings.out` to `MNEME_OUT` and the top-level doctor `config` path to `MNEME_CONFIG`.
 
 ## [0.2.0] — 2026-07-04
 

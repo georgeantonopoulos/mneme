@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from .predictions import check_due_predictions, parse_before, prediction_watch
+from .conflicts import detect_state_conflicts
 
 
 def _lapsed_open_loops(db_path: Path, *, before: str | None = None) -> list[dict]:
@@ -79,6 +80,7 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
         # Read-only pre-failure radar: predictions due soon with no evidence yet.
         pending = prediction_watch(work_db, now=before if before else None)
         lapsed = _lapsed_open_loops(work_db, before=before)
+        contradictions = detect_state_conflicts(work_db)
         contract = check_db_contract(work_db).to_dict()
         attention = []
         for item in prediction_report.get("results", []):
@@ -88,6 +90,14 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
             attention.append({"kind": "prediction_watch", "id": item.get("id"), "status": "open", "summary": item.get("summary")})
         for item in lapsed:
             attention.append({"kind": "lapsed_open_loop", "id": item.get("id"), "subject": item.get("subject_name"), "valid_until": item.get("valid_until")})
+        for item in contradictions:
+            attention.append({
+                "kind": item.get("kind"),
+                "severity": item.get("severity"),
+                "subject": item.get("subject"),
+                "predicate": item.get("predicate"),
+                "summary": item.get("summary"),
+            })
         return {
             "ok": contract.get("status") != "fail",
             "dry_run": dry_run,
@@ -95,7 +105,7 @@ def world_tick(db_path: Path, *, before: str | None = None, dry_run: bool = Fals
             "predictions": prediction_report,
             "pending_predictions": pending,
             "lapsed_open_loops": lapsed,
-            "contradictions": [],
+            "contradictions": contradictions,
             "contract": contract,
             "attention": attention,
             "dry_run_db": None,

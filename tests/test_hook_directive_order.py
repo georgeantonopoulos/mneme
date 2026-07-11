@@ -120,6 +120,28 @@ def test_repo_managed_hook_emits_compact_retrieval_context() -> None:
     assert "PRIMARY DIRECTIVE" not in data["context"]
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_path"),
+    [
+        ("This is resolved", "correction"),
+        ("This is not resolved", "retrieval"),
+        ("This will be booked tomorrow", "retrieval"),
+    ],
+)
+def test_real_hook_correction_output_and_negation_guards(message: str, expected_path: str) -> None:
+    payload = {"hook_event_name": "pre_llm_call", "extra": {"user_message": message, "platform": "test"}}
+    proc = subprocess.run(
+        [sys.executable, str(HOOK_SCRIPT)], input=json.dumps(payload), text=True,
+        capture_output=True, timeout=10, check=True,
+    )
+    data = json.loads(proc.stdout)
+    assert data["path"] == expected_path
+    assert len(data["context"]) <= 260
+    assert " PATH" not in data["context"]
+    if expected_path == "correction":
+        assert data["context"] == COMPACT_CORRECTION_REMINDER
+
+
 def test_repo_managed_hook_is_sanitized_for_public_repo() -> None:
     text = HOOK_SCRIPT.read_text(encoding="utf-8")
     forbidden = [
@@ -130,7 +152,7 @@ def test_repo_managed_hook_is_sanitized_for_public_repo() -> None:
         "bcn" + "visuals",
     ]
     for token in forbidden:
-        assert token not in text
+        assert token.casefold() not in text.casefold()
 
 
 def test_sync_script_check_detects_synced_copy(tmp_path: Path) -> None:

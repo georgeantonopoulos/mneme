@@ -18,17 +18,19 @@ Do not add private-only references, copied source files, incident logs, or opera
 
 ## Path Discovery
 
-Before running any mneme command, resolve vault/db/out paths. In sandboxed environments (Codex, CI, containers), `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` may not be set. Always discover paths first:
+Before running any mneme command, resolve config/vault/db/out paths. In sandboxed environments (Codex, CI, containers), `$VAULT`, `$MNEME_DB`, `$MNEME_OUT`, and `$MNEME_CONFIG` may not be set. Always discover paths first:
 
 ```bash
 mneme doctor
 ```
 
-This outputs JSON by default with `settings.vault`, `settings.db`, and `settings.out`. Extract and use those values as `$VAULT`, `$MNEME_DB`, and `$MNEME_CONFIG` respectively. Example:
+This outputs JSON with top-level `config` plus `settings.vault`, `settings.db`, and `settings.out`. Map them to `$MNEME_CONFIG`, `$VAULT`, `$MNEME_DB`, and `$MNEME_OUT` respectively. Example:
 
 ```bash
 VAULT=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['vault'])")
 MNEME_DB=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['db'])")
+MNEME_OUT=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['settings']['out'])")
+MNEME_CONFIG=$(mneme doctor | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['config'])")
 ```
 
 Use these resolved paths in all subsequent `--vault`, `--db`, and `--out` flags. Do **not** assume env vars are set.
@@ -41,6 +43,7 @@ Always use `mneme write` or `mneme note` for vault Markdown files. Never use fil
 
 - **Vault:** `$VAULT`
 - **DB:** `$MNEME_DB`
+- **Output:** `$MNEME_OUT`
 - **Config:** `$MNEME_CONFIG`
 
 If `mneme write` fails with "path escapes vault root" or writes to the wrong directory:
@@ -85,6 +88,7 @@ Operational commands:
 ```bash
 # inspect current durable state
 mneme state list --db "$MNEME_DB" --status current
+mneme state conflicts --db "$MNEME_DB"
 mneme state explain ASSERTION_ID --db "$MNEME_DB"
 mneme state backfill --db "$MNEME_DB" --dry-run
 
@@ -114,6 +118,8 @@ Rules:
 - Omit prediction IDs unless a stable external ID exists; Mneme derives deterministic content-hash IDs to avoid duplicate replay.
 - Prefer `world tick --dry-run` during interactive use. Run mutating `world tick` only in explicit maintenance jobs or when the user asks to update prediction state.
 - Treat `open_prediction`, `missed_prediction`, `unverifiable_prediction`, and `current_state_assertion` truth policies as operational state, not decorative metadata.
+- Inspect `world.contradictions` and `evidence_conflict` attention before relying on current state. They preserve newly perceived disagreement without auto-overwriting current assertions; candidate challengers remain tentative until source-backed resolution or user confirmation.
+- Mark genuinely single-valued assertions with `metadata.conflict_policy: "exclusive"` (or `metadata.cardinality: "one"`). Do not mark multi-valued predicates merely to force conflict alerts.
 - If a prediction is linked to a `subject_assertion_id`, a miss weakens that assertion once. Do not manually apply a second confidence penalty.
 - Do not use candidate graph edges as current truth when a conflicting current world assertion exists.
 - `world_actions` rows for side-effectful actions must include an `external_ref` or `tool_call_id`; otherwise the action is not durable enough to trust.

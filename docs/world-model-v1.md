@@ -19,6 +19,9 @@ remain meaningful when graph IDs disappear during rebuilds.
   judgment. Unevaluable criteria should be rejected or marked unverifiable.
 - Public core remains local-first and LLM-free. World-model transitions are pure
   functions of stored rows and clock time.
+- Suppression must not block perception. New source-backed graph evidence that
+  disagrees with current durable state is reported for review; it does not
+  silently overwrite the assertion or disappear behind it.
 
 ## Tables
 
@@ -38,6 +41,14 @@ observations.
 ledger for actions outside the graph, not a duplicate of `edge_debug_log`.
 Side-effectful actions need a provider reference or tool call handle before they
 can be considered durable.
+
+`detect_state_conflicts` is a read-only reconciliation layer. It compares each
+current assertion with active/candidate graph edges for the same subject and
+predicate, reports differing objects with both evidence packets, and classifies
+candidate challengers as review items. Historical assertion edges are excluded.
+Conflict detection never performs an automatic state transition.
+Graph-edge comparison requires assertion metadata `conflict_policy: "exclusive"`
+or `cardinality: "one"`; cardinality is never guessed from predicate wording.
 
 ## Phase Order
 

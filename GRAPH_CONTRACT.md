@@ -47,6 +47,7 @@ ingest, writeback, validation, retrieval, and thought generation.
 7. Corrective guardrails are stronger than stale observations. If a later source says an old task/claim was stale, wrong, hallucinated, or must not be mentioned without fresh evidence, proactive thought/candidate selection must not resurrect the old item as an open loop.
 8. Dismissal feedback should weaken, not automatically delete, a surfaced relationship. If a user declines a proposed thought/action, reduce the relevant edge/synapse strength and record the feedback event; kill/tombstone only when the feedback or evidence says the relationship is false.
 9. Open-task discovery must distinguish “source-contained observation exists” from “task is currently live”. Old daily-note rows, imported tracker rows, and candidate edges require fresh confirming evidence before an agent says they are still open, overdue, requested, or stalled.
+10. Suppression controls recall, not perception. Newly ingested evidence that disagrees with explicitly single-valued current world state must remain visible as an auditable contradiction review item. It must not auto-promote or silently disappear. Cardinality must be declared (`conflict_policy: exclusive` or `cardinality: one`), not guessed from predicate wording.
 
 ## World Model Layer
 
@@ -75,6 +76,7 @@ The world model is a durable layer above the rebuildable graph. It does not repl
 - Only an explicit scoped `mneme://` forget cascades into world-model tables.
 - Predictions transition deterministically: `open` → `confirmed` / `missed` / `unverifiable` based on stored evidence and clock time.
 - A missed prediction linked to `subject_assertion_id` weakens that assertion's confidence once.
+- `world tick` and agent preflight report read-only state/evidence contradictions. Candidate challengers stay tentative; historical superseded/contradicted/killed assertion edges do not re-alert.
 
 ## Compatibility Invariants
 

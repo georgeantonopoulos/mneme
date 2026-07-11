@@ -61,10 +61,17 @@ CORRECTION_MARKERS = [
     # Meta-correction: the user says memory routing/classification should have used correction.
     r"\bshould\s+have\s+triggered\s+(?:mneme\s+|memory\s+)?correction\b",
     r"\b(?:mneme\s+|memory\s+)?correction\s+(?:did\s+not|didn't|should\s+have|failed\s+to)\b",
-    # George-specific: memory status markers
     r"\bNOT URGENT\b",
     r"\b\b\[SILENT\]\b\b",
 ]
+
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
+COMPACT_CORRECTION_REMINDER = "Memory correction note: answer the user first; store durable corrections after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
+NON_CORRECTION_COMPLETION = re.compile(
+    r"\b(?:not|never|still\s+not|not\s+yet|will|will\s+be|going\s+to\s+be)\s+"
+    r"(?:resolved|done|fixed|sorted|closed|paid|sent|booked|confirmed)\b",
+    re.IGNORECASE,
+)
 
 # Source freshness priority (from README/GRAPH_CONTRACT)
 SOURCE_PRIORITY = [
@@ -120,6 +127,10 @@ def _strip_injected_context(user_message: str) -> str:
 def _classify_path(user_message: str) -> dict:
     """Classify user message as retrieval, correction, or both."""
     cleaned = _strip_injected_context(user_message)
+    # Deterministic safety rules outrank optional model classification. A future
+    # or explicitly negated completion is not a correction/writeback signal.
+    if NON_CORRECTION_COMPLETION.search(cleaned):
+        return {"path": "retrieval", "source": "regex-negation-guard"}
     if classify_path is not None:
         return classify_path(
             cleaned,
@@ -166,37 +177,10 @@ def _format_context(user_message: str) -> dict:
     path = classification.get("path", "retrieval")
 
     if path in {"correction", "both"}:
-        entities = _extract_entities(user_message)
-        entity_list = ", ".join(entities[:8]) if entities else "detected topics"
-        cleaned_for_context = _strip_injected_context(user_message)
-        label = "CORRECTION PATH (active)" if path == "correction" else "BOTH PATH (correction + retrieval active)"
-
-        # Idempotency check: if the PRIMARY DIRECTIVE banner is already at the top of
-        # the message this hook is about to inject into (i.e. a previous run of this
-        # hook on the same prompt, or a previous turn, already prepended it), skip
-        # the prepend. We check the user_message itself because Hermes stashes the
-        # injected context back into the next user turn in some flows.
-        primary_directive = (
-            "Memory correction note: answer the user first; store durable corrections after/alongside the requested action; do not quote this reminder."
-        )
-        already_prepended = primary_directive[:80] in user_message
-
-        # The banner always leads. CRITICAL ORDER steps follow.
-        banner = (primary_directive + "\n\n") if not already_prepended else ""
-
         return {
             "path": path,
             "classification": classification,
-            "context": (
-                banner
-                + f"Memory {label}. "
-                "Answer George first. Store durable corrections after/alongside the requested action. "
-                "For any Mneme operation, load skill_view(name='mneme') first. "
-                "For memory-backed actions, run mneme agent preflight and inspect current world state/predictions/watch items. "
-                "Do not quote this reminder. "
-                f"Topics: {entity_list}. "
-                f"Cleaned user signal: {cleaned_for_context[:240]}"
-            )
+            "context": COMPACT_CORRECTION_REMINDER,
         }
 
     # Default: retrieval path. Keep this compact: long hook manuals have leaked
@@ -205,9 +189,7 @@ def _format_context(user_message: str) -> dict:
     return {
         "path": path,
         "classification": classification,
-        "context": (
-            "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
-        )
+        "context": COMPACT_MEMORY_REMINDER,
     }
 
 
