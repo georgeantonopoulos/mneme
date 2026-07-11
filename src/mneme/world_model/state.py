@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from mneme.contract import enforce_assertion_write
@@ -18,6 +19,43 @@ from .aliases import resolve_subject
 
 def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def _parse_as_of(value: str | None) -> dt.datetime:
+    raw = value or _now_iso()
+    try:
+        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("as_of must be an ISO timestamp") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
+
+
+def assertion_is_effectively_current(assertion: sqlite3.Row | dict[str, Any], *, as_of: str | None = None) -> bool:
+    """Evaluate temporal validity without mutating durable assertion status.
+
+    ``valid_until`` is inclusive: an assertion lapses only after that instant.
+    """
+
+    valid_until = assertion["valid_until"] if "valid_until" in assertion.keys() else None
+    if not valid_until:
+        return True
+    try:
+        until = dt.datetime.fromisoformat(str(valid_until).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=dt.timezone.utc)
+    return until >= _parse_as_of(as_of)
+
+
+def partition_assertions_by_validity(assertions: list[dict[str, Any]], *, as_of: str | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    current: list[dict[str, Any]] = []
+    lapsed: list[dict[str, Any]] = []
+    for assertion in assertions:
+        (current if assertion_is_effectively_current(assertion, as_of=as_of) else lapsed).append(assertion)
+    return current, lapsed
 
 
 def _norm(value: str) -> str:
@@ -292,7 +330,7 @@ def _dict_row(row: sqlite3.Row) -> dict[str, Any]:
     return data
 
 def list_assertions(
-    conn_or_path: sqlite3.Connection | str,
+    conn_or_path: sqlite3.Connection | str | Path,
     *,
     status: str | None = "current",
     state_type: str | None = None,

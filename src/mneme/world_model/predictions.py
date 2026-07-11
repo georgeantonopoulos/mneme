@@ -115,6 +115,33 @@ def validate_match_json(match_json: Any) -> dict:
     if not isinstance(min_score, (int, float)) or not 0 <= float(min_score) <= 1:
         raise ValueError("match_json.min_score must be a number between 0 and 1")
     criteria["min_score"] = float(min_score)
+    gate = criteria.get("gate")
+    if gate is not None:
+        if not isinstance(gate, dict):
+            raise ValueError("match_json.gate must be an object")
+        gate = dict(gate)
+        gate_sense = gate.get("sense_type")
+        if not isinstance(gate_sense, str) or not gate_sense.strip():
+            raise ValueError("match_json.gate.sense_type is required")
+        gate["sense_type"] = gate_sense.strip()
+        for field in ("source_id", "event_type"):
+            value = gate.get(field)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"match_json.gate.{field} must be a non-empty string or null")
+            if isinstance(value, str):
+                gate[field] = value.strip()
+        gate_term_count = 0
+        for field in TERMS_FIELDS:
+            terms = _terms(gate.get(field), field=f"gate.{field}")
+            gate[field] = terms
+            gate_term_count += len(terms)
+        if not gate.get("source_id") and not gate.get("event_type") and gate_term_count == 0:
+            raise ValueError("match_json.gate requires source_id, event_type, or at least one terms field")
+        time_field = gate.get("time_field", "observed_at")
+        if not isinstance(time_field, str) or not (time_field == "observed_at" or time_field.startswith("metadata.")):
+            raise ValueError("match_json.gate.time_field must be observed_at or metadata.<path>")
+        gate["time_field"] = time_field
+        criteria["gate"] = gate
     return criteria
 
 
@@ -249,11 +276,18 @@ def due_predictions(conn_or_path: sqlite3.Connection | Path | str, *, before: st
                WHERE status='open'
                ORDER BY id"""
         ).fetchall()
-        due_rows = [
-            row
-            for row in rows
-            if _parse_iso(row["check_after"], field="world_predictions.check_after") <= before_dt
-        ]
+        due_rows = []
+        for row in rows:
+            effective_due = _parse_iso(row["check_after"], field="world_predictions.check_after")
+            try:
+                criteria = validate_match_json(json.loads(row["match_json"] or "{}"))
+                gate = resolve_prediction_gate(conn, criteria)
+                if gate:
+                    effective_due = min(effective_due, _parse_iso(gate["gate_time"], field="gate time"))
+            except Exception:
+                pass
+            if effective_due <= before_dt:
+                due_rows.append(row)
         due_rows.sort(key=lambda row: (_parse_iso(row["check_after"], field="world_predictions.check_after"), row["id"]))
         return [_row_dict(row) or {} for row in due_rows]
     finally:
@@ -333,6 +367,92 @@ def _candidate_events(conn: sqlite3.Connection, criteria: dict, prediction: sqli
     return candidates
 
 
+def _metadata_value(metadata: dict[str, Any], path: str) -> Any:
+    value: Any = metadata
+    for part in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _gate_time_value(value: Any) -> str | None:
+    if isinstance(value, dict):
+        value = value.get("dateTime") or value.get("date") or value.get("start")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        raw += "T00:00:00+00:00"
+    _parse_iso(raw, field="gate time")
+    return raw
+
+
+def resolve_prediction_gate(conn: sqlite3.Connection, criteria: dict) -> dict | None:
+    """Resolve the earliest deterministic event gate from stored sense evidence."""
+
+    gate = criteria.get("gate")
+    if not gate:
+        return None
+    rows = conn.execute(
+        """SELECT se.id,se.sense_type,se.source_id,se.event_type,se.title,se.observed_at,se.metadata_json,
+                  GROUP_CONCAT(o.text, ' ') observation_text,
+                  GROUP_CONCAT(o.source_path, ' ') observation_source_paths
+           FROM sense_events se
+           LEFT JOIN observations o ON o.sense_event_id=se.id
+           WHERE se.sense_type=?
+           GROUP BY se.id
+           ORDER BY se.observed_at,se.id""",
+        (gate["sense_type"],),
+    ).fetchall()
+    matches: list[dict] = []
+    for row in rows:
+        if gate.get("source_id") and row["source_id"] != gate["source_id"]:
+            continue
+        if gate.get("event_type") and row["event_type"] != gate["event_type"]:
+            continue
+        title_terms = _sense_bridge_terms(row["title"] or "")
+        observation_terms = _sense_bridge_terms(row["observation_text"] or "")
+        source_terms = _sense_bridge_terms(row["observation_source_paths"] or "", row["source_id"] or "")
+        if not _field_satisfies(gate, "title_terms_any", title_terms, require_all=False):
+            continue
+        if not _field_satisfies(gate, "title_terms_all", title_terms, require_all=True):
+            continue
+        if not _field_satisfies(gate, "observation_terms_any", observation_terms, require_all=False):
+            continue
+        if not _field_satisfies(gate, "observation_terms_all", observation_terms, require_all=True):
+            continue
+        if not _field_satisfies(gate, "source_path_terms_any", source_terms, require_all=False):
+            continue
+        if not _field_satisfies(gate, "source_path_terms_all", source_terms, require_all=True):
+            continue
+        metadata = json.loads(row["metadata_json"] or "{}")
+        raw_time = row["observed_at"] if gate["time_field"] == "observed_at" else _metadata_value(metadata, gate["time_field"].removeprefix("metadata."))
+        gate_time = _gate_time_value(raw_time)
+        if gate_time is None:
+            continue
+        matches.append({
+            "sense_event_id": row["id"],
+            "sense_type": row["sense_type"],
+            "source_id": row["source_id"],
+            "event_type": row["event_type"],
+            "title": row["title"],
+            "gate_time": gate_time,
+            "time_field": gate["time_field"],
+        })
+    if not matches:
+        return None
+    matches.sort(key=lambda item: (_parse_iso(item["gate_time"], field="gate time"), item["sense_event_id"]))
+    return matches[0]
+
+
+def _effective_expiry(row: sqlite3.Row, gate: dict | None) -> dt.datetime:
+    expires = _parse_iso(row["expires_at"], field="expires_at")
+    if not gate:
+        return expires
+    return min(expires, _parse_iso(gate["gate_time"], field="gate time"))
+
+
 def _terminal_status(prediction_type: str, matched: bool, expired: bool, sense_seen: bool) -> str:
     if prediction_type == "no_news_expected":
         if matched:
@@ -376,16 +496,27 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
             if close:
                 conn.commit()
             return {"id": prediction_id, "status": status, "outcome_summary": outcome, "matches": [], "dry_run": dry_run}
-        matches = _candidate_events(conn, criteria, row)
+        gate = resolve_prediction_gate(conn, criteria)
+        effective_criteria = dict(criteria)
+        if gate:
+            configured_before = effective_criteria.get("observed_before")
+            gate_time = _parse_iso(gate["gate_time"], field="gate time")
+            if configured_before is None or gate_time < _parse_iso(configured_before, field="observed_before"):
+                effective_criteria["observed_before"] = gate["gate_time"]
+        gate_unresolved = bool(criteria.get("gate")) and gate is None
+        matches = [] if gate_unresolved else _candidate_events(conn, effective_criteria, row)
         best = matches[0] if matches else None
         sense_seen = conn.execute("SELECT 1 FROM sense_events WHERE sense_type=? LIMIT 1", (criteria["sense_type"],)).fetchone() is not None
-        expired = _parse_iso(checked_at, field="now") >= _parse_iso(row["expires_at"], field="expires_at")
-        status = _terminal_status(row["prediction_type"], bool(best), expired, sense_seen)
+        expired = _parse_iso(checked_at, field="now") >= _effective_expiry(row, gate)
+        status = "unverifiable" if gate_unresolved and expired else _terminal_status(row["prediction_type"], bool(best), expired, sense_seen)
         if best:
             outcome_summary = f"{status} by {best['sense_type']}:{best['source_id']} score={best['score']}"
             outcome_id = best["id"]
         elif status == "open":
             outcome_summary = "no matching sense event yet"
+            outcome_id = None
+        elif status == "unverifiable" and gate_unresolved:
+            outcome_summary = "configured event gate could not be resolved from stored sense evidence"
             outcome_id = None
         elif status == "unverifiable":
             outcome_summary = f"no stored events for sense_type={criteria['sense_type']}"
@@ -439,6 +570,8 @@ def check_prediction(conn_or_path: sqlite3.Connection | Path | str, prediction_i
             "outcome_sense_event_id": outcome_id,
             "outcome_summary": outcome_summary,
             "matches": matches,
+            "gate": gate,
+            "effective_expires_at": (_effective_expiry(row, gate).isoformat()),
             "confidence_coupled": confidence_coupled,
             "dry_run": dry_run,
         }
@@ -476,25 +609,37 @@ def prediction_watch(
             return []
         now_iso_value = now or now_iso()
         now_dt = _parse_iso(now_iso_value, field="now")
-        lead_dt = _parse_iso(_duration_from_now(lead) if re.match(r"^\s*\d+\s*[hdw]\s*$", lead.lower()) else lead, field="lead")
-        # Convert the resolved lead timestamp back into a horizon relative to now.
-        horizon = now_dt + (lead_dt - dt.datetime.now(dt.timezone.utc))
+        duration_match = re.match(r"^\s*(\d+)\s*([hdw])\s*$", lead.lower())
+        if duration_match:
+            amount = int(duration_match.group(1))
+            unit = duration_match.group(2)
+            delta = {"h": dt.timedelta(hours=amount), "d": dt.timedelta(days=amount), "w": dt.timedelta(weeks=amount)}[unit]
+            horizon = now_dt + delta
+        else:
+            horizon = _parse_iso(lead, field="lead")
         rows = conn.execute(
             "SELECT * FROM world_predictions WHERE status='open' ORDER BY check_after,id"
         ).fetchall()
         watched: list[dict] = []
         for row in rows:
-            check_dt = _parse_iso(row["check_after"], field="check_after")
-            expires_dt = _parse_iso(row["expires_at"], field="expires_at")
-            if now_dt >= expires_dt:
-                continue  # already expired; check_due_predictions owns this
-            if check_dt > horizon:
-                continue  # not due within the lead window yet
             try:
                 criteria = validate_match_json(json.loads(row["match_json"] or "{}"))
             except Exception:
                 continue
-            if _candidate_events(conn, criteria, row):
+            gate = resolve_prediction_gate(conn, criteria)
+            effective_expiry = _effective_expiry(row, gate)
+            if now_dt >= effective_expiry:
+                continue  # gate/expiry elapsed; check_due_predictions owns settlement
+            check_dt = min(_parse_iso(row["check_after"], field="check_after"), effective_expiry)
+            if check_dt > horizon:
+                continue  # not due within the lead window yet
+            effective_criteria = dict(criteria)
+            if gate:
+                effective_criteria["observed_before"] = min(
+                    _parse_iso(criteria.get("observed_before") or row["expires_at"], field="observed_before"),
+                    _parse_iso(gate["gate_time"], field="gate time"),
+                ).isoformat()
+            if _candidate_events(conn, effective_criteria, row):
                 continue  # evidence already present; it will confirm normally
             watched.append(
                 {
@@ -505,8 +650,10 @@ def prediction_watch(
                     "source_id": criteria.get("source_id"),
                     "check_after": row["check_after"],
                     "expires_at": row["expires_at"],
+                    "effective_expires_at": effective_expiry.isoformat(),
+                    "gate": gate,
                     "source_action_id": row["source_action_id"],
-                    "summary": f"Expected confirmation by {row['expires_at']}; no {criteria.get('sense_type')} evidence yet.",
+                    "summary": f"Expected confirmation by {effective_expiry.isoformat()}; no {criteria.get('sense_type')} evidence yet.",
                 }
             )
         return watched

@@ -10,12 +10,16 @@
 - `mneme eval retrieval` scored harness with hit@k, MRR, forbidden-rate, and composite score.
 - Repo-managed Hermes pre-LLM hook at `scripts/mneme_senses_context_hook.py` plus `scripts/sync_hermes_hook.py` to install/check the runtime hook copy and prevent local drift.
 - Read-only world-state contradiction radar via `mneme state conflicts`, `world tick`, and agent preflight. Newly perceived active/candidate evidence remains visible without automatically replacing current durable state; historical assertion edges are filtered to prevent alert loops.
+- Structured event-gated predictions. A related stored sense event can supply the effective deadline; due checks move forward, post-gate evidence is rejected, watches stop at the gate, and unresolved gates become unverifiable at configured expiry.
+- Effective temporal validity in retrieval and agent preflight. Elapsed `valid_until` assertions are labelled and demoted as `lapsed_state_assertion` without mutating durable history; `--as-of` enables deterministic replay.
 
 ### Fixed
 
 - `alias ls` CLI no longer shadows the module-level `sqlite3` import.
 - The repo-managed Hermes hook now emits the same compact correction reminder tested by the suite, applies deterministic negation/future guards before optional model classification, and contains no deployment-specific wording.
 - Canonical skill path discovery now maps `settings.out` to `MNEME_OUT` and the top-level doctor `config` path to `MNEME_CONFIG`.
+- Prediction watch duration horizons are calculated from the caller-supplied `now`, not the machine wall clock.
+- `unverifiable` prediction retrieval rows now use `unverifiable_prediction` instead of `open_prediction`.
 
 ## [0.2.0] — 2026-07-04
 

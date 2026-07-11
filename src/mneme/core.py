@@ -22,7 +22,7 @@ from .hierarchy import ensure_hierarchy_schema, get_subtree_node_ids, normalize_
 from .retrieval import score_observation_candidate
 from .world_model.schema import delete_world_model_source, ensure_world_model_schema
 from .world_model.predictions import add_prediction
-from .world_model.state import upsert_assertion
+from .world_model.state import assertion_is_effectively_current, upsert_assertion
 
 WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
@@ -1466,7 +1466,7 @@ def _edge_truth_policy(status: str | None, relation: str) -> str:
     return truth_policy_for_edge(status=status, relation=relation)
 
 
-def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True) -> dict:
+def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True, as_of: str | None = None) -> dict:
     hints = hints or DEFAULT_HINTS
     tokens = _query_tokens(prompt)
     if not tokens:
@@ -1592,6 +1592,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
     except sqlite3.OperationalError:
         world_rows = []
     for row in world_rows:
+        effectively_current = assertion_is_effectively_current(row, as_of=as_of)
         values = [row["subject_name"], row["predicate"], row["object_name"], row["object_value"], row["evidence_text"], row["source_path"]]
         overlap, matched = _lexical_overlap(tokens, *values)
         if overlap < min_overlap and tokens:
@@ -1605,10 +1606,10 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "title": title,
             "source_path": row["source_path"],
             "snippet": (row["evidence_text"] or "")[:500],
-            "score": round(24.0 + float(row["confidence"] or 0) * 10 + overlap * 3, 2),
+            "score": round((24.0 if effectively_current else 4.0) + float(row["confidence"] or 0) * (10 if effectively_current else 2) + overlap * 3, 2),
             "matched_terms": matched,
-            "status": row["status"],
-            "truth_policy": "current_state_assertion",
+            "status": row["status"] if effectively_current else "lapsed",
+            "truth_policy": "current_state_assertion" if effectively_current else "lapsed_state_assertion",
             "state_type": row["state_type"],
             "confidence": float(row["confidence"] or 0),
             "certainty": row["certainty"],
@@ -1617,6 +1618,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "object": row["object_name"] or row["object_value"],
             "source_edge_id": row["source_edge_id"],
             "valid_until": row["valid_until"],
+            "as_of": as_of,
         })
     try:
         prediction_rows = conn.execute(
@@ -1640,7 +1642,7 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
             "score": round((18.0 if row["status"] in {"missed", "unverifiable"} else 10.0) + overlap * 3 + float(row["confidence"] or 0) * 4, 2),
             "matched_terms": matched,
             "status": row["status"],
-            "truth_policy": "missed_prediction" if row["status"] == "missed" else "open_prediction",
+            "truth_policy": {"missed": "missed_prediction", "unverifiable": "unverifiable_prediction"}.get(row["status"], "open_prediction"),
             "prediction_type": row["prediction_type"],
             "check_after": row["check_after"],
             "expires_at": row["expires_at"],
@@ -2112,6 +2114,7 @@ def surface_thoughts(
     hops: int = 5,
     hints: list[str] | None = None,
     include_candidates: bool = True,
+    as_of: str | None = None,
 ) -> dict | list[dict]:
     if prompt is None:
         return _surface_thought_candidates(db_path, limit=limit)
@@ -2124,6 +2127,7 @@ def surface_thoughts(
         max_items=max(limit * 2, limit),
         hints=hints,
         include_candidates=include_candidates,
+        as_of=as_of,
     )
     thoughts = [_surface_item_to_thought(db_path, item, query) for item in context.get("items", [])[:limit]]
     if not thoughts and not prompt:

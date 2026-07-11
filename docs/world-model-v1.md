@@ -35,7 +35,16 @@ scoped forgets.
 machine-checkable fields such as `sense_type`, optional `source_id`, title/text
 terms, observation windows, and a score threshold. `predict check` and
 `world tick` should evaluate these fields against stored sense events and
-observations.
+observations. An optional structured `gate` selects a related sense event and
+extracts its deadline from `observed_at` or a nested `metadata.*` field. The
+effective expiry is the earlier of that gate and `expires_at`; post-gate evidence
+does not count. Unresolved gates remain open until configured expiry, then become
+`unverifiable` rather than being guessed.
+
+Read paths apply effective temporal validity to state assertions. A row may stay
+durably `current` for audit and maintenance purposes while retrieval/preflight
+labels it `lapsed_state_assertion` after `valid_until`. This is a read-time view,
+not a hidden lifecycle mutation; `--as-of` makes the decision reproducible.
 
 `world_actions` records external side effects once producers exist. It is a
 ledger for actions outside the graph, not a duplicate of `edge_debug_log`.

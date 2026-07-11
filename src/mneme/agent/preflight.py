@@ -6,7 +6,7 @@ from typing import Any
 from ..contract import AGENT_RULES, CONTRACT_NAME, CONTRACT_VERSION, check_db_contract, validate_retrieval_pack
 from ..core import DEFAULT_HINTS, retrieve_context, surface_thoughts
 from ..world_model.predictions import due_predictions
-from ..world_model.state import list_assertions
+from ..world_model.state import list_assertions, partition_assertions_by_validity
 from ..world_model.conflicts import detect_state_conflicts
 from ..path_classifier import classify_path
 
@@ -20,6 +20,7 @@ def agent_preflight(
     surface_limit: int = 5,
     hints: list[str] | None = None,
     include_candidates: bool = True,
+    as_of: str | None = None,
 ) -> dict[str, Any]:
     hints = hints or DEFAULT_HINTS
     route = classify_path(prompt, enabled=False)
@@ -30,6 +31,7 @@ def agent_preflight(
         max_items=max_items,
         hints=hints,
         include_candidates=include_candidates,
+        as_of=as_of,
     )
     surface = surface_thoughts(
         db_path,
@@ -37,9 +39,14 @@ def agent_preflight(
         limit=surface_limit,
         hints=hints,
         include_candidates=include_candidates,
+        as_of=as_of,
     )
+    stored_current = list_assertions(db_path, status="current", order_by="updated_at_desc", limit=200)
+    effective_current, lapsed = partition_assertions_by_validity(stored_current, as_of=as_of)
     world = {
-        "current_assertions": list_assertions(db_path, status="current", order_by="updated_at_desc", limit=20),
+        "as_of": as_of,
+        "current_assertions": effective_current[:20],
+        "lapsed_assertions": lapsed[:20],
         "due_predictions": due_predictions(db_path)[:20],
         "contradictions": detect_state_conflicts(db_path)[:20],
     }

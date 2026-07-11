@@ -75,6 +75,12 @@ mneme world watch --db "$DB" --lead 1d
 mneme world tick --db "$DB" --before "$NOW" --dry-run
 ```
 
+Inspect `lapsed_state_assertion` separately from current truth. For historical
+replay, pass `--as-of <ISO timestamp>` to retrieval/preflight. Predictions tied
+to a real deadline event should use structured `match_json.gate` criteria; the
+resolved stored sense event is the deadline, and post-gate evidence does not
+count as confirmation.
+
 Interpretation rules:
 
 - `current_state_assertion` is durable state and can outrank candidate graph edges.

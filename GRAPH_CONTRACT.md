@@ -58,7 +58,7 @@ The world model is a durable layer above the rebuildable graph. It does not repl
 | Table | Purpose | Producer |
 |---|---|---|
 | `world_state_assertions` | Current, source-backed beliefs (subject/predicate/object + evidence + confidence). Reuses the same claim validation as active research edges. | `mneme resolve` / `remember_graph` assertions; `mneme state backfill` promotion. |
-| `world_predictions` | Machine-checkable expectations about future sensed evidence. Checks are deterministic against `sense_events` and observations — no LLM judgement. | `mneme predict add`; `predictions[]` in `mneme resolve` payloads. |
+| `world_predictions` | Machine-checkable expectations about future sensed evidence. Checks are deterministic against `sense_events` and observations — no LLM judgement. Optional event gates make the earliest matching sensed event an effective deadline. | `mneme predict add`; `predictions[]` in `mneme resolve` payloads. |
 | `world_actions` | External-side-effect ledger. Requires `external_ref` or `tool_call_id` for side-effectful actions. | `mneme action record`; integration producers. |
 
 ### Relationship To The Graph
@@ -88,6 +88,8 @@ These invariants are the minimum bar for keeping public Mneme aligned with priva
 4. **Dismissal weakens by default:** “not useful” feedback reduces priority; it does not imply the underlying relationship is false. Kill only when feedback or source evidence says the claim is wrong.
 5. **Freshness is source-derived:** age/decay logic should derive dates from source paths or source text when possible. Rebuild timestamps are operational metadata, not evidence freshness.
 6. **Open loops need current evidence:** old TODOs, cron summaries, daily notes, and generated drafts are historical evidence. Treat them as live obligations only after a fresh source or explicit lifecycle event confirms them.
-7. **Lifecycle is explicit:** close or update thought/task state through feedback, writeback, reminder, dismissal, or source-specific evidence. Do not infer closure solely from prose words in unrelated text.
-8. **Generated artifacts are private by default:** SQLite databases, cards, logs, and session-derived outputs can contain source snippets and must stay out of public commits.
-9. **Private incidents become fictional fixtures:** public tests should encode generic failure modes with invented names, paths, and source packets, never copied private evidence.
+7. **Temporal authority is evaluated at read time:** once `valid_until` has elapsed, retrieval/preflight must label the row `lapsed_state_assertion` and remove current-state authority without silently mutating or deleting audit history.
+8. **Event gates are evidence, not guesses:** a prediction gate must resolve deterministically from stored `sense_events`; evidence observed after the resolved gate cannot satisfy the prediction, and an unresolved gate becomes `unverifiable` at configured expiry.
+9. **Lifecycle is explicit:** close or update thought/task state through feedback, writeback, reminder, dismissal, or source-specific evidence. Do not infer closure solely from prose words in unrelated text.
+10. **Generated artifacts are private by default:** SQLite databases, cards, logs, and session-derived outputs can contain source snippets and must stay out of public commits.
+11. **Private incidents become fictional fixtures:** public tests should encode generic failure modes with invented names, paths, and source packets, never copied private evidence.

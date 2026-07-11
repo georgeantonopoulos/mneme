@@ -322,6 +322,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max-items",type=int,default=8)
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    p.add_argument("--as-of",help="Evaluate world-state validity at this ISO timestamp")
     p.add_argument("--verbose",action="store_true",help="Include score breakdown, retrieval signals, and freshness metadata")
     p.add_argument("--explain",nargs="?",const=True,help="Print a human-readable ranking explanation; optional value overrides --prompt")
     path_cmd=sub.add_parser("path", help="Manage hierarchy paths for graph nodes")
@@ -356,6 +357,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--surface-limit",type=int,default=5)
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
+    p.add_argument("--as-of",help="Evaluate world-state validity at this ISO timestamp")
     packet=sub.add_parser("packet", help="Create sanitized untrusted source packets")
     packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
     p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata")
@@ -793,7 +795,7 @@ def main(argv: list[str] | None = None) -> None:
             prompt = args.explain
         else:
             prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        result = retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates)
+        result = retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates, as_of=args.as_of)
         if args.verbose or args.explain:
             result = _ensure_verbose_retrieval_fields(result)
         if args.explain:
@@ -855,6 +857,7 @@ def main(argv: list[str] | None = None) -> None:
                 surface_limit=args.surface_limit,
                 hints=hints_from_args(args),
                 include_candidates=not args.no_candidates,
+                as_of=args.as_of,
             )
             print(json.dumps(result, indent=2, ensure_ascii=False))
             if result["contract"]["status"] != "pass":

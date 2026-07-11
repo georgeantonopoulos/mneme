@@ -126,7 +126,9 @@ mneme world watch --db "$DB" --lead 1d
 mneme world tick --db "$DB" --before "$NOW" --dry-run
 ```
 
-Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs. Use `world watch` as a read-only pre-failure radar for open predictions due soon with no matching evidence.
+Write predictions when a source-backed resolution creates an expectation that later evidence should appear or not appear. Use `mneme resolve` with a `predictions[]` array when the prediction belongs to the same research payload, or `mneme predict add --file prediction.json` for standalone expectations. Omit `id` unless a stable external ID exists; Mneme derives deterministic content-hash IDs. Use `world watch` as a read-only pre-failure radar for open predictions due soon with no matching evidence. When the expectation must be satisfied before a related event, use structured `match_json.gate` criteria and a deterministic `time_field` (`observed_at` or `metadata.<path>`); never infer the event deadline from prose.
+
+Retrieval and preflight apply `valid_until` at read time. Treat `lapsed_state_assertion` as historical evidence, not current truth. Use `--as-of` for reproducible historical replay; do not mutate durable state merely because a read-time validity window elapsed.
 
 Record durable action ledger entries when an integration performs a side effect:
 

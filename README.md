@@ -255,6 +255,8 @@ Before Hermes uses Mneme context in an answer or action, run preflight:
 
 ```bash
 mneme agent preflight --db "$DB" --prompt "$PROMPT"
+# Reproduce validity decisions at a specific instant:
+mneme agent preflight --db "$DB" --prompt "$PROMPT" --as-of 2026-07-03T09:00:00Z
 ```
 
 For tasks that depend on current state or expected future evidence, inspect the
@@ -276,6 +278,32 @@ operation so the agent can see lapsed open loops, due predictions, pre-failure
 watch items, contract status, and attention items without changing prediction
 state. Run mutating `world tick` from explicit maintenance jobs when you want
 open predictions to become `confirmed`, `missed`, or `unverifiable`.
+
+Retrieval and preflight evaluate `valid_until` at read time. A stored `current`
+assertion whose validity has elapsed is returned as `lapsed_state_assertion`
+and loses current-state ranking authority without mutating its durable row.
+Use `--as-of` on `retrieve` or `agent preflight` for deterministic replay.
+
+Predictions may include a structured `match_json.gate` when success must occur
+before a sensed event rather than only before a fixed timestamp:
+
+```json
+{
+  "sense_type": "gws",
+  "observation_terms_all": ["boarding", "confirmation"],
+  "gate": {
+    "sense_type": "gws",
+    "event_type": "calendar_event",
+    "title_terms_all": ["paris", "flight"],
+    "time_field": "metadata.gws.start"
+  }
+}
+```
+
+The earliest matching gate becomes the effective deadline. Evidence after it
+cannot confirm the prediction, watches stop when it passes, and an unresolved
+gate becomes `unverifiable` at the configured expiry. Gate resolution uses only
+stored sense evidence and supports `observed_at` or a nested `metadata.*` field.
 
 When a source-backed resolution creates a future expectation, write it into the
 same payload with `predictions[]`; for standalone expectations use

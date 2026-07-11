@@ -7,7 +7,7 @@ import pytest
 from mneme.cli import main
 from mneme.core import ingest_sense_events, init_db
 from mneme.senses.base import SenseEvent
-from mneme.world_model.predictions import add_prediction, check_prediction, due_predictions
+from mneme.world_model.predictions import add_prediction, check_prediction, due_predictions, prediction_watch
 
 
 def _event(event_id: str, *, title: str, text: str, observed_at: str = "2026-07-02T10:00:00+00:00") -> SenseEvent:
@@ -23,6 +23,41 @@ def _event(event_id: str, *, title: str, text: str, observed_at: str = "2026-07-
         event_type="task",
         metadata={"path": f"Fictional/{event_id}.md"},
     )
+
+
+def _calendar_gate(event_id: str = "gate-1", *, start: str = "2026-07-03T09:00:00+00:00") -> SenseEvent:
+    return SenseEvent(
+        id=event_id,
+        sense_id="fictional-calendar",
+        sense_type="fictional_calendar",
+        source_id=f"calendar:{event_id}",
+        source_uri=f"fictional://calendar/{event_id}",
+        observed_at="2026-07-01T08:00:00+00:00",
+        title="Paris flight departure",
+        text="Flight departs for Paris",
+        event_type="calendar_event",
+        metadata={"schedule": {"start": {"dateTime": start}}},
+    )
+
+
+def _gated_prediction(prediction_id: str = "pred-gated") -> dict:
+    return {
+        "id": prediction_id,
+        "title": "Boarding confirmation should appear before departure",
+        "match_json": {
+            "sense_type": "fictional_tasks",
+            "title_terms_all": ["boarding", "confirmation"],
+            "observed_after": "2026-07-01T00:00:00+00:00",
+            "gate": {
+                "sense_type": "fictional_calendar",
+                "event_type": "calendar_event",
+                "title_terms_all": ["paris", "flight"],
+                "time_field": "metadata.schedule.start",
+            },
+        },
+        "check_after": "2026-07-10T00:00:00+00:00",
+        "expires_at": "2026-07-20T00:00:00+00:00",
+    }
 
 
 def test_add_due_and_confirm_prediction_from_observation_terms(tmp_path: Path):
@@ -138,6 +173,59 @@ def test_rejects_uncheckable_match_json(tmp_path: Path):
                 "expires_at": "2026-07-02T00:00:00+00:00",
             },
         )
+
+
+def test_event_gate_pulls_due_time_forward_and_confirms_pre_gate_evidence(tmp_path: Path):
+    conn = sqlite3.connect(tmp_path / "mneme.sqlite")
+    ingest_sense_events(conn, [_calendar_gate(), _event("target-before", title="Boarding confirmation", text="- Boarding confirmation received", observed_at="2026-07-03T08:00:00+00:00")])
+    add_prediction(conn, _gated_prediction())
+
+    assert due_predictions(conn, before="2026-07-03T08:59:00+00:00") == []
+    assert [item["id"] for item in due_predictions(conn, before="2026-07-03T09:00:00+00:00")] == ["pred-gated"]
+    result = check_prediction(conn, "pred-gated", now="2026-07-03T09:00:00+00:00")
+
+    assert result["status"] == "confirmed"
+    assert result["outcome_sense_event_id"] == "target-before"
+    assert result["gate"]["sense_event_id"] == "gate-1"
+    assert result["effective_expires_at"] == "2026-07-03T09:00:00+00:00"
+
+
+def test_event_gate_rejects_post_gate_evidence_and_stops_watch(tmp_path: Path):
+    conn = sqlite3.connect(tmp_path / "mneme.sqlite")
+    ingest_sense_events(conn, [_calendar_gate(), _event("target-after", title="Boarding confirmation", text="- Boarding confirmation received", observed_at="2026-07-03T10:00:00+00:00")])
+    add_prediction(conn, _gated_prediction())
+
+    watched = prediction_watch(conn, now="2026-07-03T08:30:00+00:00", lead="1h")
+    assert [item["id"] for item in watched] == ["pred-gated"]
+    assert watched[0]["gate"]["sense_event_id"] == "gate-1"
+    assert prediction_watch(conn, now="2026-07-03T09:00:00+00:00", lead="1h") == []
+
+    result = check_prediction(conn, "pred-gated", now="2026-07-03T09:00:00+00:00")
+    assert result["status"] == "missed"
+    assert result["matches"] == []
+
+
+def test_unresolved_event_gate_becomes_unverifiable_at_configured_expiry(tmp_path: Path):
+    conn = sqlite3.connect(tmp_path / "mneme.sqlite")
+    ingest_sense_events(conn, [_event("target", title="Boarding confirmation", text="Boarding confirmation received")])
+    payload = _gated_prediction("pred-unresolved-gate")
+    payload["check_after"] = "2026-07-02T00:00:00+00:00"
+    payload["expires_at"] = "2026-07-04T00:00:00+00:00"
+    add_prediction(conn, payload)
+
+    result = check_prediction(conn, "pred-unresolved-gate", now="2026-07-04T00:00:00+00:00")
+    assert result["status"] == "unverifiable"
+    assert result["gate"] is None
+    assert "event gate" in result["outcome_summary"]
+
+
+def test_rejects_unsafe_event_gate_time_field(tmp_path: Path):
+    conn = sqlite3.connect(tmp_path / "mneme.sqlite")
+    payload = _gated_prediction()
+    payload["match_json"]["gate"]["time_field"] = "starts_when"
+
+    with pytest.raises(ValueError, match="observed_at or metadata"):
+        add_prediction(conn, payload)
 
 
 def test_due_predictions_does_not_create_world_model_schema_for_empty_db(tmp_path: Path):

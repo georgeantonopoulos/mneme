@@ -118,6 +118,8 @@ Rules:
 - Omit prediction IDs unless a stable external ID exists; Mneme derives deterministic content-hash IDs to avoid duplicate replay.
 - Prefer `world tick --dry-run` during interactive use. Run mutating `world tick` only in explicit maintenance jobs or when the user asks to update prediction state.
 - Treat `open_prediction`, `missed_prediction`, `unverifiable_prediction`, and `current_state_assertion` truth policies as operational state, not decorative metadata.
+- Treat `lapsed_state_assertion` as retained audit evidence, not current authority. Use `retrieve --as-of` or `agent preflight --as-of` when replaying a historical decision; read-time validity must not silently mutate durable state.
+- For expectations bounded by a real event, add `match_json.gate` with a deterministic `sense_type`, identifying source/event/terms, and `time_field` (`observed_at` or `metadata.<path>`). The resolved gate is an effective deadline: post-gate evidence cannot confirm it and an unresolved gate becomes unverifiable at configured expiry.
 - Inspect `world.contradictions` and `evidence_conflict` attention before relying on current state. They preserve newly perceived disagreement without auto-overwriting current assertions; candidate challengers remain tentative until source-backed resolution or user confirmation.
 - Mark genuinely single-valued assertions with `metadata.conflict_policy: "exclusive"` (or `metadata.cardinality: "one"`). Do not mark multi-valued predicates merely to force conflict alerts.
 - If a prediction is linked to a `subject_assertion_id`, a miss weakens that assertion once. Do not manually apply a second confidence penalty.
