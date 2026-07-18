@@ -106,7 +106,10 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   GROUP_CONCAT(DISTINCT (e.relation || ' ' || COALESCE(e.evidence_text,''))) synapses
            FROM nodes n
            LEFT JOIN observations o ON o.note_id=n.id
-           LEFT JOIN edges e ON (e.src_id=n.id OR e.dst_id=n.id) AND e.status='active'
+           LEFT JOIN edges e ON (e.src_id=n.id OR e.dst_id=n.id)
+             AND e.status='active'
+             AND COALESCE(e.strength,0.5) > 0
+             AND COALESCE(e.confidence,0.5) > 0
            WHERE n.type NOT IN ('heading','observation','wikilink','date')
            GROUP BY n.id
            ORDER BY n.updated_at DESC,n.id"""
@@ -142,6 +145,7 @@ def build_latent_index(
 ) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    original_row_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
     try:
         ensure_latent_index(conn)
@@ -162,10 +166,16 @@ def build_latent_index(
             text = _neuron_text(row)
             content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
             existing = conn.execute(
-                "SELECT content_hash,provider,model FROM latent_neurons WHERE node_id=?",
+                "SELECT content_hash,provider,model,dimensions FROM latent_neurons WHERE node_id=?",
                 (row["id"],),
             ).fetchone()
-            if existing and existing["content_hash"] == content_hash and existing["provider"] == provider and existing["model"] == model:
+            if (
+                existing
+                and existing["content_hash"] == content_hash
+                and existing["provider"] == provider
+                and existing["model"] == model
+                and (provider != "hash" or existing["dimensions"] == dimensions)
+            ):
                 continue
             pending.append((row, text, content_hash))
         indexed = 0
@@ -211,6 +221,8 @@ def build_latent_index(
     finally:
         if close:
             conn.close()
+        else:
+            conn.row_factory = original_row_factory
 
 
 def _cosine(left: Iterable[float], right: Iterable[float]) -> float:
@@ -242,6 +254,7 @@ def think(
 ) -> dict:
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = sqlite3.connect(conn_or_path) if close else conn_or_path
+    original_row_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
     try:
         ensure_latent_index(conn)
@@ -289,7 +302,9 @@ def think(
                 for origin, target in ((edge["src_id"], edge["dst_id"]), (edge["dst_id"], edge["src_id"])):
                     if origin not in frontier:
                         continue
-                    weight = max(0.0, min(1.0, float(edge["strength"] or 0.5) * float(edge["confidence"] or 0.5)))
+                    strength = 0.5 if edge["strength"] is None else float(edge["strength"])
+                    confidence = 0.5 if edge["confidence"] is None else float(edge["confidence"])
+                    weight = max(0.0, min(1.0, strength * confidence))
                     activation = frontier[origin] * spread * weight
                     if activation <= activations.get(target, 0.0):
                         continue
@@ -338,3 +353,5 @@ def think(
     finally:
         if close:
             conn.close()
+        else:
+            conn.row_factory = original_row_factory

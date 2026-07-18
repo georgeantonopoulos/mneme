@@ -88,7 +88,7 @@ SOURCE_PRIORITY = [
 def _strip_injected_context(user_message: str) -> str:
     """Strip prompt-time context and leaked hook instructions from the message."""
     if strip_injected_context is not None:
-        return strip_injected_context(user_message)
+        user_message = strip_injected_context(user_message)
     if not user_message:
         return ""
     # Fallback: strip everything before the actual user message if it starts with
@@ -115,6 +115,7 @@ def _strip_injected_context(user_message: str) -> str:
         "Internal Mneme reminder:",
         "Internal Mneme CORRECTION PATH",
         "Internal Mneme BOTH PATH",
+        "Use memory silently when relevant.",
         "━━━━━━━━━━━━━━━━",
         "Path tag (internal):",
     ):

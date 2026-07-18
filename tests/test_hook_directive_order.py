@@ -120,6 +120,30 @@ def test_repo_managed_hook_emits_compact_retrieval_context() -> None:
     assert "PRIMARY DIRECTIVE" not in data["context"]
 
 
+def test_real_hook_strips_quoted_compact_reminder_before_classification() -> None:
+    payload = {
+        "hook_event_name": "pre_llm_call",
+        "extra": {
+            "user_message": (
+                "Check the project status.\n\n"
+                + COMPACT_MEMORY_REMINDER
+                + " This is resolved."
+            ),
+            "platform": "test",
+        },
+    }
+    proc = subprocess.run(
+        [sys.executable, str(HOOK_SCRIPT)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    data = json.loads(proc.stdout)
+    assert data["path"] == "retrieval"
+
+
 @pytest.mark.parametrize(
     ("message", "expected_path"),
     [

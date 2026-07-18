@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from mneme.core import init_db
-from mneme.neural import build_latent_index, think
+from mneme.neural import _neuron_rows, _neuron_text, build_latent_index, think
 
 
 def _seed(conn: sqlite3.Connection) -> None:
@@ -24,6 +24,7 @@ def _seed(conn: sqlite3.Connection) -> None:
             ("e1", "travel", "passport", "requires", 1.0, 1.0, "active", "Projects/travel.md", "Passport is required before travel", "2026-01-01", "2026-01-01"),
             ("e2", "travel", "noise", "mentions", 1.0, 1.0, "killed", "Notes/garden.md", "Wrong historical link", "2026-01-01", "2026-01-01"),
             ("e3", "travel", "rumor", "might_require", 1.0, 1.0, "candidate", "Notes/rumor.md", "Unverified candidate", "2026-01-01", "2026-01-01"),
+            ("e4", "travel", "noise", "forgotten_link", 0.0, 1.0, "active", "Notes/garden.md", "Forgotten evidence", "2026-01-01", "2026-01-01"),
         ],
     )
     conn.commit()
@@ -43,6 +44,44 @@ def test_latent_index_is_incremental_and_local(tmp_path: Path):
     third = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
     assert third["removed"] == 1
     assert conn.execute("SELECT COUNT(*) FROM latent_neurons").fetchone()[0] == 4
+
+
+def test_dimension_change_reindexes_all_hash_vectors(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+
+    first = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
+    second = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=32)
+
+    assert first["indexed"] == 5
+    assert second["indexed"] == 5
+    assert second["unchanged"] == 0
+    assert {row[0] for row in conn.execute("SELECT dimensions FROM latent_neurons")} == {32}
+
+
+def test_zero_weight_edges_are_not_indexed_as_synaptic_evidence(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    _seed(conn)
+
+    travel = next(row for row in _neuron_rows(conn) if row["id"] == "travel")
+
+    assert "Forgotten evidence" not in _neuron_text(travel)
+
+
+def test_public_neural_apis_preserve_caller_row_factory(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+    original = lambda _cursor, row: tuple(row)
+    conn.row_factory = original
+
+    build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
+    assert conn.row_factory is original
+    think(conn, "family travel", provider="hash", model="hash-v1", seeds=1, hops=0)
+    assert conn.row_factory is original
 
 
 def test_think_seeds_latently_and_spreads_through_active_synapses(tmp_path: Path):

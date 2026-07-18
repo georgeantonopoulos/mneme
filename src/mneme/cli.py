@@ -23,6 +23,20 @@ from .world_model.actions import record_action
 from .world_model.state import backfill_from_research_edges, explain_assertion, list_assertions
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return parsed
+
+
 def _ensure_verbose_retrieval_fields(result: dict) -> dict:
     for item in result.get("items", []):
         item.setdefault("score_breakdown", {})
@@ -321,9 +335,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--provider",choices=["ollama","hash"],default="ollama")
     p.add_argument("--model",default=DEFAULT_EMBED_MODEL)
     p.add_argument("--endpoint",default="http://127.0.0.1:11434")
-    p.add_argument("--batch-size",type=int,default=32)
-    p.add_argument("--max-neurons",type=int,help="Index only the most recently updated semantic neurons")
-    p.add_argument("--dimensions",type=int,default=256,help="Hash-provider dimensions; ignored by Ollama")
+    p.add_argument("--batch-size",type=_positive_int,default=32)
+    p.add_argument("--max-neurons",type=_positive_int,help="Index only the most recently updated semantic neurons")
+    p.add_argument("--dimensions",type=_positive_int,default=256,help="Hash-provider dimensions; ignored by Ollama")
     p.add_argument("--rebuild",action="store_true")
     p=sub.add_parser("think", help="Activate latent neurons and spread activation through synapses")
     p.add_argument("--db",type=Path)
@@ -331,9 +345,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--provider",choices=["ollama","hash"],default="ollama")
     p.add_argument("--model",default=DEFAULT_EMBED_MODEL)
     p.add_argument("--endpoint",default="http://127.0.0.1:11434")
-    p.add_argument("--seeds",type=int,default=8)
-    p.add_argument("--hops",type=int,default=2)
-    p.add_argument("--limit",type=int,default=12)
+    p.add_argument("--seeds",type=_positive_int,default=8)
+    p.add_argument("--hops",type=_nonnegative_int,default=2)
+    p.add_argument("--limit",type=_positive_int,default=12)
     p.add_argument("--now",help="ISO timestamp for deterministic activation decay")
     p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence")
     p.add_argument("--db",type=Path)
