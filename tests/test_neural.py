@@ -14,6 +14,7 @@ def _seed(conn: sqlite3.Connection) -> None:
             ("passport", "task", "Renew passport", "Projects/travel.md", "2026-01-01", "2026-01-01"),
             ("invoice", "task", "Pay studio invoice", "Projects/business.md", "2026-01-01", "2026-01-01"),
             ("noise", "note", "Garden plants", "Notes/garden.md", "2026-01-01", "2026-01-01"),
+            ("rumor", "task", "Unverified airport rumor", "Notes/rumor.md", "2026-01-01", "2026-01-01"),
         ],
     )
     conn.executemany(
@@ -22,6 +23,7 @@ def _seed(conn: sqlite3.Connection) -> None:
         [
             ("e1", "travel", "passport", "requires", 1.0, 1.0, "active", "Projects/travel.md", "Passport is required before travel", "2026-01-01", "2026-01-01"),
             ("e2", "travel", "noise", "mentions", 1.0, 1.0, "killed", "Notes/garden.md", "Wrong historical link", "2026-01-01", "2026-01-01"),
+            ("e3", "travel", "rumor", "might_require", 1.0, 1.0, "candidate", "Notes/rumor.md", "Unverified candidate", "2026-01-01", "2026-01-01"),
         ],
     )
     conn.commit()
@@ -33,9 +35,9 @@ def test_latent_index_is_incremental_and_local(tmp_path: Path):
     _seed(conn)
     first = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
     second = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
-    assert first["indexed"] == 4
+    assert first["indexed"] == 5
     assert second["indexed"] == 0
-    assert second["unchanged"] == 4
+    assert second["unchanged"] == 5
 
 
 def test_think_seeds_latently_and_spreads_through_active_synapses(tmp_path: Path):
@@ -49,6 +51,7 @@ def test_think_seeds_latently_and_spreads_through_active_synapses(tmp_path: Path
     assert names[0] == "Athens family travel"
     assert "Renew passport" in names
     assert "Garden plants" not in names
+    assert "Unverified airport rumor" not in names
     passport = next(item for item in result["activated_neurons"] if item["name"] == "Renew passport")
     assert passport["reason"]["kind"] == "synapse"
     assert passport["reason"]["relation"] == "requires"

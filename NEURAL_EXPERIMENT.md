@@ -44,8 +44,8 @@ mneme think --db "$DB" --prompt "What deserves my attention today?"
 `think` performs two operations:
 
 1. The prompt activates semantically similar neurons from the local latent index.
-2. Activation spreads over non-killed synapses, weighted by strength, confidence,
-   and status.
+2. Activation spreads only over active synapses, weighted by strength and
+   confidence. Candidate and killed synapses never become factual thought paths.
 
 Dated memory naturally decays. Project neurons retain a higher floor because a
 long-running project can remain relevant without a recent dated note. The output

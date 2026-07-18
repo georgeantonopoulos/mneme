@@ -106,7 +106,7 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   GROUP_CONCAT(DISTINCT (e.relation || ' ' || COALESCE(e.evidence_text,''))) synapses
            FROM nodes n
            LEFT JOIN observations o ON o.note_id=n.id
-           LEFT JOIN edges e ON (e.src_id=n.id OR e.dst_id=n.id) AND COALESCE(e.status,'candidate')!='killed'
+           LEFT JOIN edges e ON (e.src_id=n.id OR e.dst_id=n.id) AND e.status='active'
            WHERE n.type NOT IN ('heading','observation','wikilink','date')
            GROUP BY n.id
            ORDER BY n.updated_at DESC,n.id"""
@@ -262,7 +262,7 @@ def think(
             edges = conn.execute(
                 f"""SELECT e.id,e.src_id,e.dst_id,e.relation,e.status,e.strength,e.confidence,e.source_path,e.evidence_text
                     FROM edges e
-                    WHERE COALESCE(e.status,'candidate')!='killed'
+                    WHERE e.status='active'
                       AND (e.src_id IN ({placeholders}) OR e.dst_id IN ({placeholders}))""",
                 ids + ids,
             ).fetchall()
@@ -271,9 +271,8 @@ def think(
                 for origin, target in ((edge["src_id"], edge["dst_id"]), (edge["dst_id"], edge["src_id"])):
                     if origin not in frontier:
                         continue
-                    status_weight = 1.0 if edge["status"] == "active" else 0.35
                     weight = max(0.0, min(1.0, float(edge["strength"] or 0.5) * float(edge["confidence"] or 0.5)))
-                    activation = frontier[origin] * spread * status_weight * weight
+                    activation = frontier[origin] * spread * weight
                     if activation <= activations.get(target, 0.0):
                         continue
                     activations[target] = activation
