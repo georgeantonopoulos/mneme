@@ -38,6 +38,7 @@ def test_latent_index_is_incremental_and_local(tmp_path: Path):
     assert first["indexed"] == 5
     assert second["indexed"] == 0
     assert second["unchanged"] == 5
+    assert second["dimensions"] == 64
     conn.execute("DELETE FROM nodes WHERE id='noise'")
     third = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
     assert third["removed"] == 1

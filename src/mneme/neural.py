@@ -192,6 +192,13 @@ def build_latent_index(
                 indexed += 1
             conn.commit()
         conn.commit()
+        if indexed == 0:
+            stored = conn.execute(
+                "SELECT dimensions FROM latent_neurons WHERE provider=? AND model=? LIMIT 1",
+                (provider, model),
+            ).fetchone()
+            if stored is not None:
+                resolved_dimensions = int(stored[0])
         return {
             "neurons": len(rows),
             "indexed": indexed,
