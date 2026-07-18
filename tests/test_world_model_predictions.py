@@ -99,6 +99,26 @@ def test_add_due_and_confirm_prediction_from_observation_terms(tmp_path: Path):
     assert checked["matches"][0]["overlap"]
 
 
+def test_add_prediction_accepts_description_and_expected_by_compatibility_fields(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    payload = {
+        "description": "Finance should answer the refund enquiry",
+        "expected_by": "2026-08-01T00:00:00+00:00",
+        "match_json": {
+            "sense_type": "fictional_tasks",
+            "title_terms_any": ["refund"],
+        },
+    }
+
+    first = add_prediction(db, payload)
+    second = add_prediction(db, payload)
+
+    assert first["title"] == payload["description"]
+    assert first["check_after"] == payload["expected_by"]
+    assert first["expires_at"] == payload["expected_by"]
+    assert second["id"] == first["id"]
+
+
 def test_expired_prediction_is_missed_when_sense_type_has_events(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)

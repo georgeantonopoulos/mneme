@@ -199,13 +199,14 @@ def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[
         prediction_type = payload.get("prediction_type", "confirmation_expected")
         if prediction_type not in PREDICTION_TYPES:
             raise ValueError("prediction_type must be confirmation_expected or no_news_expected")
-        title = payload.get("title")
+        title = payload.get("title") or payload.get("description")
         if not isinstance(title, str) or not title.strip():
-            raise ValueError("title is required")
-        check_after = payload.get("check_after")
-        expires_at = payload.get("expires_at")
+            raise ValueError("title is required (description is accepted as a fallback)")
+        expected_by = payload.get("expected_by")
+        check_after = payload.get("check_after") or expected_by
+        expires_at = payload.get("expires_at") or expected_by
         if not check_after or not expires_at:
-            raise ValueError("check_after and expires_at are required")
+            raise ValueError("check_after and expires_at are required (expected_by may supply both)")
         check_dt = _parse_iso(check_after, field="check_after")
         expires_dt = _parse_iso(expires_at, field="expires_at")
         if expires_dt < check_dt:
@@ -217,7 +218,13 @@ def add_prediction(conn_or_path: sqlite3.Connection | Path | str, payload: dict[
         metadata = payload.get("metadata_json", payload.get("metadata", {}))
         if not isinstance(metadata, dict):
             raise ValueError("metadata_json must be an object")
-        prediction_id = str(payload.get("id") or prediction_content_id(payload, match_json))
+        normalized_payload = {
+            **payload,
+            "title": title.strip(),
+            "check_after": str(check_after),
+            "expires_at": str(expires_at),
+        }
+        prediction_id = str(payload.get("id") or prediction_content_id(normalized_payload, match_json))
         ts = now_iso()
         conn.execute(
             """INSERT INTO world_predictions(

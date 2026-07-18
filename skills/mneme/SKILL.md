@@ -15,6 +15,8 @@ For conceptually related prompts without shared vocabulary, prefer local semanti
 
 See `references/neural-think-experiment.md` for the proven vertical-slice architecture, evaluation method, and implementation pitfalls.
 
+For named-person, company, or project questions, follow `references/person-entity-retrieval.md`: start with the exact entity name and aliases, treat generic semantic/email activations as leads rather than answers, follow provenance into the real source, and consolidate verified facts into a canonical entity note. Do not pad the first retrieval query with broad terms such as `context`, `projects`, or `relationship`; they can overpower the entity token and produce a technically non-empty but useless result.
+
 ## Repo/Local Mirror Rule
 
 The Mneme skill and Hermes hook must never diverge between repo and local runtime. Update repo assets first, then sync local copies and verify drift checks are clean:
@@ -47,7 +49,7 @@ Use these resolved paths in all subsequent `--vault`, `--db`, and `--out` flags.
 
 ## Vault Write Path
 
-Always use `mneme write` or `mneme note` for vault Markdown files. Never use file tools directly on `$VAULT/`. Exception: scripts and configs outside the vault.
+Mneme is the **only** memory and vault interface. Use `mneme write`, `mneme note`, `mneme resolve`, and Mneme retrieval commands. Do not use `obsidian-cli`, including for startup reads, daily notes, or routine logging. Read required vault context with `mneme note read`; write it with `mneme note write` or `mneme resolve`. Never use file tools directly on `$VAULT/`. Exception: scripts and configs outside the vault.
 
 ## Vault Path Configuration
 
@@ -78,6 +80,19 @@ Run `index` after any sense ingestion, `mneme write`, `mneme resolve`, or graph 
 Treat `think` output as an activated evidence map for the LLM. Latent seeds are related leads, not facts. Relations become factual thought paths only through active, source-backed synapses. Inspect `source_path` and synapse evidence before relying on a result.
 
 The `--max-neurons 1000` runtime profile deliberately keeps the active semantic index bounded. New things sort first by graph `updated_at`, enter on the next incremental index pass, and evict the oldest indexed neurons. Remove the bound for a complete index when runtime cost is acceptable.
+
+### Neural rollout and freshness verification
+
+When activating the neural path in an agent runtime, verify the complete loop rather than stopping after a branch, code copy, or passing tests:
+
+1. Confirm the runtime CLI imports the intended checkout/branch.
+2. Sync the repo-managed skill and pre-LLM hook; run hook-sync and skill-drift checks with the private skill path supplied explicitly.
+3. Build the initial real embedding index against the runtime database.
+4. Immediately repeat the same incremental index command. A healthy no-op reports `indexed: 0`, all selected neurons as `unchanged`, no removals, and the stored embedding dimensions—not fallback/default dimensions.
+5. Run a real `mneme think` probe against the runtime database; inspect sources, activation reasons, and active-synapse propagation.
+6. After ingestion or graph mutation, run another incremental pass and verify new/changed neurons are embedded and deleted/out-of-window neurons are removed.
+
+Index freshness is not sense freshness: sensing must first persist new evidence into nodes, observations, and active synapses. Vector refresh then hashes each assembled neuron document and embeds only changed content. Never claim the experiment is active merely because the branch exists or tests pass; require a live index and live thought probe.
 
 ## Legacy Retrieval Path (Compatibility)
 
@@ -141,6 +156,7 @@ Rules:
 - Use `mneme resolve` for user-confirmed corrections and source-backed research; validated claims are dual-written into current world assertions.
 - Include `predictions[]` in a `mneme resolve` payload when the research creates an expectation that later evidence should confirm, contradict, or fail to appear.
 - Omit prediction IDs unless a stable external ID exists; Mneme derives deterministic content-hash IDs to avoid duplicate replay.
+- Prediction payloads use `title`, `match_json`, `check_after`, and `expires_at`. For compatibility, `description` may supply a missing title and `expected_by` may supply both timestamps. Match criteria use canonical fields such as `title_terms_any`, `observation_terms_any`, and `source_path_terms_any`; do not invent Gmail-specific fields such as `sender_any` or `subject_any`.
 - Prefer `world tick --dry-run` during interactive use. Run mutating `world tick` only in explicit maintenance jobs or when the user asks to update prediction state.
 - Treat `open_prediction`, `missed_prediction`, `unverifiable_prediction`, and `current_state_assertion` truth policies as operational state, not decorative metadata.
 - Treat `lapsed_state_assertion` as retained audit evidence, not current authority. Use `retrieve --as-of` or `agent preflight --as-of` when replaying a historical decision; read-time validity must not silently mutate durable state.
@@ -159,8 +175,9 @@ Rules:
 
 After explaining a surfaced item, assess whether it is still an open loop. Apply feedback automatically:
 
-- **Stale/past-dated observations** (nightly cron corrections already applied, past deadlines, resolved items with old dates): use `mneme forget --db "$MNEME_DB" --days-threshold <N>` first. This sets edge strength to 0 for observations older than N days without deleting nodes/observations. Prefer `forget` over `kill` for age-related cleanup — it is non-destructive and reversible.
-- **Resolved corrections with no date anchor** (corrections that were applied but lack an observation date): use `mneme feedback <thought_id> --kill --reason "resolved: <why>" --json` only after `forget` has been tried.
+- **Stale/past-dated observations** (nightly cron corrections already applied, past deadlines, resolved items with old dates): use `mneme forget --db "$MNEME_DB" --days-threshold <N>` first only when you intentionally want age-based cleanup across the matching live graph. `forget` is a broad operation, not a targeted acknowledgement.
+- **One surfaced thought that is already resolved**: prefer `mneme feedback <thought_id> --already-done --reason "..." --json`. Do not run a broad `forget --days-threshold 1` merely to clear one date-specific correction; that can suppress unrelated observations.
+- **Resolved corrections with no date anchor** (corrections that were applied but lack an observation date): use `mneme feedback <thought_id> --kill --reason "resolved: <why>" --json` only when `--already-done` does not fit and broader forgetting is intentional.
 - **Standing preferences** (ongoing user preferences, not time-bound): snooze with `mneme feedback <thought_id> --snooze 7d --reason "standing preference: will re-surface if still relevant" --json`
 - **Open/active items**: keep surfaced, apply `--accept` or `--deny` based on relevance
 
@@ -312,7 +329,7 @@ Synapses are typed, auditable claims — not decorative graph lines.
 When research resolves facts:
 
 ```bash
-mneme resolve --file payload.json --json
+mneme resolve --file payload.json
 ```
 
 Rules:
@@ -367,4 +384,6 @@ When extending the world model with time-bounded authority:
 - **Note content with shell-active characters** — use temp files or Python subprocess, not inline shell strings, to avoid command substitution
 - **`note replace` is exact string replacement only** — regex edits are intentionally unsupported. Use `note upsert-section` or `note write --mode overwrite` for section-level changes
 - **Pre-LLM hook misclassification** — the hook classifies every prompt as retrieval or correction. Strips injected context before classification. Correction path should not fire on negated terms (e.g. "not resolved")
+- **`--json` flag is NOT universal** — only `sense run`, `tick`, `surface`, `explain`, `feedback`, and `forget` accept `--json`. All other commands (`retrieve`, `agent preflight`, `resolve`, `remember add`, `state`, `predict`, `world`, `action`, `alias`, `eval`, `brain`, `consolidate`) output JSON by default and reject `--json` with `unrecognized arguments: --json`. Never pass `--json` to a command that doesn't list it in `--help`.
 - **Compact hook injection safety** — when a pre-LLM hook injects Mneme context, do NOT inject large `MNEME RETRIEVAL PATH` / `MNEME BOTH PATH` protocol blocks or long `PRIMARY DIRECTIVE` banners into every prompt. Use the repo-managed `scripts/mneme_senses_context_hook.py`, install/check it with `python scripts/sync_hermes_hook.py --check`, and strip leaked hook markers before classifying user text. See `references/hook-directive-order.md`.
+- **Skill/hook drift must be repaired, not tolerated** — if a local Mneme skill or hook diverges from the repo, archive local-only operational notes into the vault, then restore a clean repo mirror. Do not leave timestamped backup skill directories under the active skill search path: duplicate `SKILL.md` files make `skill_view(name='mneme')` ambiguous and break the mandatory skill-load workflow.
