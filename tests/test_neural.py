@@ -123,6 +123,8 @@ def test_think_seeds_latently_and_spreads_through_active_synapses(tmp_path: Path
     passport = next(item for item in result["activated_neurons"] if item["name"] == "Renew passport")
     assert passport["reason"]["kind"] == "synapse"
     assert passport["reason"]["relation"] == "requires"
+    assert all(item["truth_policy"] == "provenance_not_fact" for item in result["activated_neurons"])
+    assert result["contract"] == {"name": "mneme-agent-brain", "version": "mneme-agent-brain-v1"}
     assert result["instructions"].startswith("Use these activations")
 
 

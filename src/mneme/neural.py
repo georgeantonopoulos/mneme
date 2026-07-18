@@ -12,6 +12,8 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable
 
+from .contract import CONTRACT_NAME, CONTRACT_VERSION
+
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_'-]+", re.I)
 DATE_RE = re.compile(r"20\d{2}-\d{2}-\d{2}")
 DEFAULT_MODEL = "nomic-embed-text"
@@ -343,6 +345,7 @@ def think(
                     "type": node_rows[node_id]["type"],
                     "source_path": node_rows[node_id]["source_path"],
                     "activation": round(activations[node_id], 6),
+                    "truth_policy": "provenance_not_fact",
                     "reason": reasons[node_id],
                 }
                 for node_id in ordered_ids if node_id in node_rows
@@ -353,6 +356,7 @@ def think(
             for item in neurons
         ]
         return {
+            "contract": {"name": CONTRACT_NAME, "version": CONTRACT_VERSION},
             "prompt": prompt,
             "model": {"provider": provider, "name": model},
             "activated_neurons": neurons,
