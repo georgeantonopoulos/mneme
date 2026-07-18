@@ -25,7 +25,7 @@ SKILL_REF_REL_STR = _SKILL_REF_REL.as_posix()
 HOOK_SCRIPT = PUBLIC_ROOT / "scripts" / "mneme_senses_context_hook.py"
 SYNC_SCRIPT = PUBLIC_ROOT / "scripts" / "sync_hermes_hook.py"
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
     "Memory correction note: answer the user first; store durable corrections "
     "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "

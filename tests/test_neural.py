@@ -38,6 +38,10 @@ def test_latent_index_is_incremental_and_local(tmp_path: Path):
     assert first["indexed"] == 5
     assert second["indexed"] == 0
     assert second["unchanged"] == 5
+    conn.execute("DELETE FROM nodes WHERE id='noise'")
+    third = build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
+    assert third["removed"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM latent_neurons").fetchone()[0] == 4
 
 
 def test_think_seeds_latently_and_spreads_through_active_synapses(tmp_path: Path):

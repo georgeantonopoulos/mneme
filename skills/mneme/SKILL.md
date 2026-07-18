@@ -5,6 +5,16 @@ description: Canonical skill for Mneme — single memory system for retrieval, w
 
 # Mneme
 
+## Product Philosophy — Neural Substrate, Not Memory Bureaucracy
+
+Mneme's public mental model is biological: **perception → neuron activation → synapse propagation → emergent thought → feedback-driven strengthening, weakening, inhibition, or forgetting**. Its success criterion is whether Hermes has a useful, source-grounded thought it would not otherwise have had.
+
+Tables, schemas, truth-policy fields, lifecycle conditions, and specialist CLIs are implementation plumbing. Do not let Hermes or the user administer them as the product. Before adding another public subsystem, ask whether the capability can instead be expressed as activation, decay, inhibition, reinforcement, or source-backed synaptic propagation. Keep agent-facing flows small: perceive, think, explain, reinforce/suppress, consolidate.
+
+For conceptually related prompts without shared vocabulary, prefer local semantic neuron activation over piling more lexical rules onto retrieval. Latent similarity creates associative leads, never facts: spread only through active synapses, retain source provenance on every activation, and verify the source before making factual claims. Candidate and killed synapses never propagate. Use temporal decay to reduce stale activation, but never block perception of fresh evidence.
+
+See `references/neural-think-experiment.md` for the proven vertical-slice architecture, evaluation method, and implementation pitfalls.
+
 ## Repo/Local Mirror Rule
 
 The Mneme skill and Hermes hook must never diverge between repo and local runtime. Update repo assets first, then sync local copies and verify drift checks are clean:
@@ -54,7 +64,22 @@ mneme init --vault "$VAULT" --force
 
 Verify: `mneme write --path memory/test.md --mode create --content "test"` should create `$VAULT/memory/test.md`.
 
-## Retrieval Path (Default)
+## Neural Think Path (Default Experiment)
+
+For memory-backed reasoning, use the local latent neuron index before the legacy retrieval stack:
+
+```bash
+mneme index --db "$MNEME_DB" --provider ollama --model nomic-embed-text --max-neurons 1000
+mneme think --db "$MNEME_DB" --provider ollama --model nomic-embed-text --prompt "$PROMPT"
+```
+
+Run `index` after any sense ingestion, `mneme write`, `mneme resolve`, or graph mutation that may create, change, or remove neurons. Indexing is incremental: a SHA-256 content hash over each neuron's name, type, source, observations, and active-synapse evidence determines whether it needs re-embedding. Unchanged vectors are reused; new/changed neurons are embedded locally; deleted neurons and neurons leaving the bounded recent-neuron window are removed. `nomic-embed-text` runs through local Ollama. Use `--provider hash --model hash-v1` only as a deterministic lexical fallback, not as equivalent semantic retrieval.
+
+Treat `think` output as an activated evidence map for the LLM. Latent seeds are related leads, not facts. Relations become factual thought paths only through active, source-backed synapses. Inspect `source_path` and synapse evidence before relying on a result.
+
+The `--max-neurons 1000` runtime profile deliberately keeps the active semantic index bounded. New things sort first by graph `updated_at`, enter on the next incremental index pass, and evict the oldest indexed neurons. Remove the bound for a complete index when runtime cost is acceptable.
+
+## Legacy Retrieval Path (Compatibility)
 
 Sense-first loop for any task requiring memory/context:
 
@@ -294,6 +319,36 @@ Rules:
 - confirmed/certain + confidence >= 0.90 + non-empty evidence → active synapse
 - pending/unsupported/lower-confidence → candidate
 - candidates must not drive thought cards or retrieval as truth
+
+## Verification Lessons
+
+For a repeatable live-vault/Hermes quality audit, use `references/hermes-live-vault-evaluation.md`. It separates execution reliability, topical retrieval, current/actionable precision, world-model coverage, and graph health instead of treating a successful harness run as proof of useful recall.
+
+### Live-vault evaluation and temporal coverage
+
+- Refresh the live database only through a configured Mneme sense command, then take a SQLite-consistent snapshot and run consolidation, labeling, retrieval probes, world ticks, and destructive experiments against the snapshot. Report clearly which step, if any, mutated the live database.
+- A passing contract, valid JSON, and successful brain harness prove integration—not answer quality. Evaluate at least five representative prompt classes and inspect the top results for both topical relevance and current/actionable relevance.
+- Score topical relevance separately from operational currency. Historically accurate results can be topically excellent and still be harmful answers to “what matters now?”
+- Before crediting temporal validity, measure coverage: count current assertions, current assertions with `valid_until`, assertions already expired, and prediction statuses. If `valid_until` coverage is zero, say directly that read-time lapse logic is dormant on live data.
+- Inspect lifecycle leakage: delivered, refunded, paid, departed, completed, cancelled, or closed facts should remain auditable but should not retain current-action authority without an explicit standing-state reason.
+- Inspect world-state injection independently of graph retrieval. A generic recent-current list can pollute prompt-specific preflight even when lexical retrieval is good; world assertions should be prompt-ranked before inclusion.
+- Treat 100% procedural/fallback brain labels as a labeling failure even if the harness reports an LLM provider. Report fallback counts and do not mistake attempted labeling for semantic coverage.
+- Quantify graph health with candidate/active/killed edge ratios, orphan-node rate, unknown predicate/relation warnings, prediction status counts, and thought-title specificity. Generic titles such as “Reasoned graph walk” are evidence of weak actionability even when their underlying paths are relevant.
+- Do not apply feedback to surfaced thoughts during a quality audit on a disposable snapshot. On a live retrieval cycle, continue to acknowledge thoughts according to the normal pruning rules.
+
+### Temporal validity and event-gated predictions
+
+When extending the world model with time-bounded authority:
+
+- Keep durable lifecycle status separate from effective read-time authority. Evaluate `valid_until` against an explicit `as_of`, label elapsed rows `lapsed_state_assertion`, demote their retrieval score, and verify the read path does not change `status` or `updated_at`.
+- Define and test the boundary. Mneme treats `valid_until == as_of` as still current; it lapses only after that instant.
+- Thread `as_of` through every path that can surface the assertion—retrieval, thought surfacing, and preflight—or stale authority can leak through a sibling path.
+- Model event deadlines as structured evidence selectors, not prose. Validate gate `sense_type`, identity/term criteria, and `time_field`; permit only `observed_at` or `metadata.<path>`.
+- Compute `min(expires_at, resolved_gate_time)` once and use it consistently for due checks, matching windows, watches, settlement, and diagnostics.
+- Reject post-gate evidence. If a configured gate cannot resolve, otherwise matching target evidence must not confirm the prediction; keep it open until configured expiry, then mark it `unverifiable`.
+- Make watch horizons relative to caller-supplied `now`, not wall-clock time, so replay and tests remain deterministic.
+- Test against fields ingestion actually persists. `SenseEvent.text` is not automatically equivalent to stored `observations`; use title criteria or explicitly created observations when testing gate semantics.
+- Cover pre-gate confirmation, post-gate rejection, due-time pull-forward, watch suppression, unresolved-gate settlement, inclusive validity boundaries, and durable-row non-mutation.
 
 ## Pitfalls
 

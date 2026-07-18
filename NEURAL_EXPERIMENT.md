@@ -26,7 +26,9 @@ not a semantic substitute:
 mneme index --db "$DB" --provider hash --model hash-v1
 ```
 
-Indexing is incremental. Only changed neuron representations are embedded again.
+Indexing is incremental. Only new or changed neuron representations are embedded
+again; vectors for deleted neurons or neurons that leave a bounded index window
+are removed.
 Headings, extracted observation nodes, wikilinks, and dates are excluded from the
 latent seed index; they remain available through graph propagation. Large graphs
 can start with the most recently updated semantic neurons:

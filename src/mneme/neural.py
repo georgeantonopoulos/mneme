@@ -148,6 +148,15 @@ def build_latent_index(
         if rebuild:
             conn.execute("DELETE FROM latent_neurons")
         rows = _neuron_rows(conn, limit=max_neurons)
+        selected_ids = {row["id"] for row in rows}
+        existing_ids = {row[0] for row in conn.execute("SELECT node_id FROM latent_neurons").fetchall()}
+        stale_ids = existing_ids - selected_ids
+        if stale_ids:
+            placeholders = ",".join("?" for _ in stale_ids)
+            conn.execute(
+                f"DELETE FROM latent_neurons WHERE node_id IN ({placeholders})",
+                sorted(stale_ids),
+            )
         pending: list[tuple[sqlite3.Row, str, str]] = []
         for row in rows:
             text = _neuron_text(row)
@@ -182,10 +191,12 @@ def build_latent_index(
                 )
                 indexed += 1
             conn.commit()
+        conn.commit()
         return {
             "neurons": len(rows),
             "indexed": indexed,
             "unchanged": len(rows) - indexed,
+            "removed": len(stale_ids),
             "provider": provider,
             "model": model,
             "dimensions": resolved_dimensions,
