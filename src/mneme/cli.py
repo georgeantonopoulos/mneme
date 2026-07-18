@@ -11,6 +11,7 @@ from .contract import check_db_contract
 from .core import DEFAULT_CONFIG_PATH, DEFAULT_HINTS, activate_candidate_edges, configured_senses, create_config, debug_candidates, doctor, explain_edge, explain_thought, forget_past_dates, forget_source, generate_proactive_thought, generate_thought, ingest_sense_events, ingest_vault, list_thought_candidates, load_config, meditate_graph, record_feedback, remember_graph, retrieve_context, revalidate_action_candidates, save_thought, surface_thoughts, tick, update_vault, weaken_edge, write_note, write_research_resolution
 from .harness import DEFAULT_TIMEOUT_SECONDS, run_llm
 from .hierarchy import get_node_path, get_subtree_node_ids, mark_cross_boundary_edges, migrate_add_paths, path_tree, rebuild_path_index, set_node_path, validate_paths
+from .neural import DEFAULT_MODEL as DEFAULT_EMBED_MODEL, build_latent_index, think as neural_think
 from .physarum import PhysarumRunConfig, run_physarum, top_physarum_edges
 from .render import render_card
 from .runtime import default_config_path, load_runtime_config, resolve_hints, resolve_path
@@ -315,6 +316,25 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hops",type=int,default=5)
     p.add_argument("--limit",type=int,default=20)
     p.add_argument("--include-skipped",action="store_true")
+    p=sub.add_parser("index", help="Build the local latent neuron index")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--provider",choices=["ollama","hash"],default="ollama")
+    p.add_argument("--model",default=DEFAULT_EMBED_MODEL)
+    p.add_argument("--endpoint",default="http://127.0.0.1:11434")
+    p.add_argument("--batch-size",type=int,default=32)
+    p.add_argument("--max-neurons",type=int,help="Index only the most recently updated semantic neurons")
+    p.add_argument("--dimensions",type=int,default=256,help="Hash-provider dimensions; ignored by Ollama")
+    p.add_argument("--rebuild",action="store_true")
+    p=sub.add_parser("think", help="Activate latent neurons and spread activation through synapses")
+    p.add_argument("--db",type=Path)
+    p.add_argument("--prompt",help="What to think about; omit to read stdin")
+    p.add_argument("--provider",choices=["ollama","hash"],default="ollama")
+    p.add_argument("--model",default=DEFAULT_EMBED_MODEL)
+    p.add_argument("--endpoint",default="http://127.0.0.1:11434")
+    p.add_argument("--seeds",type=int,default=8)
+    p.add_argument("--hops",type=int,default=2)
+    p.add_argument("--limit",type=int,default=12)
+    p.add_argument("--now",help="ISO timestamp for deterministic activation decay")
     p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence")
     p.add_argument("--db",type=Path)
     p.add_argument("--prompt",help="Prompt text; omit to read from stdin")
@@ -787,6 +807,15 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "debug-candidates":
         print(json.dumps(debug_candidates(required_path(args,"db"), limit=args.limit, hops=args.hops, hints=hints_from_args(args), include_skipped=args.include_skipped), indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "index":
+        result = build_latent_index(required_path(args,"db"), provider=args.provider, model=args.model, endpoint=args.endpoint, dimensions=args.dimensions, batch_size=args.batch_size, max_neurons=args.max_neurons, rebuild=args.rebuild)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "think":
+        prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+        result = neural_think(required_path(args,"db"), prompt, provider=args.provider, model=args.model, endpoint=args.endpoint, seeds=args.seeds, hops=args.hops, limit=args.limit, now=args.now)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     if args.cmd == "retrieve":
         if args.explain is True:
