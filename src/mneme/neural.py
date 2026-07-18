@@ -266,7 +266,16 @@ def think(
         ).fetchall()
         if not rows:
             raise ValueError("latent index is empty for this provider/model; run `mneme index` first")
-        query = embed_texts([prompt], provider=provider, model=model, endpoint=endpoint, dimensions=rows[0]["dimensions"])[0]
+        stored_dimensions = {int(row["dimensions"]) for row in rows}
+        if len(stored_dimensions) != 1:
+            raise ValueError("latent index contains mixed embedding dimensions; run `mneme index --rebuild`")
+        indexed_dimensions = stored_dimensions.pop()
+        query = embed_texts([prompt], provider=provider, model=model, endpoint=endpoint, dimensions=indexed_dimensions)[0]
+        if len(query) != indexed_dimensions:
+            raise ValueError(
+                f"embedding dimensions changed from {indexed_dimensions} to {len(query)}; "
+                "run `mneme index --rebuild`"
+            )
         now_dt = dt.datetime.fromisoformat((now or _now_iso()).replace("Z", "+00:00"))
         ranked = sorted(
             ((max(0.0, _cosine(query, _unpack(row["vector"], row["dimensions"]))) * _temporal_decay(row["name"], row["source_path"], now=now_dt), row) for row in rows),

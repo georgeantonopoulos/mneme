@@ -1,6 +1,9 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
+
+import mneme.neural as neural
 from mneme.core import init_db
 from mneme.neural import _neuron_rows, _neuron_text, build_latent_index, think
 
@@ -58,6 +61,27 @@ def test_dimension_change_reindexes_all_hash_vectors(tmp_path: Path):
     assert second["indexed"] == 5
     assert second["unchanged"] == 0
     assert {row[0] for row in conn.execute("SELECT dimensions FROM latent_neurons")} == {32}
+
+
+def test_think_rejects_changed_ollama_embedding_dimensions(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+
+    monkeypatch.setattr(
+        neural,
+        "embed_texts",
+        lambda texts, **_kwargs: [[1.0, 0.0, 0.0] for _text in texts],
+    )
+    build_latent_index(conn, provider="ollama", model="mutable-model")
+
+    monkeypatch.setattr(
+        neural,
+        "embed_texts",
+        lambda texts, **_kwargs: [[1.0, 0.0] for _text in texts],
+    )
+    with pytest.raises(ValueError, match=r"embedding dimensions changed from 3 to 2.*--rebuild"):
+        think(conn, "family travel", provider="ollama", model="mutable-model")
 
 
 def test_zero_weight_edges_are_not_indexed_as_synaptic_evidence(tmp_path: Path):
