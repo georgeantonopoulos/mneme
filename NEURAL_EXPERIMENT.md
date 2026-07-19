@@ -43,19 +43,35 @@ mneme index --db "$DB" --max-neurons 1000
 mneme think --db "$DB" --prompt "What deserves my attention today?"
 ```
 
-`think` performs two operations:
+`think` performs four operations:
 
 1. The prompt activates semantically similar neurons from the local latent index.
-2. Activation spreads only over active synapses, weighted by strength and
+2. A bounded lexical rescue lane promotes strong exact entity/project matches
+   without replacing the latent ranking. Lexical activation uses absolute IDF
+   calibration and can add at most two extra seeds by default.
+3. Activation spreads only over active synapses, weighted by strength and
    confidence. Candidate and killed synapses never become factual thought paths.
+4. Returned neurons are hydrated with compact, source-backed evidence from their
+   observations, positive active edges, and matching sensed-event metadata.
+   Sensed sources use the latest deterministically ordered ingestion revision,
+   and every evidence excerpt is size-bounded.
 
-Dated memory naturally decays. Project neurons retain a higher floor because a
-long-running project can remain relevant without a recent dated note. The output
-contains activated neurons, activation values, the path that activated each
-neuron, source provenance, and a compact context block an LLM can consume.
+Dated memory naturally decays. Calendar events use structured GWS start/end
+metadata rather than ingestion time, so elapsed events lose activation even when
+their source URL contains no date. Timestamped events are normalized to UTC for
+decay while all-day events retain their declared date. Project neurons retain a
+higher floor because a long-running project can remain relevant without a recent
+dated note. The
+output contains activated neurons, activation values, latent/lexical/synaptic
+signals, compact evidence excerpts, source provenance, and context an LLM can
+consume.
 
 Latent similarity creates associative leads, not facts. Source provenance remains
 mandatory before the LLM makes a factual claim.
+
+One embedding is a lossy associative fingerprint, not a reversible copy of a
+note. Latent activation identifies where to look; evidence hydration supplies
+dates, amounts, descriptions, and relationship evidence from the stored sources.
 
 ## Scope
 
