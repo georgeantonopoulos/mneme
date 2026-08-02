@@ -156,6 +156,17 @@ Privacy-focused defaults:
 - Generated cards named `thought_*.svg` / `thought_*.png` and SQLite files are blocked by the included privacy scan.
 - Public examples are intentionally small and fictional.
 
+## Google Workspace sensing
+
+The optional GWS sense treats Gmail list results as discovery, not evidence. For each listed message it fetches the full Gmail message (`format=full`) before emitting an `email_message` event. The event retains:
+
+- normalized subject, sender, recipient, and date headers;
+- the Gmail thread ID;
+- decoded plain-text or visible HTML body text; and
+- attachment metadata (filename, MIME type, size, part ID, and attachment ID).
+
+If a detail fetch fails, Mneme keeps the list row instead of dropping the message. Callers that need attachment contents must fetch the attachment separately using the recorded attachment ID. This keeps retrieval provenance explicit and prevents snippets or message IDs from being mistaken for complete email evidence.
+
 ## Backup and restore policy
 
 Mneme stores meaningful memory state in SQLite, so backup is part of the workflow, not an afterthought.

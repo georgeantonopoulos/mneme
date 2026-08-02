@@ -37,7 +37,25 @@ class FakeRunner:
 def test_gws_sense_parses_email_calendar_and_task_fixture_output():
     runner = FakeRunner(
         [
-            json.dumps({"messages": [{"id": "m1", "subject": "ARRI feedback", "snippet": "Need reply about Sequency ARRI feedback", "from": "Casey"}]}),
+            json.dumps({"messages": [{"id": "m1", "threadId": "thread-1", "subject": "ARRI feedback", "snippet": "Need reply about Sequency ARRI feedback", "from": "Casey"}]}),
+            json.dumps({
+                "id": "m1",
+                "threadId": "thread-1",
+                "internalDate": "1778236800000",
+                "payload": {
+                    "mimeType": "multipart/mixed",
+                    "headers": [
+                        {"name": "Subject", "value": "ARRI feedback"},
+                        {"name": "From", "value": "Casey (test sender)"},
+                        {"name": "To", "value": "George (test recipient)"},
+                        {"name": "Date", "value": "Fri, 08 May 2026 10:00:00 +0000"},
+                    ],
+                    "parts": [
+                        {"mimeType": "text/plain", "body": {"data": "TmVlZCByZXBseSBhYm91dCB0aGUgU2VxdWVuY3kgQVJSSSBmZWVkYmFjaw=="}},
+                        {"mimeType": "application/pdf", "filename": "feedback.pdf", "body": {"attachmentId": "att-1", "size": 1234}},
+                    ],
+                },
+            }),
             json.dumps({"events": [{"id": "e1", "summary": "ARRI review", "start": "2026-05-08", "description": "Deadline risk for feedback"}]}),
             json.dumps({"tasks": [{"id": "t1", "title": "Send ARRI reply", "notes": "Follow up today"}]}),
         ]
@@ -48,7 +66,10 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output():
     assert [event.event_type for event in events] == ["email_message", "calendar_event", "task"]
     assert events[0].source_id == "email_message:m1"
     assert "Need reply" in events[0].text
-    assert len(runner.commands) == 3
+    assert events[0].metadata["gws"]["threadId"] == "thread-1"
+    assert events[0].metadata["gws"]["headers"]["from"] == "Casey (test sender)"
+    assert events[0].metadata["gws"]["attachments"][0]["filename"] == "feedback.pdf"
+    assert len(runner.commands) == 4
 
 
 def test_ingest_sense_events_stores_provenance_and_candidate_links(tmp_path: Path):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import shutil
@@ -95,7 +97,45 @@ class GwsSense:
         for row in rows:
             if not isinstance(row, dict):
                 continue
+            if event_type == "email_message":
+                row = self._enrich_email_row(row)
             yield self._event_from_row(event_type, row)
+
+    def _enrich_email_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Fetch full Gmail MIME metadata for a listed message.
+
+        Gmail's list endpoint only guarantees IDs and snippets.  Fetching the
+        full message here makes Mneme's email events useful for thread
+        direction, body text, and attachment-aware follow-up while preserving
+        the original list row when a detail fetch fails.
+        """
+        message_id = row.get("id") or row.get("message_id")
+        if not message_id:
+            return row
+        params = {"userId": "me", "id": str(message_id), "format": "full"}
+        cmd = ["gws", "gmail", "users", "messages", "get", "--params", json.dumps(params), "--format", "json"]
+        try:
+            detail = json.loads(self.runner.run(cmd))
+        except (OSError, RuntimeError, subprocess.SubprocessError, json.JSONDecodeError):
+            return row
+        if not isinstance(detail, dict):
+            return row
+
+        merged = dict(row)
+        merged.update({key: value for key, value in detail.items() if key != "payload"})
+        payload = detail.get("payload") or {}
+        headers = _gmail_headers(payload)
+        body, attachments = _gmail_content(payload)
+        merged["headers"] = headers
+        merged["threadId"] = detail.get("threadId") or row.get("threadId")
+        merged["subject"] = headers.get("subject") or row.get("subject")
+        merged["from"] = headers.get("from") or row.get("from")
+        merged["to"] = headers.get("to") or row.get("to")
+        merged["date"] = headers.get("date") or row.get("date")
+        if body:
+            merged["body"] = body
+        merged["attachments"] = attachments
+        return merged
 
     def _event_from_row(self, event_type: str, row: dict[str, Any]) -> SenseEvent:
         source_id = str(row.get("id") or row.get("message_id") or row.get("event_id") or row.get("task_id") or hashlib.sha1(json.dumps(row, sort_keys=True, default=str).encode()).hexdigest()[:20])
@@ -149,3 +189,50 @@ def _event_type_from_cmd(cmd: list[str]) -> str:
     if "task" in joined:
         return "task"
     return "workspace_event"
+
+
+def _gmail_headers(payload: dict[str, Any]) -> dict[str, str]:
+    headers = payload.get("headers") or []
+    return {
+        str(item.get("name", "")).lower(): str(item.get("value", ""))
+        for item in headers
+        if isinstance(item, dict) and item.get("name")
+    }
+
+
+def _decode_gmail_data(data: str | None) -> str:
+    if not data:
+        return ""
+    try:
+        padded = data + "=" * (-len(data) % 4)
+        return base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
+    except (ValueError, binascii.Error):
+        return ""
+
+
+def _gmail_content(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    bodies: list[str] = []
+    attachments: list[dict[str, Any]] = []
+    stack = [payload]
+    while stack:
+        part = stack.pop()
+        if not isinstance(part, dict):
+            continue
+        body = part.get("body") or {}
+        filename = str(part.get("filename") or "")
+        attachment_id = body.get("attachmentId")
+        if filename or attachment_id:
+            attachments.append({
+                "attachmentId": attachment_id,
+                "filename": filename,
+                "mimeType": part.get("mimeType"),
+                "size": body.get("size"),
+                "partId": part.get("partId"),
+            })
+        mime_type = str(part.get("mimeType") or "").lower()
+        if mime_type in {"text/plain", "text/html"}:
+            text = _decode_gmail_data(body.get("data"))
+            if text:
+                bodies.append(extract_visible_text(text) if mime_type == "text/html" else text)
+        stack.extend(reversed(part.get("parts") or []))
+    return "\n\n".join(part.strip() for part in bodies if part.strip()), attachments
