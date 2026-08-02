@@ -1,7 +1,7 @@
 ---
 name: mneme-agent-brain
 description: Use when an agent needs to build, label, retrieve from, surface thoughts from, or safely write temporary memory into a Mneme graph-backed Markdown vault.
-version: 1.1.0
+version: 2.0.0
 author: Mneme contributors
 license: MIT
 platforms:
@@ -94,6 +94,15 @@ Build or refresh the graph:
 ```bash
 mneme update --vault "$VAULT" --db "$DB"
 ```
+
+Build local neural memory and activate it when an embedding provider is available:
+
+```bash
+mneme index --db "$DB" --provider ollama --model nomic-embed-text
+mneme think --db "$DB" --provider ollama --model nomic-embed-text --prompt "$PROMPT"
+```
+
+Treat latent activation as a lead. Only active, source-backed synapses may become factual thought paths.
 
 Build the working brain:
 
