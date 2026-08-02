@@ -65,7 +65,7 @@ CORRECTION_MARKERS = [
     r"\b\b\[SILENT\]\b\b",
 ]
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = "Memory correction note: answer the user first; store durable corrections after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 NON_CORRECTION_COMPLETION = re.compile(
     r"\b(?:not|never|still\s+not|not\s+yet|will|will\s+be|going\s+to\s+be)\s+"
@@ -88,7 +88,7 @@ SOURCE_PRIORITY = [
 def _strip_injected_context(user_message: str) -> str:
     """Strip prompt-time context and leaked hook instructions from the message."""
     if strip_injected_context is not None:
-        return strip_injected_context(user_message)
+        user_message = strip_injected_context(user_message)
     if not user_message:
         return ""
     # Fallback: strip everything before the actual user message if it starts with
@@ -115,6 +115,7 @@ def _strip_injected_context(user_message: str) -> str:
         "Internal Mneme reminder:",
         "Internal Mneme CORRECTION PATH",
         "Internal Mneme BOTH PATH",
+        "Use memory silently when relevant.",
         "━━━━━━━━━━━━━━━━",
         "Path tag (internal):",
     ):

@@ -25,7 +25,7 @@ SKILL_REF_REL_STR = _SKILL_REF_REL.as_posix()
 HOOK_SCRIPT = PUBLIC_ROOT / "scripts" / "mneme_senses_context_hook.py"
 SYNC_SCRIPT = PUBLIC_ROOT / "scripts" / "sync_hermes_hook.py"
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers/actions, use Mneme preflight/world state/watch when relevant. For any Mneme operation, load skill_view(name='mneme') first. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
     "Memory correction note: answer the user first; store durable corrections "
     "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
@@ -118,6 +118,30 @@ def test_repo_managed_hook_emits_compact_retrieval_context() -> None:
     assert data["path"] == "retrieval"
     assert COMPACT_MEMORY_REMINDER in data["context"]
     assert "PRIMARY DIRECTIVE" not in data["context"]
+
+
+def test_real_hook_strips_quoted_compact_reminder_before_classification() -> None:
+    payload = {
+        "hook_event_name": "pre_llm_call",
+        "extra": {
+            "user_message": (
+                "Check the project status.\n\n"
+                + COMPACT_MEMORY_REMINDER
+                + " This is resolved."
+            ),
+            "platform": "test",
+        },
+    }
+    proc = subprocess.run(
+        [sys.executable, str(HOOK_SCRIPT)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    data = json.loads(proc.stdout)
+    assert data["path"] == "retrieval"
 
 
 @pytest.mark.parametrize(

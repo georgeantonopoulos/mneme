@@ -1186,11 +1186,19 @@ def debug_candidates(db_path: Path, limit: int = 20, hops: int = 5, hints: list[
 
 
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]{2,}", re.I)
+MAX_QUERY_TOKENS = 128
 
 
 def _query_tokens(prompt: str) -> set[str]:
     stop = {"about", "after", "again", "agent", "could", "from", "have", "into", "make", "memory", "need", "next", "should", "surface", "that", "this", "what", "when", "where", "with", "work"}
-    return {token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop}
+    tokens = [token.lower() for token in TOKEN_RE.findall(prompt or "") if token.lower() not in stop]
+    if len(tokens) > MAX_QUERY_TOKENS:
+        # Retrieval callers may receive a full prompt containing injected context.
+        # Keep both ends so a user message appended after that context is not lost,
+        # while bounding generated SQL below SQLite's expression-depth limit.
+        half = MAX_QUERY_TOKENS // 2
+        tokens = tokens[:half] + tokens[-half:]
+    return set(tokens)
 
 
 def _lexical_overlap(tokens: set[str], *values: str | None) -> tuple[int, list[str]]:

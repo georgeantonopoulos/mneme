@@ -23,6 +23,25 @@ def test_commands_that_already_emit_json_reject_json_flag(argv, capsys):
     assert "unrecognized arguments: --json" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["index", "--batch-size", "0"],
+        ["index", "--dimensions", "0"],
+        ["index", "--max-neurons", "-1"],
+        ["think", "--seeds", "0"],
+        ["think", "--limit", "-1"],
+        ["think", "--hops", "-1"],
+    ],
+)
+def test_neural_commands_reject_invalid_numeric_ranges(argv, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(argv)
+
+    assert exc.value.code == 2
+    assert "must be a" in capsys.readouterr().err
+
+
 def test_surface_render_requires_absolute_out_path(tmp_path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)

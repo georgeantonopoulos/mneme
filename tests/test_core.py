@@ -738,6 +738,34 @@ def test_retrieve_finds_observations_and_budgeted_evidence(tmp_path: Path):
     )
 
 
+def test_retrieve_handles_oversized_prompt_without_sql_expression_overflow(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    note = upsert_node(conn, "note", "Prompt Boundary", "Sources/prompt-boundary.md")
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        (
+            "obs-prompt-boundary",
+            note,
+            "fact",
+            "The user message contains the boundary token.",
+            "Sources/prompt-boundary.md",
+            8.0,
+            "2026-05-18T00:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    oversized_prompt = " ".join(f"injected-context-{index}" for index in range(1200))
+    oversized_prompt += " user message boundary-token"
+    result = retrieve_context(db, oversized_prompt, max_items=3)
+
+    assert isinstance(result, dict)
+    assert any(item["id"] == "obs-prompt-boundary" for item in result["items"])
+
+
 def test_retrieve_keeps_high_score_observation_with_low_lexical_overlap(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
