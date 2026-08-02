@@ -201,9 +201,12 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   ORDER BY o.note_id,o.text
               ),
               observation_text AS (
-                  SELECT node_id,GROUP_CONCAT(text, CHAR(10)) AS observations
+                  SELECT DISTINCT node_id,
+                         GROUP_CONCAT(text, CHAR(10)) OVER (
+                             PARTITION BY node_id ORDER BY text
+                             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                         ) AS observations
                   FROM observation_items
-                  GROUP BY node_id
               ),
               edge_items AS (
                   SELECT e.src_id AS node_id,
@@ -227,9 +230,12 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                     AND {edge_eligibility_sql}
               ),
               synapse_text AS (
-                  SELECT node_id,GROUP_CONCAT(item, CHAR(10)) AS synapses
+                  SELECT DISTINCT node_id,
+                         GROUP_CONCAT(item, CHAR(10)) OVER (
+                             PARTITION BY node_id ORDER BY item
+                             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                         ) AS synapses
                   FROM edge_items
-                  GROUP BY node_id
               )
               SELECT s.id,s.name,s.type,s.source_path,s.updated_at,
                      o.observations,e.synapses

@@ -211,6 +211,44 @@ def test_zero_weight_edges_are_not_indexed_as_synaptic_evidence(tmp_path: Path):
     assert "Forgotten evidence" not in _neuron_text(travel)
 
 
+def test_neuron_evidence_aggregation_is_deterministic(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        [
+            ("target", "project", "Deterministic target", "Projects/target.md", "2026-08-01", "2026-08-01"),
+            ("other", "note", "Other node", "Notes/other.md", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        [
+            ("z-observation", "target", "fact", "Zulu observation", "Projects/target.md", 1.0, "2026-08-01"),
+            ("a-observation", "target", "fact", "Alpha observation", "Projects/target.md", 1.0, "2026-08-01"),
+        ],
+    )
+    conn.executemany(
+        """INSERT INTO edges(id,src_id,dst_id,relation,strength,confidence,status,source_path,evidence_text,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        [
+            ("z-edge", "target", "other", "zeta", 1.0, 1.0, "active", "Projects/target.md", "Zulu edge", "2026-08-01", "2026-08-01"),
+            ("a-edge", "target", "other", "alpha", 1.0, 1.0, "active", "Projects/target.md", "Alpha edge", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.commit()
+
+    conn.execute("PRAGMA reverse_unordered_selects=OFF")
+    normal = next(row for row in _neuron_rows(conn) if row["id"] == "target")
+    conn.execute("PRAGMA reverse_unordered_selects=ON")
+    reversed_scan = next(row for row in _neuron_rows(conn) if row["id"] == "target")
+
+    assert normal["observations"] == reversed_scan["observations"] == "Alpha observation\nZulu observation"
+    assert normal["synapses"] == reversed_scan["synapses"] == "alpha Alpha edge\nzeta Zulu edge"
+
+
 def test_public_neural_apis_preserve_caller_row_factory(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
@@ -396,6 +434,9 @@ def test_operational_and_archived_sources_never_activate(tmp_path: Path, monkeyp
             ("archive", "note", "Old school fee duplicate", "Archives/merged-duplicates/fees.md", "2026-08-01", "2026-08-01"),
             ("ops", "note", "Messaging operations", "DISCORD_OPS.md", "2026-08-01", "2026-08-01"),
             ("agent", "note", "Agent instructions", "AGENTS.md", "2026-08-01", "2026-08-01"),
+            ("heartbeat", "note", "Heartbeat instructions", "HEARTBEAT.md", "2026-08-01", "2026-08-01"),
+            ("soul", "note", "Persona instructions", "SOUL.md", "2026-08-01", "2026-08-01"),
+            ("user", "note", "User instructions", "USER.md", "2026-08-01", "2026-08-01"),
             ("windows-context", "note", "Windows context", r"Context\operator.md", "2026-08-01", "2026-08-01"),
             ("windows-archive", "note", "Windows archive", r"Archives\old.md", "2026-08-01", "2026-08-01"),
         ],

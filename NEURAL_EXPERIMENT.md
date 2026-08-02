@@ -39,7 +39,8 @@ mneme index --db "$DB" --max-neurons 1000
 ```
 
 Archived/merged duplicates, operator context, and control files such as
-`AGENTS.md`, `SOUL.md`, and `*_OPS.md` are not recallable neurons. They are also
+`AGENTS.md`, `HEARTBEAT.md`, `SOUL.md`, `USER.md`, and `*_OPS.md` are not
+recallable neurons. They are also
 blocked from re-entering results through synapse propagation. This keeps retired
 evidence and agent instructions out of user-memory retrieval.
 
