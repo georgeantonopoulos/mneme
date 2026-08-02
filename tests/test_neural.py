@@ -128,6 +128,57 @@ def test_dimension_change_reindexes_all_hash_vectors(tmp_path: Path):
     assert {row[0] for row in conn.execute("SELECT dimensions FROM latent_neurons")} == {32}
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"batch_size": 0}, "batch_size"),
+        ({"dimensions": 0}, "dimensions"),
+        ({"max_neurons": 0}, "max_neurons"),
+        ({"max_neurons": -1}, "max_neurons"),
+    ],
+)
+def test_invalid_index_api_limits_fail_before_mutation(tmp_path: Path, kwargs: dict, message: str):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+    build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
+    before = conn.execute("SELECT node_id,content_hash FROM latent_neurons ORDER BY node_id").fetchall()
+
+    call_kwargs = {
+        "provider": "hash",
+        "model": "hash-v1",
+        "dimensions": 64,
+        "rebuild": True,
+        **kwargs,
+    }
+    with pytest.raises(ValueError, match=message):
+        build_latent_index(conn, **call_kwargs)
+
+    after = conn.execute("SELECT node_id,content_hash FROM latent_neurons ORDER BY node_id").fetchall()
+    assert after == before
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"seeds": 0}, "seeds"),
+        ({"hops": -1}, "hops"),
+        ({"limit": 0}, "limit"),
+        ({"lexical_seeds": -1}, "lexical_seeds"),
+        ({"spread": -0.01}, "spread"),
+        ({"spread": 1.01}, "spread"),
+    ],
+)
+def test_invalid_think_api_limits_are_rejected(tmp_path: Path, kwargs: dict, message: str):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+    build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
+
+    with pytest.raises(ValueError, match=message):
+        think(conn, "family travel", provider="hash", model="hash-v1", **kwargs)
+
+
 def test_think_rejects_changed_ollama_embedding_dimensions(tmp_path: Path, monkeypatch):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
@@ -170,6 +221,23 @@ def test_public_neural_apis_preserve_caller_row_factory(tmp_path: Path):
     build_latent_index(conn, provider="hash", model="hash-v1", dimensions=64)
     assert conn.row_factory is original
     think(conn, "family travel", provider="hash", model="hash-v1", seeds=1, hops=0)
+    assert conn.row_factory is original
+
+
+def test_index_restores_caller_row_factory_after_embedding_failure(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    _seed(conn)
+    original = lambda _cursor, row: tuple(row)
+    conn.row_factory = original
+
+    def fail_embedding(_texts, **_kwargs):
+        raise RuntimeError("synthetic embedding failure")
+
+    monkeypatch.setattr(neural, "embed_texts", fail_embedding)
+    with pytest.raises(RuntimeError, match="synthetic embedding failure"):
+        build_latent_index(conn, provider="ollama", model="failure-v1")
+
     assert conn.row_factory is original
 
 
@@ -328,6 +396,8 @@ def test_operational_and_archived_sources_never_activate(tmp_path: Path, monkeyp
             ("archive", "note", "Old school fee duplicate", "Archives/merged-duplicates/fees.md", "2026-08-01", "2026-08-01"),
             ("ops", "note", "Messaging operations", "DISCORD_OPS.md", "2026-08-01", "2026-08-01"),
             ("agent", "note", "Agent instructions", "AGENTS.md", "2026-08-01", "2026-08-01"),
+            ("windows-context", "note", "Windows context", r"Context\operator.md", "2026-08-01", "2026-08-01"),
+            ("windows-archive", "note", "Windows archive", r"Archives\old.md", "2026-08-01", "2026-08-01"),
         ],
     )
     conn.execute(
@@ -344,6 +414,35 @@ def test_operational_and_archived_sources_never_activate(tmp_path: Path, monkeyp
             "Archives/merged-duplicates/fees.md",
             "Old duplicate school fee record",
             "2026-08-01",
+            "2026-08-01",
+        ),
+    )
+    conn.execute(
+        """INSERT INTO edges(id,src_id,dst_id,relation,strength,confidence,status,source_path,evidence_text,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "eligible-link-to-archive",
+            "target",
+            "archive",
+            "references",
+            1.0,
+            1.0,
+            "active",
+            "Tasks/school-fees.md",
+            "Eligible edge source must not revive archived endpoint",
+            "2026-08-01",
+            "2026-08-01",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        (
+            "archived-observation",
+            "target",
+            "fact",
+            "Retired school fee evidence",
+            "Archives/merged-duplicates/fees.md",
+            1.0,
             "2026-08-01",
         ),
     )
@@ -364,6 +463,63 @@ def test_operational_and_archived_sources_never_activate(tmp_path: Path, monkeyp
     assert indexed["neurons"] == 1
     assert {row[0] for row in conn.execute("SELECT node_id FROM latent_neurons")} == {"target"}
     assert [item["name"] for item in result["activated_neurons"]] == ["Pay current school fees"]
+    conn.row_factory = sqlite3.Row
+    target_text = _neuron_text(_neuron_rows(conn)[0])
+    assert "Old duplicate school fee record" not in target_text
+    assert "Eligible edge source must not revive archived endpoint" not in target_text
+    assert "Retired school fee evidence" not in target_text
+    evidence_text = "\n".join(item["text"] for item in result["activated_neurons"][0]["evidence"])
+    assert "Old duplicate school fee record" not in evidence_text
+    assert "Eligible edge source must not revive archived endpoint" not in evidence_text
+    assert "Retired school fee evidence" not in evidence_text
+
+
+def test_structural_nodes_remain_available_through_safe_propagation(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        [
+            ("project", "project", "Northbridge enrolment", "Projects/northbridge.md", "2026-08-01", "2026-08-01"),
+            ("link", "wikilink", "Northbridge handbook link", "Projects/northbridge.md", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.execute(
+        """INSERT INTO edges(id,src_id,dst_id,relation,strength,confidence,status,source_path,evidence_text,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "safe-link",
+            "project",
+            "link",
+            "references",
+            1.0,
+            1.0,
+            "active",
+            "Projects/northbridge.md",
+            "Project references the handbook",
+            "2026-08-01",
+            "2026-08-01",
+        ),
+    )
+    conn.commit()
+
+    monkeypatch.setattr(neural, "embed_texts", lambda texts, **_kwargs: [[1.0, 0.0] for _text in texts])
+    build_latent_index(conn, provider="ollama", model="structural-v1")
+    result = think(
+        conn,
+        "Northbridge enrolment",
+        provider="ollama",
+        model="structural-v1",
+        seeds=1,
+        hops=1,
+    )
+
+    assert [item["name"] for item in result["activated_neurons"]] == [
+        "Northbridge enrolment",
+        "Northbridge handbook link",
+    ]
+    assert result["activated_neurons"][1]["reason"]["kind"] == "synapse"
 
 
 def test_action_prompt_prefers_tasks_over_background_entities(tmp_path: Path, monkeypatch):
@@ -406,7 +562,7 @@ def test_subject_anchors_cap_unrelated_semantic_deadline_seeds(tmp_path: Path, m
     conn.executemany(
         "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
         [
-            ("school", "project", "Moraitis school fees", "Projects/school.md", "2026-08-01", "2026-08-01"),
+            ("school", "project", "Northbridge school fees", "Projects/school.md", "2026-08-01", "2026-08-01"),
             ("registration", "note", "Finish activity registration", "task:registration", "2026-08-01", "2026-08-01"),
             ("tax", "project", "Tax filing timetable", "Projects/tax.md", "2026-08-01", "2026-08-01"),
             ("agm", "project", "AGM voting timetable", "Projects/agm.md", "2026-08-01", "2026-08-01"),
@@ -420,16 +576,16 @@ def test_subject_anchors_cap_unrelated_semantic_deadline_seeds(tmp_path: Path, m
         for text in texts:
             if text == "What needs attention about school fees and deadlines?":
                 vectors.append([1.0, 0.0])
-            elif "Moraitis school fees" in text:
-                vectors.append([0.80, 0.0])
+            elif "Northbridge school fees" in text:
+                vectors.append([0.80, 0.60])
             elif "Finish activity registration" in text:
-                vectors.append([0.95, 0.0])
+                vectors.append([0.95, 0.312])
             elif "Tax filing timetable" in text:
-                vectors.append([0.99, 0.0])
+                vectors.append([0.99, 0.141])
             elif "AGM voting timetable" in text:
-                vectors.append([0.98, 0.0])
+                vectors.append([0.98, 0.199])
             else:
-                vectors.append([0.97, 0.0])
+                vectors.append([0.97, 0.243])
         return vectors
 
     monkeypatch.setattr(neural, "embed_texts", fixed_embed)
@@ -446,7 +602,7 @@ def test_subject_anchors_cap_unrelated_semantic_deadline_seeds(tmp_path: Path, m
 
     assert [item["name"] for item in result["activated_neurons"]] == [
         "Finish activity registration",
-        "Moraitis school fees",
+        "Northbridge school fees",
     ]
 
 

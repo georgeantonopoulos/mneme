@@ -67,19 +67,8 @@ def _source_is_retrieval_eligible(source_path: str | None) -> bool:
 
 
 def _retrieval_eligibility_sql(column: str) -> str:
-    """SQL equivalent of _source_is_retrieval_eligible for bounded preselection."""
-    path = f"LOWER('/' || COALESCE({column},''))"
-    return f"""(
-        {path} NOT GLOB '*/archive/*'
-        AND {path} NOT GLOB '*/archives/*'
-        AND {path} NOT GLOB '*/context/*'
-        AND {path} NOT GLOB '*/merged-duplicates/*'
-        AND {path} NOT GLOB '*/*_ops.md'
-        AND {path} NOT GLOB '*/agents.md'
-        AND {path} NOT GLOB '*/heartbeat.md'
-        AND {path} NOT GLOB '*/soul.md'
-        AND {path} NOT GLOB '*/user.md'
-    )"""
+    """Use the canonical Python policy inside bounded SQLite preselection."""
+    return f"mneme_source_is_retrieval_eligible({column}) = 1"
 
 
 def _is_action_prompt(prompt: str) -> bool:
@@ -186,9 +175,17 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
     # Bound the candidate set before joining evidence. The former query applied
     # LIMIT after aggregating every node and multiplied observations by edges,
     # making a 1,000-neuron no-op index take tens of seconds on a modest graph.
+    conn.create_function(
+        "mneme_source_is_retrieval_eligible",
+        1,
+        lambda source_path: int(_source_is_retrieval_eligible(source_path)),
+        deterministic=True,
+    )
     limit_sql = "" if limit is None else " LIMIT ?"
     params: list[int] = [] if limit is None else [limit]
     eligibility_sql = _retrieval_eligibility_sql("source_path")
+    observation_eligibility_sql = _retrieval_eligibility_sql("o.source_path")
+    edge_eligibility_sql = _retrieval_eligibility_sql("e.source_path")
     sql = f"""WITH selected AS (
                   SELECT id,name,type,source_path,updated_at
                   FROM nodes
@@ -200,6 +197,7 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   SELECT DISTINCT o.note_id AS node_id,o.text
                   FROM observations o JOIN selected s ON s.id=o.note_id
                   WHERE o.text IS NOT NULL AND o.text <> ''
+                    AND {observation_eligibility_sql}
                   ORDER BY o.note_id,o.text
               ),
               observation_text AS (
@@ -216,6 +214,7 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   WHERE e.status='active'
                     AND COALESCE(e.strength,0.5) > 0
                     AND COALESCE(e.confidence,0.5) > 0
+                    AND {edge_eligibility_sql}
                   UNION
                   SELECT e.dst_id AS node_id,
                          e.relation || ' ' || COALESCE(e.evidence_text,'') AS item
@@ -225,6 +224,7 @@ def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[
                   WHERE e.status='active'
                     AND COALESCE(e.strength,0.5) > 0
                     AND COALESCE(e.confidence,0.5) > 0
+                    AND {edge_eligibility_sql}
               ),
               synapse_text AS (
                   SELECT node_id,GROUP_CONCAT(item, CHAR(10)) AS synapses
@@ -263,6 +263,12 @@ def build_latent_index(
     max_neurons: int | None = None,
     rebuild: bool = False,
 ) -> dict:
+    if dimensions <= 0:
+        raise ValueError("dimensions must be positive")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if max_neurons is not None and max_neurons <= 0:
+        raise ValueError("max_neurons must be positive")
     close = not isinstance(conn_or_path, sqlite3.Connection)
     conn = sqlite3.connect(conn_or_path) if close else conn_or_path
     original_row_factory = conn.row_factory
@@ -459,6 +465,8 @@ def _hydrate_evidence(conn: sqlite3.Connection, node_ids: list[str], *, cap: int
             ORDER BY score DESC,id""",
         node_ids,
     ).fetchall():
+        if not _source_is_retrieval_eligible(row["source_path"]):
+            continue
         _add(row["note_id"], {"kind": row["kind"], "text": row["text"], "source_path": row["source_path"]})
 
     seen_event_nodes: set[str] = set()
@@ -469,6 +477,8 @@ def _hydrate_evidence(conn: sqlite3.Connection, node_ids: list[str], *, cap: int
             ORDER BY n.id,se.ingested_at DESC,se.observed_at DESC,se.id DESC""",
         node_ids,
     ).fetchall():
+        if not _source_is_retrieval_eligible(row["source_uri"]):
+            continue
         if row["node_id"] in seen_event_nodes:
             continue
         seen_event_nodes.add(row["node_id"])
@@ -478,13 +488,20 @@ def _hydrate_evidence(conn: sqlite3.Connection, node_ids: list[str], *, cap: int
         _add(row["node_id"], {"kind": "sense_event", "event_type": row["event_type"], "text": text, "source_path": row["source_uri"]})
 
     for row in conn.execute(
-        f"""SELECT id,src_id,dst_id,relation,source_path,evidence_text FROM edges
-            WHERE status='active' AND COALESCE(strength,0.5) > 0 AND COALESCE(confidence,0.5) > 0
-              AND (src_id IN ({placeholders}) OR dst_id IN ({placeholders}))
-            ORDER BY id""",
+        f"""SELECT e.id,e.src_id,e.dst_id,e.relation,e.source_path,e.evidence_text,
+                   src.source_path AS src_source_path,dst.source_path AS dst_source_path
+            FROM edges e
+            JOIN nodes src ON src.id=e.src_id
+            JOIN nodes dst ON dst.id=e.dst_id
+            WHERE e.status='active' AND COALESCE(e.strength,0.5) > 0 AND COALESCE(e.confidence,0.5) > 0
+              AND (e.src_id IN ({placeholders}) OR e.dst_id IN ({placeholders}))
+            ORDER BY e.id""",
         node_ids + node_ids,
     ).fetchall():
-        if not row["evidence_text"]:
+        if not row["evidence_text"] or not all(
+            _source_is_retrieval_eligible(path)
+            for path in (row["source_path"], row["src_source_path"], row["dst_source_path"])
+        ):
             continue
         item = {"kind": "edge", "relation": row["relation"], "text": row["evidence_text"], "source_path": row["source_path"]}
         for node_id in (row["src_id"], row["dst_id"]):
@@ -601,6 +618,16 @@ def think(
     now: str | None = None,
     evidence_cap: int = DEFAULT_EVIDENCE_CAP,
 ) -> dict:
+    if seeds <= 0:
+        raise ValueError("seeds must be positive")
+    if lexical_seeds < 0:
+        raise ValueError("lexical_seeds must be non-negative")
+    if hops < 0:
+        raise ValueError("hops must be non-negative")
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    if not 0.0 <= spread <= 1.0:
+        raise ValueError("spread must be between 0 and 1")
     if evidence_cap < 0:
         raise ValueError("evidence_cap must be non-negative")
     close = not isinstance(conn_or_path, sqlite3.Connection)
@@ -739,16 +766,24 @@ def think(
             ids = sorted(frontier)
             placeholders = ",".join("?" for _ in ids)
             edges = conn.execute(
-                f"""SELECT e.id,e.src_id,e.dst_id,e.relation,e.status,e.strength,e.confidence,e.source_path,e.evidence_text
+                f"""SELECT e.id,e.src_id,e.dst_id,e.relation,e.status,e.strength,e.confidence,e.source_path,e.evidence_text,
+                           src.source_path AS src_source_path,dst.source_path AS dst_source_path
                     FROM edges e
+                    JOIN nodes src ON src.id=e.src_id
+                    JOIN nodes dst ON dst.id=e.dst_id
                     WHERE e.status='active'
                       AND (e.src_id IN ({placeholders}) OR e.dst_id IN ({placeholders}))""",
                 ids + ids,
             ).fetchall()
             next_frontier: dict[str, float] = {}
             for edge in edges:
+                if not _source_is_retrieval_eligible(edge["source_path"]):
+                    continue
                 for origin, target in ((edge["src_id"], edge["dst_id"]), (edge["dst_id"], edge["src_id"])):
-                    if origin not in frontier or target not in rows_by_id:
+                    target_source_path = (
+                        edge["dst_source_path"] if target == edge["dst_id"] else edge["src_source_path"]
+                    )
+                    if origin not in frontier or not _source_is_retrieval_eligible(target_source_path):
                         continue
                     strength = 0.5 if edge["strength"] is None else float(edge["strength"])
                     confidence = 0.5 if edge["confidence"] is None else float(edge["confidence"])
