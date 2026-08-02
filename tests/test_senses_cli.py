@@ -34,7 +34,7 @@ class FakeRunner:
         return self.outputs.pop(0)
 
 
-def test_gws_sense_parses_email_calendar_and_task_fixture_output():
+def test_gws_sense_parses_email_calendar_and_task_fixture_output(tmp_path: Path):
     runner = FakeRunner(
         [
             json.dumps({"messages": [{"id": "m1", "threadId": "thread-1", "subject": "ARRI feedback", "snippet": "Need reply about Sequency ARRI feedback", "from": "Casey"}]}),
@@ -51,7 +51,7 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output():
                         {"name": "Date", "value": "Fri, 08 May 2026 10:00:00 +0000"},
                     ],
                     "parts": [
-                        {"mimeType": "text/plain", "body": {"data": "TmVlZCByZXBseSBhYm91dCB0aGUgU2VxdWVuY3kgQVJSSSBmZWVkYmFjaw=="}},
+                        {"mimeType": "text/plain", "body": {"data": "QWN0aW9uIHJlcXVpcmVkOiBzaWduIGFuZCByZXR1cm4gdGhlIHJlbGVhc2UgZm9ybS4="}},
                         {"mimeType": "application/pdf", "filename": "feedback.pdf", "body": {"attachmentId": "att-1", "size": 1234}},
                     ],
                 },
@@ -66,10 +66,34 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output():
     assert [event.event_type for event in events] == ["email_message", "calendar_event", "task"]
     assert events[0].source_id == "email_message:m1"
     assert "Need reply" in events[0].text
+    assert "Action required: sign and return the release form." in events[0].text
     assert events[0].metadata["gws"]["threadId"] == "thread-1"
     assert events[0].metadata["gws"]["headers"]["from"] == "Casey (test sender)"
     assert events[0].metadata["gws"]["attachments"][0]["filename"] == "feedback.pdf"
     assert len(runner.commands) == 4
+
+    conn = sqlite3.connect(tmp_path / "observations.sqlite")
+    ingest_sense_events(conn, [events[0]])
+    observation = conn.execute("SELECT text FROM observations WHERE sense_event_id=?", (events[0].id,)).fetchone()
+    conn.close()
+    assert observation is not None
+    assert "Action required: sign and return the release form." in observation[0]
+
+
+def test_gws_sense_malformed_email_detail_falls_back_to_list_row():
+    runner = FakeRunner(
+        [
+            json.dumps({"messages": [{"id": "m2", "subject": "Malformed detail", "snippet": "Keep this message"}]}),
+            json.dumps({"id": "m2", "payload": [], "parts": {"unexpected": "mapping"}}),
+        ]
+    )
+
+    events = list(GwsSense(include_calendar=False, include_tasks=False, runner=runner).collect(limit=1))
+
+    assert len(events) == 1
+    assert "Keep this message" in events[0].text
+    assert events[0].metadata["gws"]["headers"] == {}
+    assert events[0].metadata["gws"]["attachments"] == []
 
 
 def test_ingest_sense_events_stores_provenance_and_candidate_links(tmp_path: Path):

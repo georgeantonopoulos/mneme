@@ -140,11 +140,18 @@ class GwsSense:
     def _event_from_row(self, event_type: str, row: dict[str, Any]) -> SenseEvent:
         source_id = str(row.get("id") or row.get("message_id") or row.get("event_id") or row.get("task_id") or hashlib.sha1(json.dumps(row, sort_keys=True, default=str).encode()).hexdigest()[:20])
         title = str(row.get("title") or row.get("subject") or row.get("summary") or row.get("name") or event_type).strip()
+        snippet = str(row.get("snippet") or "")
+        body = str(row.get("body") or "")
+        content = snippet
+        if body and body not in content:
+            content = "\n".join(part for part in (content, body) if part)
+        if not content:
+            content = str(row.get("description") or row.get("notes") or "")
         text_parts = [
             title,
             str(row.get("from") or row.get("sender") or ""),
             str(row.get("when") or row.get("start") or row.get("due") or ""),
-            str(row.get("snippet") or row.get("body") or row.get("description") or row.get("notes") or ""),
+            content,
         ]
         text = "\n".join(part for part in text_parts if part).strip() or title
         if "<" in text and ">" in text:
@@ -191,8 +198,12 @@ def _event_type_from_cmd(cmd: list[str]) -> str:
     return "workspace_event"
 
 
-def _gmail_headers(payload: dict[str, Any]) -> dict[str, str]:
-    headers = payload.get("headers") or []
+def _gmail_headers(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+    headers = payload.get("headers")
+    if not isinstance(headers, list):
+        return {}
     return {
         str(item.get("name", "")).lower(): str(item.get("value", ""))
         for item in headers
@@ -200,8 +211,8 @@ def _gmail_headers(payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _decode_gmail_data(data: str | None) -> str:
-    if not data:
+def _decode_gmail_data(data: Any) -> str:
+    if not isinstance(data, str) or not data:
         return ""
     try:
         padded = data + "=" * (-len(data) % 4)
@@ -210,7 +221,9 @@ def _decode_gmail_data(data: str | None) -> str:
         return ""
 
 
-def _gmail_content(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+def _gmail_content(payload: Any) -> tuple[str, list[dict[str, Any]]]:
+    if not isinstance(payload, dict):
+        return "", []
     bodies: list[str] = []
     attachments: list[dict[str, Any]] = []
     stack = [payload]
@@ -218,7 +231,9 @@ def _gmail_content(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
         part = stack.pop()
         if not isinstance(part, dict):
             continue
-        body = part.get("body") or {}
+        body = part.get("body")
+        if not isinstance(body, dict):
+            body = {}
         filename = str(part.get("filename") or "")
         attachment_id = body.get("attachmentId")
         if filename or attachment_id:
@@ -234,5 +249,7 @@ def _gmail_content(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
             text = _decode_gmail_data(body.get("data"))
             if text:
                 bodies.append(extract_visible_text(text) if mime_type == "text/html" else text)
-        stack.extend(reversed(part.get("parts") or []))
+        parts = part.get("parts")
+        if isinstance(parts, list):
+            stack.extend(reversed(parts))
     return "\n\n".join(part.strip() for part in bodies if part.strip()), attachments
