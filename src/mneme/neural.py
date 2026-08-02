@@ -23,6 +23,13 @@ DEFAULT_LEXICAL_SEEDS = 2
 LEXICAL_SCORE_SCALE = 15.0
 LEXICAL_ACTIVATION_CAP = 0.9
 EVIDENCE_TEXT_LIMIT = 600
+ACTION_INTENT_TOKENS = frozenset(
+    {
+        "action", "attention", "blocked", "deadline", "deadlines", "due", "need", "needs",
+        "overdue", "pending", "task", "tasks", "todo", "urgent",
+    }
+)
+OPERATOR_SOURCE_FILES = frozenset({"agents.md", "heartbeat.md", "soul.md", "user.md"})
 
 # Ordinary English function words filtered from lexical query routing so that
 # stopword-only overlap (e.g. "is", "for", "and") cannot seed a match. Deliberately
@@ -44,6 +51,57 @@ STOPWORDS = frozenset(
 
 def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def _source_is_retrieval_eligible(source_path: str | None) -> bool:
+    """Keep operator control files and intentionally retired evidence out of recall."""
+    if not source_path:
+        return True
+    parts = [part for part in source_path.replace("\\", "/").casefold().split("/") if part]
+    if not parts:
+        return True
+    if any(part in {"archive", "archives", "context", "merged-duplicates"} for part in parts[:-1]):
+        return False
+    filename = parts[-1]
+    return filename not in OPERATOR_SOURCE_FILES and not filename.endswith("_ops.md")
+
+
+def _retrieval_eligibility_sql(column: str) -> str:
+    """SQL equivalent of _source_is_retrieval_eligible for bounded preselection."""
+    path = f"LOWER('/' || COALESCE({column},''))"
+    return f"""(
+        {path} NOT GLOB '*/archive/*'
+        AND {path} NOT GLOB '*/archives/*'
+        AND {path} NOT GLOB '*/context/*'
+        AND {path} NOT GLOB '*/merged-duplicates/*'
+        AND {path} NOT GLOB '*/*_ops.md'
+        AND {path} NOT GLOB '*/agents.md'
+        AND {path} NOT GLOB '*/heartbeat.md'
+        AND {path} NOT GLOB '*/soul.md'
+        AND {path} NOT GLOB '*/user.md'
+    )"""
+
+
+def _is_action_prompt(prompt: str) -> bool:
+    return bool({token.casefold() for token in TOKEN_RE.findall(prompt)} & ACTION_INTENT_TOKENS)
+
+
+def _intent_multiplier(prompt: str, row: sqlite3.Row) -> float:
+    if not _is_action_prompt(prompt):
+        return 1.0
+    node_type = (row["type"] or "").casefold()
+    source_path = (row["source_path"] or "").casefold()
+    if node_type == "task" or source_path.startswith(("task:", "gws://tasks/")):
+        return 1.0
+    if node_type == "project":
+        return 0.95
+    if node_type == "person":
+        normalized_prompt = " ".join(TOKEN_RE.findall(prompt.casefold()))
+        normalized_name = " ".join(TOKEN_RE.findall((row["name"] or "").casefold()))
+        return 1.0 if normalized_name and normalized_name in normalized_prompt else 0.7
+    if node_type == "note":
+        return 0.82
+    return 0.85
 
 
 def ensure_latent_index(conn: sqlite3.Connection) -> None:
@@ -125,22 +183,60 @@ def _unpack(blob: bytes, dimensions: int) -> tuple[float, ...]:
 
 
 def _neuron_rows(conn: sqlite3.Connection, *, limit: int | None = None) -> list[sqlite3.Row]:
-    sql = """SELECT n.id,n.name,n.type,n.source_path,n.updated_at,
-                  GROUP_CONCAT(DISTINCT o.text) observations,
-                  GROUP_CONCAT(DISTINCT (e.relation || ' ' || COALESCE(e.evidence_text,''))) synapses
-           FROM nodes n
-           LEFT JOIN observations o ON o.note_id=n.id
-           LEFT JOIN edges e ON (e.src_id=n.id OR e.dst_id=n.id)
-             AND e.status='active'
-             AND COALESCE(e.strength,0.5) > 0
-             AND COALESCE(e.confidence,0.5) > 0
-           WHERE n.type NOT IN ('heading','observation','wikilink','date')
-           GROUP BY n.id
-           ORDER BY n.updated_at DESC,n.id"""
-    params: list[int] = []
-    if limit is not None:
-        sql += " LIMIT ?"
-        params.append(limit)
+    # Bound the candidate set before joining evidence. The former query applied
+    # LIMIT after aggregating every node and multiplied observations by edges,
+    # making a 1,000-neuron no-op index take tens of seconds on a modest graph.
+    limit_sql = "" if limit is None else " LIMIT ?"
+    params: list[int] = [] if limit is None else [limit]
+    eligibility_sql = _retrieval_eligibility_sql("source_path")
+    sql = f"""WITH selected AS (
+                  SELECT id,name,type,source_path,updated_at
+                  FROM nodes
+                  WHERE type NOT IN ('heading','observation','wikilink','date')
+                    AND {eligibility_sql}
+                  ORDER BY updated_at DESC,id{limit_sql}
+              ),
+              observation_items AS (
+                  SELECT DISTINCT o.note_id AS node_id,o.text
+                  FROM observations o JOIN selected s ON s.id=o.note_id
+                  WHERE o.text IS NOT NULL AND o.text <> ''
+                  ORDER BY o.note_id,o.text
+              ),
+              observation_text AS (
+                  SELECT node_id,GROUP_CONCAT(text, CHAR(10)) AS observations
+                  FROM observation_items
+                  GROUP BY node_id
+              ),
+              edge_items AS (
+                  SELECT e.src_id AS node_id,
+                         e.relation || ' ' || COALESCE(e.evidence_text,'') AS item
+                  FROM edges e
+                  JOIN selected s ON s.id=e.src_id
+                  JOIN selected other ON other.id=e.dst_id
+                  WHERE e.status='active'
+                    AND COALESCE(e.strength,0.5) > 0
+                    AND COALESCE(e.confidence,0.5) > 0
+                  UNION
+                  SELECT e.dst_id AS node_id,
+                         e.relation || ' ' || COALESCE(e.evidence_text,'') AS item
+                  FROM edges e
+                  JOIN selected s ON s.id=e.dst_id
+                  JOIN selected other ON other.id=e.src_id
+                  WHERE e.status='active'
+                    AND COALESCE(e.strength,0.5) > 0
+                    AND COALESCE(e.confidence,0.5) > 0
+              ),
+              synapse_text AS (
+                  SELECT node_id,GROUP_CONCAT(item, CHAR(10)) AS synapses
+                  FROM edge_items
+                  GROUP BY node_id
+              )
+              SELECT s.id,s.name,s.type,s.source_path,s.updated_at,
+                     o.observations,e.synapses
+              FROM selected s
+              LEFT JOIN observation_text o ON o.node_id=s.id
+              LEFT JOIN synapse_text e ON e.node_id=s.id
+              ORDER BY s.updated_at DESC,s.id"""
     return conn.execute(sql, params).fetchall()
 
 
@@ -270,7 +366,11 @@ def _lexical_matches(
     prompt: str, rows: list[sqlite3.Row], document_frequency: dict[str, int], total: int
 ) -> dict[str, tuple[float, set[str]]]:
     """Score neurons by rare/exact prompt tokens; common tokens (high df) contribute ~0 via idf."""
-    query_tokens = {token for token in TOKEN_RE.findall(prompt.casefold()) if token not in STOPWORDS}
+    query_tokens = {
+        token
+        for token in TOKEN_RE.findall(prompt.casefold())
+        if token not in STOPWORDS and token not in ACTION_INTENT_TOKENS
+    }
     if not query_tokens or total == 0:
         return {}
     normalized_prompt = _normalize_phrase(prompt)
@@ -509,12 +609,16 @@ def think(
     conn.row_factory = sqlite3.Row
     try:
         ensure_latent_index(conn)
-        rows = conn.execute(
-            """SELECT l.node_id,l.dimensions,l.vector,n.name,n.type,n.source_path
-               FROM latent_neurons l JOIN nodes n ON n.id=l.node_id
-               WHERE l.provider=? AND l.model=?""",
-            (provider, model),
-        ).fetchall()
+        rows = [
+            row
+            for row in conn.execute(
+                """SELECT l.node_id,l.dimensions,l.vector,n.name,n.type,n.source_path
+                   FROM latent_neurons l JOIN nodes n ON n.id=l.node_id
+                   WHERE l.provider=? AND l.model=?""",
+                (provider, model),
+            ).fetchall()
+            if _source_is_retrieval_eligible(row["source_path"])
+        ]
         if not rows:
             raise ValueError("latent index is empty for this provider/model; run `mneme index` first")
         stored_dimensions = {int(row["dimensions"]) for row in rows}
@@ -529,11 +633,16 @@ def think(
             )
         now_dt = dt.datetime.fromisoformat((now or _now_iso()).replace("Z", "+00:00"))
         event_dates = _event_dates_by_source(conn, (row["source_path"] for row in rows))
+        intent_multiplier_by_id = {row["node_id"]: _intent_multiplier(prompt, row) for row in rows}
+        document_frequency = _document_frequency(rows)
+        lexical_matches = _lexical_matches(prompt, rows, document_frequency, len(rows))
+        subject_anchored = bool(lexical_matches) and _is_action_prompt(prompt)
         ranked = sorted(
             (
                 (
                     max(0.0, _cosine(query, _unpack(row["vector"], row["dimensions"])))
-                    * _effective_temporal_decay(row, event_dates, now=now_dt),
+                    * _effective_temporal_decay(row, event_dates, now=now_dt)
+                    * intent_multiplier_by_id[row["node_id"]],
                     row,
                 )
                 for row in rows
@@ -542,11 +651,22 @@ def think(
         )
         rows_by_id = {row["node_id"]: row for row in rows}
         decayed_score_by_id = {row["node_id"]: score for score, row in ranked}
-        cosine_ranked_ids = [row["node_id"] for score, row in ranked[:seeds] if score > 0]
+        cosine_ranked_ids: list[str] = []
+        semantic_only_count = 0
+        semantic_only_budget = max(1, seeds // 4) if subject_anchored and seeds > 0 else max(0, seeds)
+        for score, row in ranked:
+            if len(cosine_ranked_ids) >= max(0, seeds):
+                break
+            if score <= 0:
+                continue
+            node_id = row["node_id"]
+            if subject_anchored and node_id not in lexical_matches:
+                if semantic_only_count >= semantic_only_budget:
+                    continue
+                semantic_only_count += 1
+            cosine_ranked_ids.append(node_id)
         cosine_top_ids = set(cosine_ranked_ids)
 
-        document_frequency = _document_frequency(rows)
-        lexical_matches = _lexical_matches(prompt, rows, document_frequency, len(rows))
         lexical_ranked_ids: list[str] = []
         lexical_extras = 0
         for node_id, _score in sorted(lexical_matches.items(), key=lambda item: (-item[1][0], item[0])):
@@ -566,6 +686,7 @@ def think(
         for node_id in seed_ids:
             row = rows_by_id[node_id]
             decay = _effective_temporal_decay(row, event_dates, now=now_dt)
+            intent_multiplier = intent_multiplier_by_id[node_id]
             in_latent = node_id in cosine_top_ids
             in_lexical = node_id in lexical_top_ids
 
@@ -578,7 +699,7 @@ def think(
                 raw_score, tokens = lexical_matches[node_id]
                 lexical_raw_score = raw_score
                 lexical_calibrated_score = min(LEXICAL_ACTIVATION_CAP, raw_score / LEXICAL_SCORE_SCALE)
-                lexical_component = lexical_calibrated_score * decay
+                lexical_component = lexical_calibrated_score * decay * intent_multiplier
                 matched_tokens = sorted(tokens)
 
             activation = max(latent_component, lexical_component)
@@ -609,6 +730,7 @@ def think(
                 "kind": kind,
                 "activation": round(activation, 6),
                 "temporal_decay": round(decay, 6),
+                "intent_multiplier": round(intent_multiplier, 6),
                 "signals": signals,
             }
         for hop in range(1, hops + 1):
@@ -626,7 +748,7 @@ def think(
             next_frontier: dict[str, float] = {}
             for edge in edges:
                 for origin, target in ((edge["src_id"], edge["dst_id"]), (edge["dst_id"], edge["src_id"])):
-                    if origin not in frontier:
+                    if origin not in frontier or target not in rows_by_id:
                         continue
                     strength = 0.5 if edge["strength"] is None else float(edge["strength"])
                     confidence = 0.5 if edge["confidence"] is None else float(edge["confidence"])

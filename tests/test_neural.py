@@ -51,6 +51,69 @@ def test_latent_index_is_incremental_and_local(tmp_path: Path):
     assert conn.execute("SELECT COUNT(*) FROM latent_neurons").fetchone()[0] == 4
 
 
+def test_bounded_neuron_scan_limits_before_aggregating_history(tmp_path: Path):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        ("recent", "task", "Current action", "Tasks/current.md", "2026-08-01", "2026-08-01"),
+    )
+    history = [
+        (f"old-{index}", "note", f"Historical note {index}", f"History/note-{index}.md", "2025-01-01", "2025-01-01")
+        for index in range(200)
+    ]
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        history,
+    )
+    conn.executemany(
+        "INSERT INTO observations(id,note_id,kind,text,source_path,score,created_at) VALUES(?,?,?,?,?,?,?)",
+        [
+            (f"obs-{node}-{item}", node, "fact", f"Historical observation {item}", f"History/{node}.md", 1.0, "2025-01-01")
+            for node, *_rest in history
+            for item in range(20)
+        ],
+    )
+    conn.executemany(
+        """INSERT INTO edges(id,src_id,dst_id,relation,strength,confidence,status,source_path,evidence_text,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        [
+            (
+                f"edge-{index}-{item}",
+                f"old-{index}",
+                f"old-{(index + 1) % len(history)}",
+                "mentions",
+                1.0,
+                1.0,
+                "active",
+                "History/history.md",
+                f"Historical edge {item}",
+                "2025-01-01",
+                "2025-01-01",
+            )
+            for index in range(len(history))
+            for item in range(20)
+        ],
+    )
+    conn.commit()
+
+    progress_calls = 0
+
+    def abort_unbounded_scan() -> int:
+        nonlocal progress_calls
+        progress_calls += 1
+        return int(progress_calls > 2_000)
+
+    conn.set_progress_handler(abort_unbounded_scan, 100)
+    rows = _neuron_rows(conn, limit=1)
+    conn.set_progress_handler(None, 0)
+
+    assert [row["id"] for row in rows] == ["recent"]
+    assert progress_calls <= 2_000
+
+
 def test_dimension_change_reindexes_all_hash_vectors(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
@@ -251,6 +314,140 @@ def test_semantic_retrieval_without_lexical_overlap_still_works(tmp_path: Path, 
     names = [item["name"] for item in result["activated_neurons"]]
     assert names == ["Book flight reservation"]
     assert result["activated_neurons"][0]["reason"]["kind"] == "latent_seed"
+
+
+def test_operational_and_archived_sources_never_activate(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        [
+            ("target", "task", "Pay current school fees", "Tasks/school-fees.md", "2026-08-01", "2026-08-01"),
+            ("context", "note", "Second Brain Autopilot Policy", "Context/autopilot.md", "2026-08-01", "2026-08-01"),
+            ("archive", "note", "Old school fee duplicate", "Archives/merged-duplicates/fees.md", "2026-08-01", "2026-08-01"),
+            ("ops", "note", "Messaging operations", "DISCORD_OPS.md", "2026-08-01", "2026-08-01"),
+            ("agent", "note", "Agent instructions", "AGENTS.md", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.execute(
+        """INSERT INTO edges(id,src_id,dst_id,relation,strength,confidence,status,source_path,evidence_text,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "archive-link",
+            "target",
+            "archive",
+            "mentions",
+            1.0,
+            1.0,
+            "active",
+            "Archives/merged-duplicates/fees.md",
+            "Old duplicate school fee record",
+            "2026-08-01",
+            "2026-08-01",
+        ),
+    )
+    conn.commit()
+
+    monkeypatch.setattr(neural, "embed_texts", lambda texts, **_kwargs: [[1.0, 0.0] for _text in texts])
+    indexed = build_latent_index(conn, provider="ollama", model="quality-v1")
+    result = think(
+        conn,
+        "What school fees need attention?",
+        provider="ollama",
+        model="quality-v1",
+        seeds=5,
+        lexical_seeds=5,
+        hops=2,
+    )
+
+    assert indexed["neurons"] == 1
+    assert {row[0] for row in conn.execute("SELECT node_id FROM latent_neurons")} == {"target"}
+    assert [item["name"] for item in result["activated_neurons"]] == ["Pay current school fees"]
+
+
+def test_action_prompt_prefers_tasks_over_background_entities(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        [
+            ("a-person", "person", "School finance contact", "People/finance-contact.md", "2026-08-01", "2026-08-01"),
+            ("z-task", "task", "Pay school fees by deadline", "Tasks/school-fees.md", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.commit()
+
+    monkeypatch.setattr(neural, "embed_texts", lambda texts, **_kwargs: [[1.0, 0.0] for _text in texts])
+    build_latent_index(conn, provider="ollama", model="action-v1")
+    result = think(
+        conn,
+        "What needs attention about school fees and deadlines?",
+        provider="ollama",
+        model="action-v1",
+        seeds=2,
+        lexical_seeds=0,
+        hops=0,
+    )
+
+    assert [item["name"] for item in result["activated_neurons"]] == [
+        "Pay school fees by deadline",
+        "School finance contact",
+    ]
+    contact = result["activated_neurons"][1]
+    assert contact["reason"]["intent_multiplier"] < 1.0
+
+
+def test_subject_anchors_cap_unrelated_semantic_deadline_seeds(tmp_path: Path, monkeypatch):
+    db = tmp_path / "mneme.sqlite"
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO nodes(id,type,name,source_path,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+        [
+            ("school", "project", "Moraitis school fees", "Projects/school.md", "2026-08-01", "2026-08-01"),
+            ("registration", "note", "Finish activity registration", "task:registration", "2026-08-01", "2026-08-01"),
+            ("tax", "project", "Tax filing timetable", "Projects/tax.md", "2026-08-01", "2026-08-01"),
+            ("agm", "project", "AGM voting timetable", "Projects/agm.md", "2026-08-01", "2026-08-01"),
+            ("move", "project", "House move timetable", "Projects/move.md", "2026-08-01", "2026-08-01"),
+        ],
+    )
+    conn.commit()
+
+    def fixed_embed(texts, **_kwargs):
+        vectors = []
+        for text in texts:
+            if text == "What needs attention about school fees and deadlines?":
+                vectors.append([1.0, 0.0])
+            elif "Moraitis school fees" in text:
+                vectors.append([0.80, 0.0])
+            elif "Finish activity registration" in text:
+                vectors.append([0.95, 0.0])
+            elif "Tax filing timetable" in text:
+                vectors.append([0.99, 0.0])
+            elif "AGM voting timetable" in text:
+                vectors.append([0.98, 0.0])
+            else:
+                vectors.append([0.97, 0.0])
+        return vectors
+
+    monkeypatch.setattr(neural, "embed_texts", fixed_embed)
+    build_latent_index(conn, provider="ollama", model="routing-v1")
+    result = think(
+        conn,
+        "What needs attention about school fees and deadlines?",
+        provider="ollama",
+        model="routing-v1",
+        seeds=4,
+        lexical_seeds=0,
+        hops=0,
+    )
+
+    assert [item["name"] for item in result["activated_neurons"]] == [
+        "Finish activity registration",
+        "Moraitis school fees",
+    ]
 
 
 def _seed_generic_tokens(conn: sqlite3.Connection) -> None:
