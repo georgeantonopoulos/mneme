@@ -13,7 +13,7 @@ Tables, schemas, truth-policy fields, lifecycle conditions, and specialist CLIs 
 
 For conceptually related prompts without shared vocabulary, prefer local semantic neuron activation over piling more lexical rules onto retrieval. Latent similarity creates associative leads, never facts: spread only through active synapses, retain source provenance on every activation, and verify the source before making factual claims. Candidate and killed synapses never propagate. Use temporal decay to reduce stale activation, but never block perception of fresh evidence.
 
-See `references/neural-think-experiment.md` for the proven vertical-slice architecture, evaluation method, and implementation pitfalls.
+See `references/neural-memory.md` for the shipped architecture, evaluation method, and implementation pitfalls.
 
 For named-person, company, or project questions, follow `references/person-entity-retrieval.md`: start with the exact entity name and aliases, treat generic semantic/email activations as leads rather than answers, follow provenance into the real source, and consolidate verified facts into a canonical entity note. Do not pad the first retrieval query with broad terms such as `context`, `projects`, or `relationship`; they can overpower the entity token and produce a technically non-empty but useless result.
 
@@ -66,7 +66,7 @@ mneme init --vault "$VAULT" --force
 
 Verify: `mneme write --path memory/test.md --mode create --content "test"` should create `$VAULT/memory/test.md`.
 
-## Neural Think Path (Default Experiment)
+## Neural Think Path
 
 For memory-backed reasoning, use the local latent neuron index before the legacy retrieval stack:
 
@@ -83,16 +83,16 @@ The `--max-neurons 1000` runtime profile deliberately keeps the active semantic 
 
 ### Neural rollout and freshness verification
 
-When activating the neural path in an agent runtime, verify the complete loop rather than stopping after a branch, code copy, or passing tests:
+When activating the neural path in an agent runtime, verify the complete loop rather than stopping after a code copy or passing tests:
 
-1. Confirm the runtime CLI imports the intended checkout/branch.
+1. Confirm the runtime CLI imports the intended release or checkout.
 2. Sync the repo-managed skill and pre-LLM hook; run hook-sync and skill-drift checks with the private skill path supplied explicitly.
 3. Build the initial real embedding index against the runtime database.
 4. Immediately repeat the same incremental index command. A healthy no-op reports `indexed: 0`, all selected neurons as `unchanged`, no removals, and the stored embedding dimensions—not fallback/default dimensions.
 5. Run a real `mneme think` probe against the runtime database; inspect sources, activation reasons, and active-synapse propagation.
 6. After ingestion or graph mutation, run another incremental pass and verify new/changed neurons are embedded and deleted/out-of-window neurons are removed.
 
-Index freshness is not sense freshness: sensing must first persist new evidence into nodes, observations, and active synapses. Vector refresh then hashes each assembled neuron document and embeds only changed content. Never claim the experiment is active merely because the branch exists or tests pass; require a live index and live thought probe.
+Index freshness is not sense freshness: sensing must first persist new evidence into nodes, observations, and active synapses. Vector refresh then hashes each assembled neuron document and embeds only changed content. Never claim neural memory is active merely because the package exists or tests pass; require a live index and live thought probe.
 
 ## Legacy Retrieval Path (Compatibility)
 
