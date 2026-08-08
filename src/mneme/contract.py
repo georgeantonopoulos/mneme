@@ -105,6 +105,18 @@ class ContractReport:
 def relationship_policy(relation: str) -> RelationshipPolicy:
     data = _RELATION_POLICIES.get(relation)
     if data is None:
+        # World-model predicates and research relations are intentionally open
+        # vocabulary. Non-empty, bounded labels are valid dynamic semantic
+        # relations, but still require explicit evidence before activation.
+        # Only blank/control-character labels are malformed.
+        label = str(relation or "").strip()
+        if label and len(label) <= 200 and not any(ord(char) < 32 for char in label):
+            return RelationshipPolicy(
+                relation=relation,
+                category="semantic_dynamic",
+                requires_validation=True,
+                known=True,
+            )
         return RelationshipPolicy(relation=relation, category="unknown", requires_validation=True, known=False)
     return RelationshipPolicy(
         relation=relation,

@@ -56,6 +56,35 @@ def test_unknown_relation_requires_validation(tmp_path: Path):
     assert status == "candidate"
 
 
+def test_dynamic_domain_relation_is_known_but_requires_validation():
+    from mneme.contract import relationship_policy
+
+    policy = relationship_policy("payment_due")
+
+    assert policy.known is True
+    assert policy.category == "semantic_dynamic"
+    assert policy.requires_validation is True
+
+
+def test_domain_relation_labels_are_open_vocabulary():
+    from mneme.contract import relationship_policy
+
+    policy = relationship_policy("KS1 sign-up goes live")
+
+    assert policy.known is True
+    assert policy.category == "semantic_dynamic"
+    assert policy.requires_validation is True
+
+
+def test_blank_relation_remains_a_contract_warning():
+    from mneme.contract import relationship_policy
+
+    policy = relationship_policy("   ")
+
+    assert policy.known is False
+    assert policy.requires_validation is True
+
+
 def test_validated_research_edge_can_be_active(tmp_path: Path):
     db = tmp_path / "mneme.sqlite"
     conn = sqlite3.connect(db)
