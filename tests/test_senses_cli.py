@@ -71,6 +71,7 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output(tmp_path: Path)
     assert events[0].metadata["gws"]["headers"]["from"] == "Casey (test sender)"
     assert events[0].metadata["gws"]["attachments"][0]["filename"] == "feedback.pdf"
     assert len(runner.commands) == 4
+    assert events[0].observed_at == "2026-05-08T10:00:00+00:00"
 
     conn = sqlite3.connect(tmp_path / "observations.sqlite")
     ingest_sense_events(conn, [events[0]])

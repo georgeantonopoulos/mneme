@@ -8,11 +8,34 @@ import shutil
 import subprocess
 import datetime as dt
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any, Iterable, Protocol
 
 from ..core import now_iso
 from ..html_visible import extract_visible_text
 from .base import SenseEvent
+
+
+def _normalize_observed_at(value: Any) -> str:
+    """Return an ISO-8601 UTC timestamp for source-event ingestion.
+
+    Gmail dates arrive as RFC-2822 strings while Calendar/Tasks commonly use
+    ISO-8601. World-model prediction checks require one consistent format.
+    """
+    raw = str(value or "").strip()
+    if raw:
+        try:
+            parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(raw)
+            except (TypeError, ValueError, OverflowError):
+                parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
+    return now_iso()
 
 
 class CommandRunner(Protocol):
@@ -156,7 +179,7 @@ class GwsSense:
         text = "\n".join(part for part in text_parts if part).strip() or title
         if "<" in text and ">" in text:
             text = extract_visible_text(text)
-        observed_at = str(row.get("observed_at") or row.get("date") or row.get("updated") or row.get("start") or now_iso())
+        observed_at = _normalize_observed_at(row.get("observed_at") or row.get("date") or row.get("updated") or row.get("start"))
         uri = row.get("uri") or row.get("url") or row.get("htmlLink") or row.get("link")
         digest = hashlib.sha1(f"{self.sense_id}:{event_type}:{source_id}:{text[:200]}".encode()).hexdigest()[:24]
         return SenseEvent(

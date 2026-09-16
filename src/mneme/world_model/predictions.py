@@ -81,6 +81,20 @@ def _terms(value: Any, *, field: str) -> list[str]:
     return [item.strip() for item in value]
 
 
+_SENSE_TYPE_ALIASES: dict[str, str] = {
+    # Historical alias: Gmail evidence arrives through the GWS sense.
+    "gmail": "gws",
+    "google": "gws",
+    "email": "gws",
+    "markdown": "md",
+    "vault": "md",
+}
+
+
+def canonical_sense_type(sense_type: str) -> str:
+    return _SENSE_TYPE_ALIASES.get(sense_type.strip().lower(), sense_type.strip())
+
+
 def validate_match_json(match_json: Any) -> dict:
     if not isinstance(match_json, dict):
         raise ValueError("match_json must be an object")
@@ -88,7 +102,12 @@ def validate_match_json(match_json: Any) -> dict:
     sense_type = criteria.get("sense_type")
     if not isinstance(sense_type, str) or not sense_type.strip():
         raise ValueError("match_json.sense_type is required")
-    criteria["sense_type"] = sense_type.strip()
+    criteria["sense_type"] = canonical_sense_type(sense_type)
+    gate = criteria.get("gate")
+    if isinstance(gate, dict):
+        gate_sense = gate.get("sense_type")
+        if isinstance(gate_sense, str) and gate_sense.strip():
+            gate["sense_type"] = canonical_sense_type(gate_sense)
     source_id = criteria.get("source_id")
     if source_id is not None and (not isinstance(source_id, str) or not source_id.strip()):
         raise ValueError("match_json.source_id must be a non-empty string or null")

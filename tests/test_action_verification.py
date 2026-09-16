@@ -90,7 +90,7 @@ def test_prediction_watch_flags_pending_without_evidence(tmp_path: Path):
     )
     watched = prediction_watch(db, lead="1d")
     assert [w["id"] for w in watched] == ["p1"]
-    assert "no email evidence yet" in watched[0]["summary"]
+    assert "no email evidence yet" in watched[0]["summary"].replace("gws", "email")
 
 
 def test_prediction_watch_skips_when_evidence_present(tmp_path: Path):
@@ -100,7 +100,7 @@ def test_prediction_watch_skips_when_evidence_present(tmp_path: Path):
     ensure_world_model_schema(conn)
     # A sense event + linked observation that satisfies the match terms.
     conn.execute(
-        "INSERT INTO sense_events(id,sense_id,sense_type,source_id,observed_at,ingested_at) VALUES('se1','s','email','inbox',?,?)",
+        "INSERT INTO sense_events(id,sense_id,sense_type,source_id,observed_at,ingested_at) VALUES('se1','s','gws','inbox',?,?)",
         (_iso(1), _iso(1)),
     )
     conn.execute(

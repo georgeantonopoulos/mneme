@@ -375,7 +375,7 @@ When extending the world model with time-bounded authority:
 - **`obsidian-cli daily:write` does NOT exist** — use `daily:create` or `daily:append`
 - **`mneme forget` before private graph surgery** — use `mneme forget --db <path> --days-threshold 30` for bulk cleanup of past-dated observations before resorting to `kill-synapse`
 - **Don't escalate suppressed MEMORY.md items** — if an item was suppressed/snoozed, do not re-escalate it
-- **Never use OpenRouter for cron** — pin to `ollama-cloud/glm-5.2:cloud` or equivalent stable provider
+- **Never use OpenRouter or Ollama Cloud for George's cron** — pin agent-mode jobs to `openai-codex/gpt-5.6-luna`; script-only jobs do not need an LLM provider
 - **Observation age penalty uses wrong timestamp** after rebuild — always derive dates from source path or content text, never from `created_at` alone
 - **Stale observation pollution** — `mneme update` re-ingesting historical notes gives observations today's `created_at` but old dates in text. Use `mneme forget` to clean past-dated observations. Archive old daily notes before full vault re-ingestion
 - **User-confirmed resolution requires immediate writeback** — do not just acknowledge in chat. Run correction loop, record feedback, and verify
