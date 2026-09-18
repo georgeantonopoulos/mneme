@@ -358,6 +358,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
     p.add_argument("--as-of",help="Evaluate world-state validity at this ISO timestamp")
+    p.add_argument("--router",choices=["jev"],help="Optional advisory retrieval re-ranker (falls back silently when unavailable; set MNEME_THINK_ROUTER to enable by default)")
+    vault_hook=sub.add_parser("vault-context-hook", help="Sync the generic vault-context hook into a Hermes install")
+    vault_hook.add_argument("--target",type=Path,help="Runtime hook handler path (default: $HERMES_HOME/hooks/vault-context/handler.py)")
+    vault_hook.add_argument("--check",action="store_true",help="Only verify target matches source")
     p.add_argument("--verbose",action="store_true",help="Include score breakdown, retrieval signals, and freshness metadata")
     p.add_argument("--explain",nargs="?",const=True,help="Print a human-readable ranking explanation; optional value overrides --prompt")
     path_cmd=sub.add_parser("path", help="Manage hierarchy paths for graph nodes")
@@ -841,13 +845,30 @@ def main(argv: list[str] | None = None) -> None:
             prompt = args.explain
         else:
             prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        result = retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates, as_of=args.as_of)
+        result = retrieve_context(required_path(args,"db"), prompt, budget=args.budget, max_items=args.max_items, hints=hints_from_args(args), include_candidates=not args.no_candidates, as_of=args.as_of, router=getattr(args, "router", None) or os.environ.get("MNEME_THINK_ROUTER") or None)
         if args.verbose or args.explain:
             result = _ensure_verbose_retrieval_fields(result)
         if args.explain:
             print(_format_retrieval_explanation(result), end="")
         else:
             print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    if args.cmd == "vault-context-hook":
+        import filecmp, shutil
+        source = Path(__file__).resolve().parents[2] / "scripts" / "mneme_vault_context_hook.py"
+        hermes_home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        target = args.target or (hermes_home / "hooks" / "vault-context" / "handler.py")
+        if args.check:
+            if not target.is_file():
+                raise SystemExit(f"missing target hook: {target}")
+            if not filecmp.cmp(source, target, shallow=False):
+                raise SystemExit(f"hook drift: {target} differs from {source}")
+            print(f"hook in sync: {target}")
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        target.chmod(0o755)
+        print(f"synced {source} -> {target}")
         return
     if args.cmd == "path":
         db_path = required_path(args, "db")

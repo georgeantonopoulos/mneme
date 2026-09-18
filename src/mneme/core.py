@@ -1474,7 +1474,7 @@ def _edge_truth_policy(status: str | None, relation: str) -> str:
     return truth_policy_for_edge(status=status, relation=relation)
 
 
-def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True, as_of: str | None = None) -> dict:
+def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: int = 8, hints: list[str] | None = None, include_candidates: bool = True, as_of: str | None = None, router: str | None = None) -> dict[str, Any]:
     hints = hints or DEFAULT_HINTS
     tokens = _query_tokens(prompt)
     if not tokens:
@@ -1848,8 +1848,52 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
 
     conn.close()
     items.sort(key=lambda item: (-float(item.get("score", 0)), item.get("source_path") or "", item.get("title") or ""))
+    router_report: dict | None = None
+    if router == "jev" and items:
+        # Advisory prompt-relevance re-rank of retrieval items. The router only
+        # re-orders; it never adds/removes items and degrades silently on any
+        # failure, leaving the deterministic ordering in place.
+        router_report = {"mode": "jev", "applied": False, "error": None}
+        try:
+            from .jev_router import rank_frontier
+
+            candidates = [
+                {
+                    "id": str(item.get("id") or f"item-{index}"),
+                    "relation": str(item.get("kind") or ""),
+                    "evidence": " ".join(
+                        part
+                        for part in (item.get("title"), item.get("snippet"), item.get("subject"), item.get("object"))
+                        if part
+                    ),
+                    "source_path": str(item.get("source_path") or ""),
+                }
+                for index, item in enumerate(items[:24])
+            ]
+            ranking = rank_frontier(prompt, candidates)
+            router_report.update(
+                {
+                    "applied": bool(ranking.get("probabilities")),
+                    "choice": ranking.get("choice"),
+                    "confidence": ranking.get("confidence"),
+                    "error": ranking.get("error"),
+                }
+            )
+            if ranking.get("probabilities"):
+                probs = ranking["probabilities"]
+                ranked_ids = sorted(probs, key=lambda node_id: (-probs[node_id], node_id))
+                item_ids = [str(item.get("id") or f"item-{i}") for i, item in enumerate(items)]
+                by_id = dict(zip(item_ids, items))
+                ranked_key_set = {node_id for node_id in ranked_ids if node_id in by_id}
+                reordered = [by_id[node_id] for node_id in ranked_ids if node_id in by_id]
+                remaining = [
+                    item for key, item in zip(item_ids, items) if key not in ranked_key_set
+                ]
+                items = reordered + remaining
+        except Exception as exc:  # noqa: BLE001 - advisory layer must never break retrieval
+            router_report["error"] = f"router unavailable or failed: {exc}"
     selected, used = _select_retrieval_items(items, budget=budget, max_items=max_items, skipped=skipped)
-    return {
+    result = {
         "prompt": prompt,
         "budget": budget,
         "used_budget": used,
@@ -1875,6 +1919,9 @@ def retrieve_context(db_path: Path, prompt: str, budget: int = 2500, max_items: 
         },
         "empty_reason": None if selected else "No prompt-relevant context survived scoring and budget limits.",
     }
+    if router_report is not None:
+        result["router"] = router_report
+    return result
 
 
 def _surface_item_to_thought(db_path: Path, item: dict, prompt: str) -> dict:

@@ -110,6 +110,8 @@ Mneme's traversal is pure math by default: cosine similarity, temporal decay, an
 
 - `mneme think --router jev` — after the deterministic activation spread, hop-1 synapse candidates are sent to the router; its picks get an activation boost before the final ranking.
 - `mneme agent preflight --router jev` — current world-state assertions are re-ordered by prompt relevance before injection.
+- `mneme retrieve --router jev` — prompt-time retrieval items are re-ordered by prompt relevance before budget selection.
+- `mneme vault-context-hook` — syncs the generic repo-managed pre-session hook (`scripts/mneme_vault_context_hook.py`) into a Hermes install; the hook uses routed `mneme retrieve` at session start. `--check` verifies sync.
 
 ### What it never does
 
