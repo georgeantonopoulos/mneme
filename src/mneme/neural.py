@@ -623,6 +623,7 @@ def think(
     spread: float = 0.62,
     now: str | None = None,
     evidence_cap: int = DEFAULT_EVIDENCE_CAP,
+    router: str | None = None,
 ) -> dict:
     if seeds <= 0:
         raise ValueError("seeds must be positive")
@@ -811,6 +812,50 @@ def think(
                     }
             frontier = next_frontier
         ordered_ids = [node_id for node_id, _score in sorted(activations.items(), key=lambda item: (-item[1], item[0]))[:limit]]
+        router_report: dict | None = None
+        if router == "jev":
+            # Advisory re-ranking of the hop-1 synapse targets. Any failure
+            # degrades silently to the deterministic ordering above.
+            router_report = {"mode": "jev", "applied": False, "error": None}
+            try:
+                from .jev_router import boost_activation, rank_frontier
+
+                hop1 = [
+                    reason
+                    for reason in reasons.values()
+                    if isinstance(reason, dict) and reason.get("kind") == "synapse" and reason.get("hop") == 1
+                ]
+                candidates = [
+                    {
+                        "id": reason.get("from"),
+                        "relation": reason.get("relation"),
+                        "evidence": reason.get("evidence"),
+                        "source_path": reason.get("source_path"),
+                    }
+                    for reason in hop1
+                    if reason.get("from")
+                ]
+                # Deduplicate candidate ids while preserving order.
+                seen: set[str] = set()
+                candidates = [c for c in candidates if not (c["id"] in seen or seen.add(c["id"]))]
+                ranking: dict = {}
+                if candidates:
+                    ranking = rank_frontier(prompt, candidates)
+                    router_report.update(
+                        {
+                            "applied": bool(ranking.get("probabilities")),
+                            "choice": ranking.get("choice"),
+                            "confidence": ranking.get("confidence"),
+                            "error": ranking.get("error"),
+                        }
+                    )
+                    activations = boost_activation(activations, ranking)
+                    ordered_ids = [
+                        node_id
+                        for node_id, _score in sorted(activations.items(), key=lambda item: (-item[1], item[0]))[:limit]
+                    ]
+            except Exception as exc:  # noqa: BLE001 - advisory layer must never break think
+                router_report["error"] = f"router unavailable or failed: {exc}"
         if not ordered_ids:
             neurons = []
         else:
@@ -835,6 +880,7 @@ def think(
             "contract": {"name": CONTRACT_NAME, "version": CONTRACT_VERSION},
             "prompt": prompt,
             "model": {"provider": provider, "name": model},
+            "router": router_report,
             "activated_neurons": neurons,
             "context": "\n".join(context_lines),
             "instructions": "Use these activations as associative leads, not facts. Follow source provenance before making a factual claim.",

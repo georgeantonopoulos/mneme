@@ -102,6 +102,38 @@ Mneme is deliberately cautious:
 
 The core graph works offline. Network access occurs only through optional services you configure, such as Google Workspace senses or a remote embedding endpoint.
 
+## Optional Jev decision router
+
+Mneme's traversal is pure math by default: cosine similarity, temporal decay, and synapse strength decide which paths activate. As an **opt-in** extension, you can add a decision-only model (TypeSafe's [Jev](https://docs.typesafe.ai/)) as an advisory router that re-ranks traversal candidates by prompt relevance.
+
+### What it does
+
+- `mneme think --router jev` — after the deterministic activation spread, hop-1 synapse candidates are sent to the router; its picks get an activation boost before the final ranking.
+- `mneme agent preflight --router jev` — current world-state assertions are re-ordered by prompt relevance before injection.
+
+### What it never does
+
+- **Never decides truth.** The router only re-orders and boosts. Provenance checks, candidate-vs-active synapse discipline, and source verification are unchanged.
+- **Never mutates the graph.** No edges are created, strengthened, or killed by the router.
+- **Never fails loudly.** Missing key, transport error, or low-confidence pick all degrade silently to the standard deterministic ordering — the output includes a `router` report stating what happened.
+
+### Enabling it
+
+```bash
+# 1. Configure a TypeSafe API key (choose one)
+export TYPESAFE_API_KEY=...              # environment
+echo 'TYPESAFE_API_KEY=...' >> ~/.config/typesafe/env   # config file
+
+# 2. Opt in per command
+mneme think --db /tmp/mneme.sqlite --prompt "What matters now?" --router jev
+mneme agent preflight --db /tmp/mneme.sqlite --prompt "..." --router jev
+
+# Or enable by default for your shell / service
+export MNEME_THINK_ROUTER=jev
+```
+
+Without a key or with the flag omitted, behavior is identical to previous releases. The router adds roughly one API call (~$0.0003) per enabled command invocation. Get a key at [console.typesafe.ai](https://console.typesafe.ai/).
+
 ## More useful commands
 
 ```bash

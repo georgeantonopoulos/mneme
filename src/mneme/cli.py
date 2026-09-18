@@ -349,6 +349,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hops",type=_nonnegative_int,default=2)
     p.add_argument("--limit",type=_positive_int,default=12)
     p.add_argument("--now",help="ISO timestamp for deterministic activation decay")
+    p.add_argument("--router",choices=["jev"],help="Optional advisory synapse router (falls back silently when unavailable; set MNEME_THINK_ROUTER to enable by default)")
     p=sub.add_parser("retrieve", help="Build a prompt-time context pack from local graph evidence")
     p.add_argument("--db",type=Path)
     p.add_argument("--prompt",help="Prompt text; omit to read from stdin")
@@ -392,6 +393,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--hints")
     p.add_argument("--no-candidates",action="store_true",help="Exclude candidate edges from retrieval context")
     p.add_argument("--as-of",help="Evaluate world-state validity at this ISO timestamp")
+    p.add_argument("--router",choices=["jev"],help="Optional advisory assertion router (falls back silently when unavailable; set MNEME_THINK_ROUTER to enable by default)")
     packet=sub.add_parser("packet", help="Create sanitized untrusted source packets")
     packet_sub=packet.add_subparsers(dest="packet_cmd", required=True)
     p=packet_sub.add_parser("create", help="Persist raw source data and sanitized packet metadata")
@@ -828,7 +830,8 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.cmd == "think":
         prompt = args.prompt if args.prompt is not None else sys.stdin.read()
-        result = neural_think(required_path(args,"db"), prompt, provider=args.provider, model=args.model, endpoint=args.endpoint, seeds=args.seeds, hops=args.hops, limit=args.limit, now=args.now)
+        router = getattr(args, "router", None) or os.environ.get("MNEME_THINK_ROUTER") or None
+        result = neural_think(required_path(args,"db"), prompt, provider=args.provider, model=args.model, endpoint=args.endpoint, seeds=args.seeds, hops=args.hops, limit=args.limit, now=args.now, router=router)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return
     if args.cmd == "retrieve":
@@ -901,6 +904,7 @@ def main(argv: list[str] | None = None) -> None:
                 hints=hints_from_args(args),
                 include_candidates=not args.no_candidates,
                 as_of=args.as_of,
+                router=getattr(args, "router", None) or os.environ.get("MNEME_THINK_ROUTER") or None,
             )
             print(json.dumps(result, indent=2, ensure_ascii=False))
             if result["contract"]["status"] != "pass":

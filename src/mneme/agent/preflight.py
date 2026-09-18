@@ -21,6 +21,7 @@ def agent_preflight(
     hints: list[str] | None = None,
     include_candidates: bool = True,
     as_of: str | None = None,
+    router: str | None = None,
 ) -> dict[str, Any]:
     hints = hints or DEFAULT_HINTS
     route = classify_path(prompt, enabled=False)
@@ -50,6 +51,66 @@ def agent_preflight(
         "due_predictions": due_predictions(db_path)[:20],
         "contradictions": detect_state_conflicts(db_path)[:20],
     }
+    router_report: dict | None = None
+    if router == "jev":
+        # Advisory prompt-relevance ranking of current world assertions.
+        # Any failure degrades silently; assertion order is otherwise unchanged.
+        router_report = {"mode": "jev", "applied": False, "error": None}
+        try:
+            from ..jev_router import rank_frontier
+
+            def _assertion_candidates(assertions: list[dict]) -> list[dict]:
+                candidates = []
+                for index, assertion in enumerate(assertions):
+                    candidates.append(
+                        {
+                            "id": str(assertion.get("id") or f"assertion-{index}"),
+                            "relation": str(assertion.get("predicate") or ""),
+                            "evidence": " ".join(
+                                part
+                                for part in (
+                                    assertion.get("subject_name"),
+                                    assertion.get("object_name"),
+                                    assertion.get("object_value"),
+                                )
+                                if part
+                            ),
+                            "source_path": str(assertion.get("source_path") or ""),
+                        }
+                    )
+                return candidates[:24]
+
+            candidates = _assertion_candidates(world["current_assertions"])
+            if candidates:
+                ranking = rank_frontier(prompt, candidates)
+                router_report.update(
+                    {
+                        "applied": bool(ranking.get("probabilities")),
+                        "choice": ranking.get("choice"),
+                        "confidence": ranking.get("confidence"),
+                        "error": ranking.get("error"),
+                    }
+                )
+                if ranking.get("probabilities"):
+                    # Reorder current assertions by router probability, stable for ties.
+                    probs = ranking["probabilities"]
+                    ranked_ids = sorted(probs, key=lambda item: (-probs[item], item))
+                    reordered_set = set(ranked_ids)
+                    assertion_ids = [
+                        str(a.get("id") or f"assertion-{i}")
+                        for i, a in enumerate(world["current_assertions"])
+                    ]
+                    by_id = dict(zip(assertion_ids, world["current_assertions"]))
+                    reordered = [by_id[node_id] for node_id in ranked_ids if node_id in by_id]
+                    reordered_key_set = {node_id for node_id in ranked_ids if node_id in by_id}
+                    remaining = [
+                        assertion
+                        for key, assertion in zip(assertion_ids, world["current_assertions"])
+                        if key not in reordered_key_set
+                    ]
+                    world["current_assertions"] = reordered + remaining
+        except Exception as exc:  # noqa: BLE001 - advisory layer must never break preflight
+            router_report["error"] = f"router unavailable or failed: {exc}"
     db_report = check_db_contract(db_path)
     retrieval_report = validate_retrieval_pack(context)
     warnings = list(db_report.warnings) + list(retrieval_report.warnings)
@@ -67,6 +128,7 @@ def agent_preflight(
         },
         "agent_rules": AGENT_RULES,
         "route": route,
+        "router": router_report,
         "context": context,
         "world": world,
         "surface": surface,
