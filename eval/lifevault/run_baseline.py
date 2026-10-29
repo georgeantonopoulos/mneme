@@ -227,6 +227,7 @@ def score(question: dict, items: list[dict], k: int) -> dict:
     answer_in_ctx = bool(question["accept"]) and all(any(s.lower() in context for s in group) for group in question["accept"])
     return {
         "id": question["id"],
+        "split": question.get("split", "dev"),
         "category": question["category"],
         "returned": len(items[:k]),
         "first_hit_rank": first_hit,
@@ -255,47 +256,77 @@ def summarise(rows: list[dict]) -> dict:
     }
 
 
+def build_systems(names: list[str] | None, docs: list[dict], work: Path) -> list:
+    factories = {
+        "mneme-retrieve/notes": lambda: MnemeRetrieve("mneme-retrieve/notes", docs, work, notes_only=True),
+        "mneme-retrieve/all": lambda: MnemeRetrieve("mneme-retrieve/all", docs, work, notes_only=False),
+        "mneme-think/all": lambda: MnemeThink("mneme-think/all", docs, work),
+        "bm25/all": lambda: BM25(docs),
+        "cortex/all": lambda: Cortex(work),
+    }
+    return [factories[name]() for name in (names or list(factories))]
+
+
+class Cortex:
+    """The rebuilt core (``mneme.cortex``), reading the raw LifeVault sources directly."""
+
+    name = "cortex/all"
+
+    def __init__(self, work: Path):
+        from mneme.cortex import Brain
+
+        self.brain = Brain(work / "cortex.sqlite")
+        started = time.perf_counter()
+        self.brain.ingest_lifevault(DATA)
+        self.ingest_seconds = time.perf_counter() - started
+
+    def search(self, question: dict, k: int) -> list[dict]:
+        return [{"refs": hit.refs, "text": hit.context_text()} for hit in self.brain.recall(question["question"], k=k, as_of=question["as_of"])]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Score retrieval systems on LifeVault")
     parser.add_argument("--k", type=int, default=8)
     parser.add_argument("--out", type=Path, default=HERE / "results")
+    parser.add_argument("--systems", nargs="*", help="Subset of systems to run (default: all)")
+    parser.add_argument("--no-write", action="store_true", help="Print only; do not overwrite results/")
     args = parser.parse_args()
     questions = json.loads((DATA / "questions.json").read_text(encoding="utf-8"))
     docs = load_documents()
     report = {"k": args.k, "fixture_now": json.loads((DATA / "manifest.json").read_text())["now"],
               "run_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "systems": {}}
     with tempfile.TemporaryDirectory() as tmp:
-        work = Path(tmp)
-        systems = [
-            MnemeRetrieve("mneme-retrieve/notes", docs, work, notes_only=True),
-            MnemeRetrieve("mneme-retrieve/all", docs, work, notes_only=False),
-            MnemeThink("mneme-think/all", docs, work),
-            BM25(docs),
-        ]
-        for system in systems:
+        for system in build_systems(args.systems, docs, Path(tmp)):
             rows, latencies = [], []
             for question in questions:
                 started = time.perf_counter()
                 items = system.search(question, args.k)
                 latencies.append(time.perf_counter() - started)
                 rows.append(score(question, items, args.k))
+            dev = [r for r in rows if r["split"] == "dev"]
+            holdout = [r for r in rows if r["split"] == "holdout"]
             by_category: dict[str, list[dict]] = defaultdict(list)
-            for row in rows:
+            for row in dev:
                 by_category[row["category"]].append(row)
             latencies.sort()
             report["systems"][system.name] = {
-                "summary": summarise(rows),
+                "summary": summarise(dev),
+                "holdout": summarise(holdout),
                 "by_category": {cat: summarise(cat_rows) for cat, cat_rows in sorted(by_category.items())},
                 "latency_ms": {"p50": round(latencies[len(latencies) // 2] * 1000, 1), "p95": round(latencies[int(len(latencies) * 0.95)] * 1000, 1)},
                 "ingest_seconds": round(system.ingest_seconds, 2),
-                "per_question": rows,
+                "per_question": dev,
+                "per_question_holdout": holdout,
             }
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "baseline.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(f"{'system':24} {'hit@3':>6} {'hit@k':>6} {'recall':>7} {'mrr':>6} {'ans_ctx':>8} {'stale':>6} {'forbid':>6} {'p50ms':>7}")
-    for name, data in report["systems"].items():
-        s = data["summary"]
-        print(f"{name:24} {s['hit@3']:>6} {s['hit@k']:>6} {s['recall@k']:>7} {s['mrr']:>6} {s['answer_in_ctx@k']:>8} {s['stale_in_ctx@k']:>6} {s['forbidden@k']:>6} {data['latency_ms']['p50']:>7}")
+    if not args.no_write:
+        args.out.mkdir(parents=True, exist_ok=True)
+        (args.out / "baseline.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    for split in ("summary", "holdout"):
+        print(f"\n[{'dev' if split == 'summary' else 'holdout'}]")
+        print(f"{'system':24} {'hit@3':>6} {'hit@k':>6} {'recall':>7} {'mrr':>6} {'ans_ctx':>8} {'stale':>6} {'forbid':>6} {'p50ms':>7}")
+        for name, data in report["systems"].items():
+            s = data[split]
+            print(f"{name:24} {s['hit@3']:>6} {s['hit@k']:>6} {s['recall@k']:>7} {s['mrr']:>6} {s['answer_in_ctx@k']:>8} {s['stale_in_ctx@k']:>6} {s['forbidden@k']:>6} {data['latency_ms']['p50']:>7}")
     return 0
 
 

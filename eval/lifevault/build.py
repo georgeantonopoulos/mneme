@@ -193,7 +193,7 @@ def build(root: Path) -> dict:
         "chat_messages": write_chats(root),
         "tasks": write_tasks(root),
     }
-    questions = truth.questions()
+    questions = truth.questions() + truth.holdout_questions()
     truth.validate(questions, root)
     (root / "questions.json").write_text(json.dumps(questions, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     counts["questions"] = len(questions)
