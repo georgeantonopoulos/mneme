@@ -1,0 +1,24 @@
+{
+ "neurons": [
+  {"id": "email:hl-004", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "note:Projects/Kestrel Redesign.md#0", "relation": "is the source of decision recorded in", "weight": 0.8}]},
+  {"id": "journal:2026-06-19", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "event:ev-swim-2026-06-20", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "event:ev-swim-2026-06-13", "relation": "follows previous session in series", "weight": 0.3}, {"to": "event:ev-swim-2026-06-27", "relation": "precedes next session in series", "weight": 0.3}]},
+  {"id": "journal:2026-06-20", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-06-21", "topics": ["a5.t1", "a5.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "note:Projects/Ember and Clay.md#0", "relation": "practice behind", "weight": 0.4}, {"to": "chat:Lena@2026-08-05T15:29", "relation": "possibly the bowls fired in", "weight": 0.3}]},
+  {"id": "email:nt-cal-51", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "chat:Sam@2026-06-21T20:33", "topics": ["a6.t1", "a3.t3"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "chat:Sam@2026-07-19T18:55", "relation": "declines invitation like", "weight": 0.3}]},
+  {"id": "email:nl-dw-8", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:hl-003", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "email:hl-002", "relation": "pays invoice INV-2026-011 in", "weight": 0.9}]},
+  {"id": "journal:2026-06-24", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "note:Resources/Glaze notes.md#0", "topics": ["a5.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "note:People/Lena Fischer.md#0", "relation": "recipe from", "weight": 0.6}, {"to": "note:Projects/Ember and Clay.md#0", "relation": "supports glazes for", "weight": 0.4}]},
+  {"id": "email:nl-be-2026-06-26", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-06-26", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:br-001", "topics": ["a1.t3"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "email:br-002", "relation": "is followed by cancellation in", "weight": 0.9}, {"to": "note:Clients/Bramble and Co.md#0", "relation": "is the enquiry behind", "weight": 0.6}]},
+  {"id": "event:ev-swim-2026-06-27", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "event:ev-swim-2026-06-20", "relation": "follows previous session in series", "weight": 0.3}]},
+  {"id": "email:nt-cal-58", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:nl-dw-9", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:rc-59", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-06-30", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:hl-005", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "email:hl-002", "relation": "follows earlier invoice", "weight": 0.6}, {"to": "email:hl-016", "relation": "precedes later invoice", "weight": 0.3}, {"to": "note:Clients/Halcyon Labs.md#0", "relation": "bills client in", "weight": 0.5}]}
+ ]
+}

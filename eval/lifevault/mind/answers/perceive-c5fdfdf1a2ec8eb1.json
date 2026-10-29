@@ -1,0 +1,43 @@
+{"neurons": [
+{"id": "email:nt-cal-37", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-6", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-kn-1", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-2", "relation": "same physio course, later session", "weight": 0.3},
+  {"to": "event:ev-kn-nov2", "relation": "same course, later review follows", "weight": 0.4}
+]},
+{"id": "email:rc-39", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-24", "relation": "same recurring subscription", "weight": 0.3}
+]},
+{"id": "chat:Marcus@2026-06-09T20:27", "topics": ["a3.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-40", "topics": ["a7.t2", "a9.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-98", "relation": "same Cheltenham route, later ticket", "weight": 0.2}
+]},
+{"id": "email:mv-001", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-mv-viewing", "relation": "is the request behind", "weight": 0.7},
+  {"to": "email:mv-002", "relation": "leads to offer", "weight": 0.5},
+  {"to": "note:People/Tomasz Wren.md#0", "relation": "same person as landlord", "weight": 0.4}
+]},
+{"id": "journal:2026-06-10", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-06-12", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-001", "relation": "reflects on viewing offered by", "weight": 0.6},
+  {"to": "event:ev-mv-viewing", "relation": "reflects on viewing held at", "weight": 0.6},
+  {"to": "note:Projects/Flat Move.md#2", "relation": "logged in", "weight": 0.5},
+  {"to": "note:People/Tomasz Wren.md#0", "relation": "describes landlord met at", "weight": 0.3}
+]},
+{"id": "event:ev-mv-viewing", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-001", "relation": "booked from", "weight": 0.7}
+]},
+{"id": "event:ev-swim-2026-06-13", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-06-14", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-44", "topics": ["a5.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Sam@2026-06-14T22:10", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-09-15T21:40", "relation": "resolved by book being returned", "weight": 0.8},
+  {"to": "task:t-so-1", "relation": "tracked by task to get book back", "weight": 0.6}
+]},
+{"id": "email:nl-dw-7", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-06-15", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "task:t-x-1", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-ct-2026-06-15", "topics": ["a9.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nt-bank-46", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-06-16", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []}
+]}
