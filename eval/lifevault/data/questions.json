@@ -5,7 +5,11 @@
     "question": "What's my landlord's email address?",
     "answer": "tomasz@wrenlettings.example",
     "evidence": [
-      "note:People/Tomasz Wren.md"
+      "note:People/Tomasz Wren.md",
+      "email:mv-001",
+      "email:mv-002",
+      "email:mv-004",
+      "email:mv-005"
     ],
     "accept": [
       [
@@ -88,7 +92,9 @@
     "evidence": [
       "email:hl-016",
       "email:hl-008",
-      "note:Clients/Halcyon Labs.md"
+      "note:Clients/Halcyon Labs.md",
+      "note:People/Daniel Achterberg.md",
+      "note:Meetings/2026-10-22 Kestrel check-in.md"
     ],
     "accept": [
       [
@@ -111,7 +117,8 @@
     "answer": "Priya was the approver and she had left; Daniel approved it and it went out on 12 September",
     "evidence": [
       "email:hl-013",
-      "email:hl-008"
+      "email:hl-008",
+      "note:Meetings/2026-08-18 Daniel intro.md"
     ],
     "accept": [
       [
@@ -136,13 +143,7 @@
       "email:iv-004",
       "chat:Marcus@2026-10-12T20:20"
     ],
-    "accept": [
-      [
-        "nia",
-        "me",
-        "you"
-      ]
-    ],
+    "accept": [],
     "reject": [],
     "forbidden": [],
     "as_of": "2026-10-29T18:00:00+00:00",
@@ -160,10 +161,8 @@
     ],
     "accept": [
       [
-        "20"
-      ],
-      [
-        "27"
+        "20 nov",
+        "20 and 27"
       ]
     ],
     "reject": [],
@@ -205,8 +204,10 @@
     ],
     "accept": [
       [
-        "five",
-        "5"
+        "2026-05-12"
+      ],
+      [
+        "2026-09-29"
       ]
     ],
     "reject": [],
@@ -245,7 +246,8 @@
     "answer": "Ceramics fair in Lisbon with Lena",
     "evidence": [
       "journal:2026-10-10",
-      "event:ev-ls-fair"
+      "event:ev-ls-fair",
+      "note:Travel/Lisbon October.md"
     ],
     "accept": [
       [
@@ -266,7 +268,9 @@
     "answer": "3 November 2026, 14:00",
     "evidence": [
       "event:ev-hl-review",
-      "email:hl-017"
+      "email:hl-017",
+      "note:Projects/Kestrel Redesign.md",
+      "note:Meetings/2026-10-22 Kestrel check-in.md"
     ],
     "accept": [
       [
@@ -292,7 +296,11 @@
     ],
     "accept": [
       [
-        "before"
+        "14 aug"
+      ],
+      [
+        "27 aug",
+        "1 september"
       ]
     ],
     "reject": [],
@@ -312,8 +320,12 @@
     ],
     "accept": [
       [
-        "3",
-        "three"
+        "f28",
+        "no hot water"
+      ],
+      [
+        "21 oct",
+        "wednesday 21"
       ]
     ],
     "reject": [],
@@ -359,14 +371,17 @@
     "answer": "15 September 2026 (originally planned for 1 September)",
     "evidence": [
       "email:mv-005",
-      "journal:2026-09-15"
+      "journal:2026-09-15",
+      "note:Projects/Flat Move.md",
+      "email:mv-006",
+      "email:mv-007",
+      "journal:2026-08-05"
     ],
     "accept": [
       [
         "15 sep",
         "september 15",
-        "2026-09-15",
-        "15th"
+        "2026-09-15"
       ]
     ],
     "reject": [
@@ -385,7 +400,12 @@
     "answer": "Rhea Kapoor at Ledgerline (since 22 Sept; Felix Grant retired)",
     "evidence": [
       "email:tx-003",
-      "note:Finance/Tax 2025-26.md"
+      "note:Finance/Tax 2025-26.md",
+      "journal:2026-09-22",
+      "note:People/Rhea Kapoor.md",
+      "note:People/Felix Grant.md",
+      "email:tx-002",
+      "task:t-tx-1"
     ],
     "accept": [
       [
@@ -407,14 +427,16 @@
     "answer": "Sundays 10:00 (moved from Saturdays 9:00 in September); Stage 6 from January Sundays 10:45",
     "evidence": [
       "email:iv-001",
-      "note:People/Ivy.md"
+      "note:People/Ivy.md",
+      "email:iv-005"
     ],
     "accept": [
       [
         "sunday"
       ],
       [
-        "10"
+        "10:00",
+        "10am"
       ]
     ],
     "reject": [
@@ -474,14 +496,14 @@
     "answer": "Friday 6 November, 08:15 (moved from 5 November)",
     "evidence": [
       "email:kn-002",
-      "event:ev-kn-nov2"
+      "event:ev-kn-nov2",
+      "note:Health/Knee Rehab.md"
     ],
     "accept": [
       [
         "6 nov",
         "november 6",
-        "2026-11-06",
-        "6th"
+        "2026-11-06"
       ]
     ],
     "reject": [
@@ -499,7 +521,8 @@
     "answer": "20 November (moved from 6 November)",
     "evidence": [
       "email:hl-017",
-      "event:ev-hl-handoff2"
+      "event:ev-hl-handoff2",
+      "note:Projects/Kestrel Redesign.md"
     ],
     "accept": [
       [
@@ -521,7 +544,9 @@
     "answer": "Flat 3, 22 Alder Street, Bristol",
     "evidence": [
       "note:Projects/Flat Move.md",
-      "email:cr-002"
+      "email:cr-002",
+      "note:People/Tomasz Wren.md",
+      "email:mv-020"
     ],
     "accept": [
       [
@@ -543,7 +568,8 @@
     "answer": "14 Cotham Rise",
     "evidence": [
       "note:Projects/Flat Move.md",
-      "event:ev-mv-viewing"
+      "event:ev-mv-viewing",
+      "note:People/Gemma Holt.md"
     ],
     "accept": [
       [
@@ -562,14 +588,14 @@
     "question": "As of 1 August, when was I due to move?",
     "answer": "1 September (the delay was only announced on 5 August)",
     "evidence": [
-      "email:mv-002"
+      "email:mv-002",
+      "note:Projects/Flat Move.md"
     ],
     "accept": [
       [
+        "1 september",
         "1 sep",
-        "september 1",
-        "2026-09-01",
-        "1st"
+        "2026-09-01"
       ]
     ],
     "reject": [],
@@ -585,7 +611,8 @@
     "answer": "£450",
     "evidence": [
       "note:Clients/Halcyon Labs.md",
-      "email:hl-001"
+      "email:hl-001",
+      "email:hl-011"
     ],
     "accept": [
       [
@@ -605,7 +632,10 @@
     "answer": "Felix Grant at Grant & Lowe",
     "evidence": [
       "email:tx-001",
-      "note:People/Felix Grant.md"
+      "note:People/Felix Grant.md",
+      "note:Finance/Tax 2025-26.md",
+      "journal:2026-09-22",
+      "email:tx-002"
     ],
     "accept": [
       [
@@ -626,16 +656,16 @@
     "evidence": [
       "email:ls-001",
       "email:ls-003",
-      "email:ls-005"
+      "email:ls-005",
+      "note:Travel/Lisbon October.md",
+      "email:ls-004"
     ],
     "accept": [
       [
-        "9"
+        "9 oct"
       ],
       [
-        "cancel",
-        "moved",
-        "rebook"
+        "cancel"
       ]
     ],
     "reject": [],
@@ -656,7 +686,9 @@
     ],
     "accept": [
       [
-        "still",
+        "salt orchard"
+      ],
+      [
         "forgot"
       ]
     ],
@@ -701,7 +733,10 @@
     "answer": "Nothing - the project was cancelled; only the £720 kill fee was paid",
     "evidence": [
       "email:br-002",
-      "email:br-004"
+      "email:br-004",
+      "note:Clients/Bramble and Co.md",
+      "journal:2026-08-20",
+      "email:br-003"
     ],
     "accept": [
       [
@@ -722,13 +757,13 @@
     "answer": "That review hasn't happened yet, and Priya has left Halcyon",
     "evidence": [
       "email:hl-008",
-      "event:ev-hl-review"
+      "event:ev-hl-review",
+      "note:People/Priya Raman.md"
     ],
     "accept": [
       [
-        "hasn't",
-        "not yet",
-        "left"
+        "leaving halcyon",
+        "left halcyon"
       ]
     ],
     "reject": [],
@@ -758,7 +793,8 @@
     "question": "What did Sam say about Ivy's swimming?",
     "answer": "Coach Sam Doherty: she passed Stage 5, Stage 6 from January (Sundays 10:45)",
     "evidence": [
-      "email:iv-005"
+      "email:iv-005",
+      "journal:2026-10-19"
     ],
     "accept": [
       [
@@ -784,10 +820,7 @@
     ],
     "accept": [
       [
-        "next week"
-      ],
-      [
-        "50"
+        "early next week"
       ]
     ],
     "reject": [],
@@ -803,7 +836,9 @@
     "answer": "New: Tomasz Wren; old flat agent: Gemma Holt at Harbourside Lets",
     "evidence": [
       "note:People/Tomasz Wren.md",
-      "note:People/Gemma Holt.md"
+      "note:People/Gemma Holt.md",
+      "note:Projects/Flat Move.md",
+      "email:mv-001"
     ],
     "accept": [
       [
@@ -830,8 +865,8 @@
         "market"
       ],
       [
-        "december",
-        "12"
+        "12-13 december",
+        "12 december"
       ]
     ],
     "reject": [],
@@ -846,15 +881,12 @@
     "question": "Am I allowed to go for a jog yet?",
     "answer": "No - no running until the physio review on 6 November",
     "evidence": [
-      "note:Health/Knee Rehab.md"
+      "note:Health/Knee Rehab.md",
+      "journal:2026-09-29"
     ],
     "accept": [
       [
-        "no"
-      ],
-      [
-        "6 nov",
-        "review"
+        "no running"
       ]
     ],
     "reject": [],
@@ -869,7 +901,10 @@
     "question": "Which client relationship ended with a cancellation payment?",
     "answer": "Bramble & Co - £720 kill fee",
     "evidence": [
-      "note:Clients/Bramble and Co.md"
+      "note:Clients/Bramble and Co.md",
+      "journal:2026-08-20",
+      "email:br-002",
+      "email:br-003"
     ],
     "accept": [
       [
@@ -889,7 +924,8 @@
     "answer": "Aerolis flight booking for Lisbon (out 9 Oct, back 13 Oct)",
     "evidence": [
       "email:ls-001",
-      "email:ls-003"
+      "email:ls-003",
+      "note:Travel/Lisbon October.md"
     ],
     "accept": [
       [
@@ -910,7 +946,8 @@
     "question": "What is DG-58213 about?",
     "answer": "DepositGuard dispute over £240 deducted from the Cotham Rise deposit; decision expected 20 Nov",
     "evidence": [
-      "email:mv-013"
+      "email:mv-013",
+      "note:Projects/Flat Move.md"
     ],
     "accept": [
       [
@@ -933,13 +970,18 @@
     "answer": "Not yet - £6,000, due 30 Oct; Daniel said it's in the next payment run",
     "evidence": [
       "email:hl-016",
-      "note:Meetings/2026-10-22 Kestrel check-in.md"
+      "note:Meetings/2026-10-22 Kestrel check-in.md",
+      "note:Clients/Halcyon Labs.md",
+      "task:t-hl-4"
     ],
     "accept": [
       [
-        "not",
-        "unpaid",
-        "due"
+        "017"
+      ],
+      [
+        "next payment run",
+        "due 2026-10-30",
+        "due 30 oct"
       ]
     ],
     "reject": [
@@ -978,7 +1020,10 @@
     "answer": "Octopuses - clay octopuses, octopus mugs idea; swimming",
     "evidence": [
       "note:People/Ivy.md",
-      "journal:2026-08-30"
+      "journal:2026-08-30",
+      "note:Projects/Ember and Clay.md",
+      "journal:2026-10-10",
+      "note:Travel/Lisbon October.md"
     ],
     "accept": [
       [
@@ -1041,10 +1086,10 @@
     ],
     "accept": [
       [
-        "300"
+        "£300"
       ],
       [
-        "50"
+        "£50"
       ]
     ],
     "reject": [],
@@ -1130,7 +1175,8 @@
     "answer": "P60, expenses spreadsheet, pension statements by 15 November",
     "evidence": [
       "email:tx-003",
-      "task:t-tx-1"
+      "task:t-tx-1",
+      "note:Finance/Tax 2025-26.md"
     ],
     "accept": [
       [
@@ -1181,8 +1227,7 @@
     "accept": [
       [
         "clipping",
-        "forum",
-        "not"
+        "forum"
       ]
     ],
     "reject": [],

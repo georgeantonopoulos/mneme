@@ -30,6 +30,14 @@ Each question lists `evidence` (refs a good system should retrieve), `accept`/`r
 grading, `forbidden` refs, `as_of`, and `abstain`. Ref formats: `email:<id>`, `note:<path>`,
 `journal:<date>`, `event:<uid>`, `task:<id>`, `chat:<conversation>@<timestamp>`.
 
+## Scoring
+
+```bash
+python eval/lifevault/run_baseline.py   # writes results/baseline.json
+```
+
+Scores current Mneme and a plain BM25 baseline on retrieval. See [results/BASELINE.md](results/BASELINE.md).
+
 ## Rebuild
 
 ```bash
