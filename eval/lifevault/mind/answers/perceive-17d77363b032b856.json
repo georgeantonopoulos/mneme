@@ -1,0 +1,12 @@
+{"neurons": [
+{"id": "event:ev-hl-handoff2", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-handoff", "relation": "reschedules", "weight": 1.0},
+  {"to": "email:hl-017", "relation": "confirms date change in", "weight": 0.9},
+  {"to": "task:t-hl-3", "relation": "handoff doc is due just before", "weight": 0.5},
+  {"to": "event:ev-hl-review", "relation": "follows", "weight": 0.4}
+]},
+{"id": "task:t-x-5", "topics": ["a1.t4", "a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-hl-3", "relation": "builds on handoff doc of", "weight": 0.5},
+  {"to": "task:t-hl-2", "relation": "draws on accessibility audit of", "weight": 0.3}
+]}
+]}
