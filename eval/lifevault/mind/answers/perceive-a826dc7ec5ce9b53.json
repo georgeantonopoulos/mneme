@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"email:nl-be-2026-08-21","topics":["a9.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"journal:2026-08-21","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[{"to":"note:Resources/Recipe - Red Lentil Dal.md#0","relation":"cooks from","weight":0.3}]},
+{"id":"chat:Marcus@2026-08-23T19:42","topics":["a3.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nl-dw-17","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"chat:Lena@2026-08-24T08:00","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:br-003","topics":["a1.t3","a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:br-002","relation":"follows up on","weight":0.9},{"to":"note:Areas/Work admin.md#0","relation":"applies kill fee clause from","weight":0.5},{"to":"journal:2026-08-20","relation":"follows cancellation in","weight":0.4},{"to":"note:Clients/Bramble and Co.md#0","relation":"bills client in","weight":0.4}]},
+{"id":"note:Areas/Work admin.md#0","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:br-003","relation":"applied in","weight":0.5},{"to":"email:br-004","relation":"confirms account for","weight":0.6},{"to":"email:hl-002","relation":"sets payment terms for","weight":0.4}]},
+{"id":"journal:2026-08-26","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"event:ev-hl-checkin-1","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"event:ev-hl-checkin-0","relation":"follows in weekly series","weight":0.3},{"to":"event:ev-hl-checkin-2","relation":"precedes in weekly series","weight":0.2}]},
+{"id":"note:People/Daniel Achterberg.md#0","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:hl-009","relation":"confirms agreed rate in","weight":0.8},{"to":"note:Meetings/2026-08-18 Daniel intro.md#0","relation":"follows up on","weight":0.6},{"to":"event:ev-hl-checkin-2","relation":"keeps Thursday 10:00 slot of","weight":0.4}]},
+{"id":"email:hl-009","topics":["a1.t1","a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"note:People/Daniel Achterberg.md#0","relation":"confirms rate in","weight":0.7},{"to":"note:Projects/Kestrel Redesign.md#0","relation":"adds offline mode scope to","weight":0.5},{"to":"event:ev-hl-checkin-2","relation":"keeps Thursday check-ins of","weight":0.3}]},
+{"id":"email:nl-be-2026-08-28","topics":["a9.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"chat:Sam@2026-08-28T18:21","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"event:ev-swim-2026-08-29","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"journal:2026-08-29","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"journal:2026-08-30","topics":["a5.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:nl-ct-2026-10-15","relation":"relates to selling advice in","weight":0.4},{"to":"note:Areas/Ideas.md#0","relation":"relates to idea in","weight":0.3}]},
+{"id":"task:t-x-2","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nt-cal-121","topics":["a9.t5"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nl-dw-18","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:hl-010","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:hl-011","relation":"superseded by","weight":0.9},{"to":"note:Clients/Halcyon Labs.md#0","relation":"bills client in","weight":0.4}]}
+]}

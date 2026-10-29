@@ -1,0 +1,73 @@
+{"neurons": [
+{"id": "journal:2026-10-29", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-iv-marcus2", "topics": ["a3.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Marcus@2026-10-12T20:15", "relation": "arranged by", "weight": 0.9},
+  {"to": "event:ev-iv-marcus1", "relation": "supersedes cancelled swap", "weight": 0.7},
+  {"to": "journal:2026-10-12", "relation": "recorded in", "weight": 0.5}
+]},
+{"id": "task:t-mv-4", "topics": ["a2.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Tom (landlord)@2026-10-28T19:02", "relation": "partly done in", "weight": 0.7},
+  {"to": "note:Projects/Flat Move.md#3", "relation": "listed in", "weight": 0.5},
+  {"to": "event:ev-mv-boiler", "relation": "follows engineer visit", "weight": 0.4}
+]},
+{"id": "task:t-hl-4", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-016", "relation": "tracks payment of", "weight": 0.9}
+]},
+{"id": "event:ev-swim-2026-11-01", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "task:t-hl-2", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:Projects/Kestrel Redesign.md#0", "relation": "part of project in", "weight": 0.6},
+  {"to": "task:t-hl-3", "relation": "precedes", "weight": 0.4}
+]},
+{"id": "task:t-iv-2", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:iv-004", "relation": "requested in", "weight": 0.9},
+  {"to": "event:ev-iv-trip", "relation": "for trip on", "weight": 0.8}
+]},
+{"id": "event:ev-hl-review", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-kickoff", "relation": "same project, comes after", "weight": 0.3}
+]},
+{"id": "event:ev-kn-nov", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-nov2", "relation": "cancelled and rebooked as", "weight": 0.9}
+]},
+{"id": "event:ev-iv-pe", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:iv-003", "relation": "confirmed by", "weight": 0.9},
+  {"to": "note:People/Kemi Adeyemi.md#0", "relation": "meets teacher in", "weight": 0.6}
+]},
+{"id": "event:ev-kn-nov2", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-nov", "relation": "replaces cancelled review", "weight": 0.9}
+]},
+{"id": "event:ev-hl-handoff", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-handoff2", "relation": "moved to", "weight": 0.9},
+  {"to": "email:hl-017", "relation": "moved by", "weight": 0.9}
+]},
+{"id": "task:t-pt-1", "topics": ["a5.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:pt-001", "relation": "follows from acceptance in", "weight": 0.8},
+  {"to": "note:Projects/Ember and Clay.md#0", "relation": "part of", "weight": 0.5}
+]},
+{"id": "task:t-cr-1", "topics": ["a8.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:cr-002", "relation": "outcome in", "weight": 0.9},
+  {"to": "email:cr-001", "relation": "haggles over", "weight": 0.7}
+]},
+{"id": "event:ev-swim-2026-11-08", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "task:t-tx-2", "topics": ["a8.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:tx-003", "relation": "requested in", "weight": 0.8},
+  {"to": "task:t-tx-1", "relation": "precedes", "weight": 0.7}
+]},
+{"id": "event:ev-iv-trip", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:iv-004", "relation": "announced in", "weight": 0.9},
+  {"to": "task:t-iv-2", "relation": "requires", "weight": 0.8}
+]},
+{"id": "task:t-pt-2", "topics": ["a5.t1", "a5.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Lena@2026-10-24T13:30", "relation": "asked for in", "weight": 0.9},
+  {"to": "task:t-pt-1", "relation": "same project, comes after", "weight": 0.5}
+]},
+{"id": "task:t-tx-1", "topics": ["a8.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-tx-2", "relation": "depends on", "weight": 0.8},
+  {"to": "email:tx-003", "relation": "requested in", "weight": 0.8},
+  {"to": "note:Finance/Tax 2025-26.md#0", "relation": "sent to accountant named in", "weight": 0.6}
+]},
+{"id": "task:t-hl-3", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-handoff2", "relation": "prepares for", "weight": 0.8},
+  {"to": "event:ev-hl-handoff", "relation": "earlier handoff date cancelled", "weight": 0.5},
+  {"to": "task:t-hl-2", "relation": "follows", "weight": 0.4}
+]}
+]}

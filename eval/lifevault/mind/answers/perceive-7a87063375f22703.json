@@ -1,0 +1,24 @@
+{
+ "neurons": [
+  {"id": "journal:2026-05-11", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "event:ev-kn-0", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "note:People/Helen Marsh.md#0", "relation": "is a physio session with", "weight": 0.7}, {"to": "event:ev-kn-1", "relation": "precedes next session in series", "weight": 0.4}, {"to": "event:ev-kn-nov2", "relation": "series leads to later review", "weight": 0.3}]},
+  {"id": "journal:2026-05-12", "topics": ["a4.t2", "a4.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "note:People/Helen Marsh.md#0", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "email:kn-001", "relation": "is the physio contact in", "weight": 0.6}, {"to": "event:ev-kn-0", "relation": "describes provider for", "weight": 0.5}, {"to": "event:ev-kn-nov2", "relation": "provides upcoming review in", "weight": 0.5}]},
+  {"id": "journal:2026-05-13", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "chat:Mum@2026-05-14T14:04", "topics": ["a3.t4", "a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "chat:Mum@2026-05-24T18:31", "relation": "same book thread as", "weight": 0.3}]},
+  {"id": "email:nl-be-2026-05-15", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:nl-ct-2026-05-15", "topics": ["a9.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:nt-bank-15", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "event:ev-swim-2026-05-16", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "event:ev-swim-2026-05-09", "relation": "follows previous session in series", "weight": 0.3}, {"to": "event:ev-swim-2026-05-23", "relation": "precedes next session in series", "weight": 0.3}]},
+  {"id": "email:nl-dw-3", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-05-18", "topics": ["a6.t2", "a5.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "note:People/Lena Fischer.md#0", "relation": "describes time with", "weight": 0.6}]},
+  {"id": "note:People/Lena Fischer.md#0", "topics": ["a6.t2", "a5.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "chat:Lena@2026-08-05T15:29", "relation": "shares kiln and studio with", "weight": 0.4}, {"to": "email:rc-6", "relation": "invoice for firing service from", "weight": 0.3}]},
+  {"id": "chat:Mum@2026-05-18T13:31", "topics": ["a3.t4", "a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-05-19", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "chat:Lena@2026-05-19T15:06", "topics": ["a6.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "email:nl-be-2026-05-22", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "journal:2026-05-22", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+  {"id": "event:ev-swim-2026-05-23", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "event:ev-swim-2026-05-16", "relation": "follows previous session in series", "weight": 0.3}, {"to": "event:ev-swim-2026-06-06", "relation": "precedes later session in series", "weight": 0.2}]},
+  {"id": "chat:Mum@2026-05-24T18:31", "topics": ["a3.t4", "a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [{"to": "chat:Mum@2026-05-14T14:04", "relation": "same book thread as", "weight": 0.3}]}
+ ]
+}
