@@ -262,26 +262,25 @@ def build_systems(names: list[str] | None, docs: list[dict], work: Path) -> list
         "mneme-retrieve/all": lambda: MnemeRetrieve("mneme-retrieve/all", docs, work, notes_only=False),
         "mneme-think/all": lambda: MnemeThink("mneme-think/all", docs, work),
         "bm25/all": lambda: BM25(docs),
-        "cortex/all": lambda: Cortex(work),
+        "cortex/all": lambda: Cortex(),
     }
     return [factories[name]() for name in (names or list(factories))]
 
 
 class Cortex:
-    """The rebuilt core (``mneme.cortex``), reading the raw LifeVault sources directly."""
+    """The LLM-agnostic cortex (``mneme.cortex``). Recall comes from run_cortex.py, which needs a mind."""
 
     name = "cortex/all"
+    ingest_seconds = 0.0
 
-    def __init__(self, work: Path):
-        from mneme.cortex import Brain
-
-        self.brain = Brain(work / "cortex.sqlite")
-        started = time.perf_counter()
-        self.brain.ingest_lifevault(DATA)
-        self.ingest_seconds = time.perf_counter() - started
+    def __init__(self):
+        path = HERE / "results" / "cortex_recall.json"
+        if not path.exists():
+            raise SystemExit("cortex recall not available: run eval/lifevault/run_cortex.py until it completes")
+        self.recalled = json.loads(path.read_text(encoding="utf-8"))
 
     def search(self, question: dict, k: int) -> list[dict]:
-        return [{"refs": hit.refs, "text": hit.context_text()} for hit in self.brain.recall(question["question"], k=k, as_of=question["as_of"])]
+        return self.recalled.get(question["id"], [])[:k]
 
 
 def main() -> int:

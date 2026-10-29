@@ -1,12 +1,13 @@
 """Senses: turn raw sources into small, timestamped episodes.
 
-An episode is the unit of memory (a future neuron). It keeps the original text,
-when the thing happened (``event_time``), when Mneme could first have known it
-(``known_at``), where it came from, and how far it can be trusted.
+An episode is the unit of memory (a neuron). It keeps the original text, when
+the thing happened (``event_time``), when Mneme could first have known it
+(``known_at``), where it came from, and raw source metadata such as email
+headers, mailbox labels or text hidden in HTML.
 
-Readers here are deliberately plain: Markdown notes, RFC 5322 email, iCalendar,
-JSON Lines chat exports and a JSON task export. Each yields ``Episode`` objects;
-nothing is summarised or rewritten.
+Readers are mechanical: they parse formats and never judge content. Deciding
+what an episode means, how it relates to others and whether to trust it is the
+mind's job (see ``perceive.py``).
 """
 from __future__ import annotations
 
@@ -41,10 +42,8 @@ class Episode:
     known_at: str  # ISO timestamp: earliest moment this content existed
     event_time: str | None = None  # ISO timestamp the content is about, when there is one
     thread: str | None = None
-    people: list[str] = field(default_factory=list)  # lower-cased email addresses / names
-    trust: str = "ok"  # ok | low | untrusted
-    trust_reason: str = ""
-    status: str = ""  # e.g. CANCELLED, done, open
+    people: list[str] = field(default_factory=list)  # participants: email addresses, chat names
+    meta: dict = field(default_factory=dict)  # raw source metadata: header, labels, folder, hidden_text, status
 
 
 def _iso(value: dt.datetime) -> str:
@@ -103,28 +102,16 @@ def read_vault(vault: Path, *, journal_dir: str = "Journal") -> Iterator[Episode
                           text=body.strip(), known_at=known_at, event_time=_day_iso(path.stem))
             continue
         ref = f"note:{rel}"
-        trust, reason = ("low", "clipped from the web") if rel.lower().startswith(("inbox/", "clippings/")) else ("ok", "")
-        if rel.lower().startswith("archive/"):
-            trust, reason = "low", "archived note"
         sections = [("", body.strip())] if len(body) <= SHORT_NOTE_CHARS else _sections(body)
         for i, (heading, text) in enumerate(sections):
             label = f"{title} > {heading}" if heading else title
             yield Episode(id=f"{ref}#{i}", source="note", doc=rel, refs=[ref], title=label, text=text,
-                          known_at=known_at, trust=trust, trust_reason=reason)
+                          known_at=known_at, meta={"path": rel, "tags": meta.get("tags", "")})
 
 
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
-def _spoofed(sender: str, display: str) -> bool:
-    """A display name claiming a bank/brand whose address domain doesn't carry the brand's first word."""
-    if not display or "@" not in sender:
-        return False
-    brand = re.sub(r"[^a-z]", "", display.lower().split()[0])
-    domain = sender.split("@", 1)[1].lower()
-    return bool(brand) and brand in domain and any(w in domain for w in ("verify", "secure", "login", "account", "update"))
-
-
 def read_email_dir(directory: Path) -> Iterator[Episode]:
     for path in sorted(directory.glob("*.eml")):
         msg = email.message_from_bytes(path.read_bytes(), policy=policy.default)
@@ -138,27 +125,20 @@ def read_email_dir(directory: Path) -> Iterator[Episode]:
             visible, hidden = extract_visible_and_hidden(html_part.get_content())
             if not text:
                 text = visible
-        display, sender = parseaddr(msg["From"] or "")
         people = [a.lower() for _, a in (parseaddr(x) for x in [msg["From"] or "", msg["To"] or "", msg["Cc"] or ""]) if a]
-        labels = (msg["X-LifeVault-Labels"] or "").lower()
-        trust, reason = "ok", ""
-        if hidden:
-            trust, reason = "untrusted", "hidden text in HTML (possible prompt injection / phishing)"
-        elif _spoofed(sender, display):
-            trust, reason = "untrusted", "sender domain imitates a brand (possible phishing)"
-        elif any(label in labels for label in ("spam", "phishing")):
-            trust, reason = "untrusted", "marked as spam"
-        elif any(label in labels for label in ("newsletter", "receipt", "notification")):
-            trust, reason = "low", "bulk mail"
         attachments = [part.get_filename() for part in msg.iter_attachments() if part.get_filename()]
         header = f"From: {msg['From']}\nTo: {msg['To']}"
+        if msg["Cc"]:
+            header += f"\nCc: {msg['Cc']}"
         if attachments:
             header += f"\nAttachments: {', '.join(attachments)}"
-        folder = (msg["X-LifeVault-Folder"] or "").lower()
+        meta = {"header": header, "folder": msg["X-LifeVault-Folder"] or "", "labels": msg["X-LifeVault-Labels"] or ""}
+        if hidden:
+            meta["hidden_text"] = " ".join(hidden)[:1000]
         yield Episode(id=f"email:{mid}", source="email", doc=f"email:{mid}", refs=[f"email:{mid}"], title=msg["Subject"] or "(no subject)",
-                      text=f"{header}\n\n{text}", known_at=_iso(sent), event_time=_iso(sent),
+                      text=text, known_at=_iso(sent), event_time=_iso(sent),
                       thread=(msg["X-LifeVault-Thread"] or (msg["References"] or msg["Message-ID"] or mid).split()[0]),
-                      people=people, trust=trust, trust_reason=reason, status="draft" if folder == "drafts" else "")
+                      people=people, meta=meta)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +175,7 @@ def read_ics(path: Path) -> Iterator[Episode]:
             body += f"\n{unescape(fields['DESCRIPTION'])}"
         created = _ics_value(fields.get("CREATED") or fields.get("DTSTAMP") or fields["DTSTART"])
         yield Episode(id=f"event:{uid}", source="event", doc=f"event:{uid}", refs=[f"event:{uid}"], title=summary, text=body,
-                      known_at=_iso(created), event_time=_iso(start), status=status)
+                      known_at=_iso(created), event_time=_iso(start), meta={"status": status})
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +219,7 @@ def read_tasks_json(path: Path) -> Iterator[Episode]:
         known = row["completed"] if done else row["created"]
         yield Episode(id=f"task:{row['id']}", source="task", doc=f"task:{row['id']}", refs=[f"task:{row['id']}"], title=row["title"],
                       text=text, known_at=_day_iso(known), event_time=_day_iso(row["due"]) if row.get("due") else None,
-                      status="done" if done else "open")
+                      meta={"status": "done" if done else "open"})
 
 
 def read_sources(root: Path) -> Iterable[Episode]:

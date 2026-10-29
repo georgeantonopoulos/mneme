@@ -1,0 +1,95 @@
+{
+ "areas": [
+  {
+   "id": "a1",
+   "title": "Freelance design work",
+   "description": "Client projects, invoices and business admin for Nia's freelance design practice.",
+   "topics": [
+    {"id": "a1.t1", "title": "Kestrel redesign for Halcyon Labs", "description": "The donation-app redesign: kickoff, check-ins with Daniel, offline mode, prototype review and dev handoff."},
+    {"id": "a1.t2", "title": "Halcyon Labs invoices and payments", "description": "Monthly day-rate invoices (INV-2026-011 to 017), payments received and the overdue chase."},
+    {"id": "a1.t3", "title": "Bramble and Co brand refresh", "description": "The tea shop brand refresh, its cancellation, and the kill fee invoice and payment."},
+    {"id": "a1.t4", "title": "Business admin, ideas and portfolio", "description": "Business account and invoice numbering, workshop ideas, and updating the portfolio."}
+   ]
+  },
+  {
+   "id": "a2",
+   "title": "Home and flat move",
+   "description": "Moving to Flat 3 on Alder Street and the affairs of the old flat at 14 Cotham Rise.",
+   "topics": [
+    {"id": "a2.t1", "title": "Move to Flat 3, Alder Street", "description": "Viewing, offer, tenancy agreement, moving date changes, the van and move day."},
+    {"id": "a2.t2", "title": "Flat 3 boiler and repairs", "description": "Boiler failure, engineer visits, the replacement part and chasing the landlord Tom."},
+    {"id": "a2.t3", "title": "Deposit dispute at 14 Cotham Rise", "description": "Disputed deposit deduction, DepositGuard claim DG-58213 and the letting agent exchanges."}
+   ]
+  },
+  {
+   "id": "a3",
+   "title": "Family",
+   "description": "Ivy, co-parenting with Marcus, and Nia's mum Grace.",
+   "topics": [
+    {"id": "a3.t1", "title": "Ivy's swimming lessons", "description": "Weekend swimming sessions, Stage 5 pass and moving on to Stage 6."},
+    {"id": "a3.t2", "title": "Ivy's school, childcare and errands", "description": "Larkfield Primary Year 4 matters, trips, parents' evening, childcare and small errands for Ivy."},
+    {"id": "a3.t3", "title": "Co-parenting with Marcus", "description": "Pickups, swapping weekends and Wednesday tea arrangements with Ivy's dad."},
+    {"id": "a3.t4", "title": "Mum's hip operation and visits", "description": "Grace's hip operation date and planning visits to Cheltenham."}
+   ]
+  },
+  {
+   "id": "a4",
+   "title": "Health and body",
+   "description": "Recovering from a left knee problem and keeping active.",
+   "topics": [
+    {"id": "a4.t1", "title": "Left knee rehab with physio", "description": "Physio appointments with Helen Marsh, home exercises and the return-to-running question."},
+    {"id": "a4.t2", "title": "Gym and cycling routine", "description": "Gym sessions and bike rides, adjusted around the knee."}
+   ]
+  },
+  {
+   "id": "a5",
+   "title": "Pottery and making",
+   "description": "Nia's ceramics practice, from studio work to the Ember and Clay side project.",
+   "topics": [
+    {"id": "a5.t1", "title": "Ember and Clay pottery project", "description": "The pottery side project: the Harbourside Christmas market stall, stall fees and firing slots."},
+    {"id": "a5.t2", "title": "Kiln House studio and glazes", "description": "Wheel sessions and firings at Kiln House, plus glaze test notes."}
+   ]
+  },
+  {
+   "id": "a6",
+   "title": "Friends",
+   "description": "Close friendships and the social life that goes with them.",
+   "topics": [
+    {"id": "a6.t1", "title": "Sam Petrov and old friends", "description": "Sam's birthday, pub quiz plans, a borrowed book and catching up."},
+    {"id": "a6.t2", "title": "Lena Fischer friendship", "description": "Lena's messages about studio time, firings and the friendship beyond pottery."}
+   ]
+  },
+  {
+   "id": "a7",
+   "title": "Travel",
+   "description": "Trips away and getting around between Bristol and Cheltenham.",
+   "topics": [
+    {"id": "a7.t1", "title": "Lisbon trip, October 2026", "description": "Flight rebooking, the changed accommodation dates and the ceramics fair in Lisbon."},
+    {"id": "a7.t2", "title": "Train trips to Cheltenham", "description": "Train e-tickets between Bristol Temple Meads and Cheltenham Spa."}
+   ]
+  },
+  {
+   "id": "a8",
+   "title": "Money, tax and car",
+   "description": "Personal tax, accountants, the car and its insurance.",
+   "topics": [
+    {"id": "a8.t1", "title": "Tax return 2025-26 and accountants", "description": "Self assessment for 2025-26, the move from Felix Grant to Rhea Kapoor, P60 and pension paperwork."},
+    {"id": "a8.t2", "title": "Car insurance and MOT", "description": "Brightway insurance renewal, the premium dispute and the car's MOT due date."}
+   ]
+  },
+  {
+   "id": "a9",
+   "title": "Bulk streams and filler",
+   "description": "Newsletters, receipts, automated notifications, spam and idle journal entries.",
+   "topics": [
+    {"id": "a9.t1", "title": "Design Weekly newsletter", "description": "Weekly Design Weekly issues."},
+    {"id": "a9.t2", "title": "Bristol Eats newsletter", "description": "Weekly Bristol Eats restaurant newsletters."},
+    {"id": "a9.t3", "title": "Clay Times newsletter", "description": "Monthly Clay Times pottery newsletters."},
+    {"id": "a9.t4", "title": "Receipts and purchase confirmations", "description": "Automated receipts, e-ticket and subscription payment emails."},
+    {"id": "a9.t5", "title": "Bank statements and calendar notifications", "description": "Automated bank statement-ready emails and week-ahead calendar digests."},
+    {"id": "a9.t6", "title": "Spam and scam messages", "description": "Prize, crypto, parcel-fee and account-verification scam emails."},
+    {"id": "a9.t7", "title": "Idle daily journal entries", "description": "Short routine daily journal lines with little standalone meaning."}
+   ]
+  }
+ ]
+}
