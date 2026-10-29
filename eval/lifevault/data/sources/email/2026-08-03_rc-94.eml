@@ -1,0 +1,15 @@
+Message-ID: <rc-94@lifevault.example>
+Date: Mon, 03 Aug 2026 18:17:00 +0100
+From: Tesco <receipts@groceries.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your order receipt
+X-LifeVault-Id: rc-94
+X-LifeVault-Thread: rc-94
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your purchase. Total paid: £64.20.
+This is an automated receipt.

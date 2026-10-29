@@ -1,0 +1,30 @@
+Message-ID: <hl-011@lifevault.example>
+Date: Mon, 31 Aug 2026 17:25:00 +0100
+From: Nia Okafor <nia@okafor.example>
+To: Halcyon Labs Accounts <accounts@halcyonlabs.example>
+In-Reply-To: <hl-010@lifevault.example>
+References: <hl-010@lifevault.example>
+Subject: Invoice INV-2026-016
+X-LifeVault-Id: hl-011
+X-LifeVault-Thread: hl-inv16
+X-LifeVault-Folder: sent
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="lifevault-hl-011-0"
+
+--lifevault-hl-011-0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Invoice INV-2026-016 attached, =C2=A35,000 (11 days in August at =C2=A3450 =
+=3D =C2=A34,950, plus =C2=A350 prototype hosting). Due 30 September.
+
+--lifevault-hl-011-0
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="INV-2026-016.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjQKJSBMaWZlVmF1bHQgZmljdGlvbmFsIHBsYWNlaG9sZGVyIGF0dGFjaG1lbnQKJSVF
+T0YK
+
+--lifevault-hl-011-0--

@@ -1,0 +1,15 @@
+Message-ID: <hl-017@lifevault.example>
+Date: Wed, 14 Oct 2026 11:00:00 +0100
+From: Daniel Achterberg <daniel@halcyonlabs.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Handoff date
+X-LifeVault-Id: hl-017
+X-LifeVault-Thread: hl-handoff
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+Nia - given the offline mode work, let's move dev handoff from 6 November to =
+20 November.
+Final prototype review stays on 3 November. Lukas from the dev team will join.
