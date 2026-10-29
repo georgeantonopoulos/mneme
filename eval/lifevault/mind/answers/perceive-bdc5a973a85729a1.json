@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"journal:2026-07-11","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nt-cal-72","topics":["a9.t5"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nl-dw-11","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"event:ev-kn-2","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"event:ev-kn-3","relation":"precedes in physio series","weight":0.3}]},
+{"id":"email:tx-001","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:tx-003","relation":"handed over by","weight":0.7},{"to":"task:t-tx-1","relation":"awaits P60 from","weight":0.6},{"to":"note:Finance/Tax 2025-26.md#0","relation":"estimate recorded in","weight":0.5}]},
+{"id":"journal:2026-07-15","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"chat:Mum@2026-07-15T16:30","topics":["a3.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"chat:Mum@2026-05-14T14:04","relation":"same question as earlier answered","weight":0.3}]},
+{"id":"email:nl-ct-2026-07-15","topics":["a9.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nt-bank-76","topics":["a9.t5"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"chat:Mum@2026-07-16T08:17","topics":["a3.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"chat:Mum@2026-05-14T14:04","relation":"same question as earlier answered","weight":0.3}]},
+{"id":"journal:2026-07-16","topics":["a9.t7"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"journal:2026-07-17","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"journal:2026-06-19","relation":"earlier knee-OK ride","weight":0.3}]},
+{"id":"event:ev-swim-2026-07-18","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:rc-78","topics":["a9.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:rc-24","relation":"same recurring subscription as","weight":0.3}]},
+{"id":"journal:2026-07-19","topics":["a4.t1","a3.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"journal:2026-06-19","relation":"earlier knee entry","weight":0.4},{"to":"journal:2026-09-28","relation":"same Cheltenham visit context as","weight":0.3}]},
+{"id":"chat:Sam@2026-07-19T18:55","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"chat:Sam@2026-08-08T14:08","relation":"re-asks","weight":0.4},{"to":"chat:Sam@2026-08-01T11:14","relation":"earlier declined in","weight":0.3}]},
+{"id":"email:nt-cal-79","topics":["a9.t5"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"email:nl-dw-12","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"chat:Mum@2026-07-20T15:38","topics":["a3.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"chat:Mum@2026-05-14T14:04","relation":"same question as earlier answered","weight":0.3}]},
+{"id":"email:rc-80","topics":["a7.t2","a9.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"email:rc-40","relation":"same route, different fare than","weight":0.4},{"to":"email:rc-167","relation":"same route, different fare than","weight":0.3}]}
+]}
