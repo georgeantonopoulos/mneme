@@ -2,202 +2,403 @@
  "neurons": [
   {
    "id": "email:nt-bank-138",
-   "topics": ["a9.t5"],
+   "topics": [
+    "a9.t5"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "email:nt-bank-76", "relation": "previous statement notice before", "weight": 0.2}
+    {
+     "to": "email:nt-bank-76",
+     "relation": "previous statement notice before",
+     "weight": 0.2
+    }
    ]
   },
   {
    "id": "chat:Lena@2026-09-16T18:47",
-   "topics": ["a6.t2"],
+   "topics": [
+    "a6.t2"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": []
   },
   {
    "id": "event:ev-hl-checkin-4",
-   "topics": ["a1.t1"],
+   "topics": [
+    "a1.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "event:ev-hl-checkin-3", "relation": "follows previous check-in", "weight": 0.4},
-    {"to": "event:ev-hl-checkin-5", "relation": "followed by", "weight": 0.3}
+    {
+     "to": "event:ev-hl-checkin-3",
+     "relation": "follows previous check-in",
+     "weight": 0.4
+    },
+    {
+     "to": "event:ev-hl-checkin-5",
+     "relation": "followed by",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "email:nl-be-2026-09-18",
-   "topics": ["a9.t2"],
+   "topics": [
+    "a9.t2"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "email:nl-be-2026-08-14", "relation": "same topic as", "weight": 0.3}
+    {
+     "to": "email:nl-be-2026-08-14",
+     "relation": "same topic as",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "email:sp-004",
-   "topics": ["a9.t6"],
+   "topics": [
+    "a9.t6"
+   ],
    "trust": "suspicious",
    "trust_reason": "Likely scam: an unsolicited 'missed delivery' message asking for a fee via a link from a lookalike domain (parcel-redelivery.example). Already labelled spam.",
    "synapses": []
   },
   {
    "id": "journal:2026-09-19",
-   "topics": ["a9.t7"],
+   "topics": [
+    "a9.t7"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": []
   },
   {
    "id": "chat:Sam@2026-09-20T09:00",
-   "topics": ["a6.t1"],
+   "topics": [
+    "a6.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "task:t-so-1", "relation": "tracked as", "weight": 0.7},
-    {"to": "chat:Sam@2026-06-14T22:10", "relation": "book loan from", "weight": 0.7},
-    {"to": "chat:Sam@2026-09-15T21:40", "relation": "promised return at dinner in", "weight": 0.5},
-    {"to": "note:People/Sam Petrov.md#0", "relation": "contact note for", "weight": 0.5}
+    {
+     "to": "chat:Sam@2026-06-14T22:10",
+     "relation": "book loan from",
+     "weight": 0.7
+    },
+    {
+     "to": "chat:Sam@2026-09-15T21:40",
+     "relation": "promised return at dinner in",
+     "weight": 0.5
+    }
    ]
   },
   {
    "id": "event:ev-swim-2026-09-20",
-   "topics": ["a3.t1"],
+   "topics": [
+    "a3.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "event:ev-swim-2026-09-13", "relation": "previous session", "weight": 0.3},
-    {"to": "event:ev-swim-2026-09-27", "relation": "followed by", "weight": 0.3}
+    {
+     "to": "event:ev-swim-2026-09-13",
+     "relation": "previous session",
+     "weight": 0.3
+    },
+    {
+     "to": "event:ev-swim-2026-09-27",
+     "relation": "followed by",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "journal:2026-09-20",
-   "topics": ["a4.t2"],
+   "topics": [
+    "a4.t2"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "journal:2026-07-07", "relation": "repeats knee-limited gym from", "weight": 0.4},
-    {"to": "journal:2026-09-10", "relation": "contrasts with knee-OK bike ride in", "weight": 0.3}
+    {
+     "to": "journal:2026-07-07",
+     "relation": "repeats knee-limited gym from",
+     "weight": 0.4
+    },
+    {
+     "to": "journal:2026-09-10",
+     "relation": "contrasts with knee-OK bike ride in",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "note:People/Sam Petrov.md#0",
-   "topics": ["a6.t1"],
+   "topics": [
+    "a6.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "task:t-so-1", "relation": "tracks book return in", "weight": 0.7},
-    {"to": "event:ev-so-sam", "relation": "birthday event noted in", "weight": 0.7},
-    {"to": "chat:Sam@2026-06-14T22:10", "relation": "borrowed book details in", "weight": 0.6},
-    {"to": "email:so-001", "relation": "voucher gift recorded in", "weight": 0.5}
+    {
+     "to": "task:t-so-1",
+     "relation": "tracks book return in",
+     "weight": 0.7
+    },
+    {
+     "to": "event:ev-so-sam",
+     "relation": "birthday event noted in",
+     "weight": 0.7
+    },
+    {
+     "to": "chat:Sam@2026-06-14T22:10",
+     "relation": "borrowed book details in",
+     "weight": 0.6
+    },
+    {
+     "to": "email:so-001",
+     "relation": "voucher gift recorded in",
+     "weight": 0.5
+    }
    ]
   },
   {
    "id": "task:t-so-1",
-   "topics": ["a6.t1"],
+   "topics": [
+    "a6.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "chat:Sam@2026-06-14T22:10", "relation": "loan that task refers to", "weight": 0.7},
-    {"to": "note:People/Sam Petrov.md#0", "relation": "from contact note", "weight": 0.5},
-    {"to": "chat:Sam@2026-09-15T21:40", "relation": "promised return at", "weight": 0.5}
+    {
+     "to": "chat:Sam@2026-06-14T22:10",
+     "relation": "loan that task refers to",
+     "weight": 0.7
+    },
+    {
+     "to": "note:People/Sam Petrov.md#0",
+     "relation": "from contact note",
+     "weight": 0.5
+    },
+    {
+     "to": "chat:Sam@2026-09-15T21:40",
+     "relation": "promised return at",
+     "weight": 0.5
+    }
    ]
   },
   {
    "id": "chat:Sam@2026-09-20T14:10",
-   "topics": ["a6.t1"],
+   "topics": [
+    "a6.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "chat:Sam@2026-08-01T11:14", "relation": "repeats decline from", "weight": 0.3},
-    {"to": "chat:Sam@2026-09-25T13:08", "relation": "repeats decline in", "weight": 0.3}
+    {
+     "to": "chat:Sam@2026-08-01T11:14",
+     "relation": "repeats decline from",
+     "weight": 0.3
+    },
+    {
+     "to": "chat:Sam@2026-09-25T13:08",
+     "relation": "repeats decline in",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "email:nl-dw-21",
-   "topics": ["a9.t1"],
+   "topics": [
+    "a9.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "email:nl-dw-9", "relation": "same topic as", "weight": 0.3}
+    {
+     "to": "email:nl-dw-9",
+     "relation": "same topic as",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "email:tx-003",
-   "topics": ["a8.t1"],
+   "topics": [
+    "a8.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "task:t-tx-1", "relation": "requested items tracked as", "weight": 0.7},
-    {"to": "task:t-tx-2", "relation": "P60 task from", "weight": 0.6},
-    {"to": "email:tx-002", "relation": "follows handover letter", "weight": 0.6},
-    {"to": "note:Finance/Tax 2025-26.md#0", "relation": "tax file context for", "weight": 0.6},
-    {"to": "note:People/Rhea Kapoor.md#0", "relation": "contact note for", "weight": 0.5},
-    {"to": "journal:2026-09-22", "relation": "reflected in", "weight": 0.4}
+    {
+     "to": "task:t-tx-1",
+     "relation": "requested items tracked as",
+     "weight": 0.7
+    },
+    {
+     "to": "task:t-tx-2",
+     "relation": "P60 task from",
+     "weight": 0.6
+    },
+    {
+     "to": "note:Finance/Tax 2025-26.md#0",
+     "relation": "tax file context for",
+     "weight": 0.6
+    },
+    {
+     "to": "journal:2026-09-22",
+     "relation": "reflected in",
+     "weight": 0.4
+    },
+    {
+     "to": "email:tx-001",
+     "relation": "estimate context from",
+     "weight": 0.4
+    }
    ]
   },
   {
    "id": "journal:2026-09-22",
-   "topics": ["a8.t1"],
+   "topics": [
+    "a8.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "note:People/Rhea Kapoor.md#0", "relation": "records accountant change in", "weight": 0.6},
-    {"to": "note:People/Felix Grant.md#0", "relation": "records retirement of", "weight": 0.6},
-    {"to": "email:tx-003", "relation": "P60 hunt mentioned alongside", "weight": 0.5},
-    {"to": "note:Finance/Tax 2025-26.md#0", "relation": "tax file note", "weight": 0.4}
+    {
+     "to": "note:People/Rhea Kapoor.md#0",
+     "relation": "records accountant change in",
+     "weight": 0.6
+    },
+    {
+     "to": "note:People/Felix Grant.md#0",
+     "relation": "records retirement of",
+     "weight": 0.6
+    },
+    {
+     "to": "email:tx-003",
+     "relation": "P60 hunt mentioned alongside",
+     "weight": 0.5
+    },
+    {
+     "to": "note:Finance/Tax 2025-26.md#0",
+     "relation": "tax file note",
+     "weight": 0.4
+    }
    ]
   },
   {
    "id": "note:People/Felix Grant.md#0",
-   "topics": ["a8.t1"],
+   "topics": [
+    "a8.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "email:tx-002", "relation": "retirement letter from", "weight": 0.7},
-    {"to": "note:People/Rhea Kapoor.md#0", "relation": "handed over to", "weight": 0.7},
-    {"to": "note:Finance/Tax 2025-26.md#0", "relation": "listed as accountant in", "weight": 0.6},
-    {"to": "journal:2026-09-22", "relation": "same handover in", "weight": 0.5}
+    {
+     "to": "email:tx-002",
+     "relation": "retirement letter from",
+     "weight": 0.7
+    },
+    {
+     "to": "note:People/Rhea Kapoor.md#0",
+     "relation": "handed over to",
+     "weight": 0.7
+    },
+    {
+     "to": "note:Finance/Tax 2025-26.md#0",
+     "relation": "listed as accountant in",
+     "weight": 0.6
+    },
+    {
+     "to": "journal:2026-09-22",
+     "relation": "same handover in",
+     "weight": 0.5
+    }
    ]
   },
   {
    "id": "note:People/Rhea Kapoor.md#0",
-   "topics": ["a8.t1"],
+   "topics": [
+    "a8.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "note:People/Felix Grant.md#0", "relation": "replaces accountant", "weight": 0.7},
-    {"to": "email:tx-003", "relation": "sent return request in", "weight": 0.6},
-    {"to": "note:Finance/Tax 2025-26.md#0", "relation": "accountant for", "weight": 0.5},
-    {"to": "journal:2026-09-22", "relation": "change recorded in", "weight": 0.5},
-    {"to": "email:tx-002", "relation": "handover letter about", "weight": 0.4}
+    {
+     "to": "note:People/Felix Grant.md#0",
+     "relation": "replaces accountant",
+     "weight": 0.7
+    },
+    {
+     "to": "email:tx-003",
+     "relation": "sent return request in",
+     "weight": 0.6
+    },
+    {
+     "to": "note:Finance/Tax 2025-26.md#0",
+     "relation": "accountant for",
+     "weight": 0.5
+    },
+    {
+     "to": "journal:2026-09-22",
+     "relation": "change recorded in",
+     "weight": 0.5
+    },
+    {
+     "to": "email:tx-002",
+     "relation": "handover letter about",
+     "weight": 0.4
+    }
    ]
   },
   {
    "id": "event:ev-hl-checkin-5",
-   "topics": ["a1.t1"],
+   "topics": [
+    "a1.t1"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "event:ev-hl-checkin-4", "relation": "follows", "weight": 0.4},
-    {"to": "event:ev-hl-checkin-6", "relation": "followed by", "weight": 0.3}
+    {
+     "to": "event:ev-hl-checkin-4",
+     "relation": "follows",
+     "weight": 0.4
+    },
+    {
+     "to": "event:ev-hl-checkin-6",
+     "relation": "followed by",
+     "weight": 0.3
+    }
    ]
   },
   {
    "id": "journal:2026-09-24",
-   "topics": ["a9.t7"],
+   "topics": [
+    "a9.t7"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": []
   },
   {
    "id": "email:nl-be-2026-09-25",
-   "topics": ["a9.t2"],
+   "topics": [
+    "a9.t2"
+   ],
    "trust": "ok",
    "trust_reason": "",
    "synapses": [
-    {"to": "email:nl-be-2026-08-21", "relation": "same issue topic as", "weight": 0.3}
+    {
+     "to": "email:nl-be-2026-08-21",
+     "relation": "same issue topic as",
+     "weight": 0.3
+    }
    ]
   }
  ]
