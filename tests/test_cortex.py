@@ -60,8 +60,12 @@ class ScriptedMind:
     def zoom_topics(self, payload):
         return {"topics": ["a1.t1"]}
 
-    def zoom_neurons(self, payload):
-        ids = [c["id"] for c in payload["candidates"]]
+    def skim_neurons(self, payload):
+        return {"open": [c["id"] for c in payload["candidates"]] + ["invented-id"], "note": ""}
+
+    def read_neurons(self, payload):
+        ids = [m["id"] for m in payload["memories"]]
+        assert all("text" in m for m in payload["memories"])  # opened memories are read in full
         return {"evidence": list(reversed(ids)) + ["invented-id"], "note": ""}
 
 
@@ -81,7 +85,7 @@ def test_perceive_and_recall_with_any_mind(tmp_path: Path):
     assert ids and "invented-id" not in ids
     assert all("Garden" not in h.title for h in hits)  # only the chosen topic and lookups
     assert not any(h.text.startswith("Harbour: Thanks") for h in hits)  # known only after as_of
-    assert {t.kind for t in mind.seen} >= {"regions", "perceive", "topic_gist", "zoom_areas", "zoom_topics", "zoom_neurons"}
+    assert {t.kind for t in mind.seen} >= {"regions", "perceive", "topic_gist", "zoom_areas", "zoom_topics", "skim_neurons", "read_neurons"}
 
 
 def test_file_mind_defers_then_resumes(tmp_path: Path):

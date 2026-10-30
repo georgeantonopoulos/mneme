@@ -27,7 +27,7 @@ MIND = HERE / "mind"
 RECALL = HERE / "results" / "cortex_recall.json"
 TOKENS = HERE / "results" / "cortex_tokens.json"
 PERCEPTION_KINDS = ("regions", "perceive", "topic_gist", "area_gist")
-RECALL_KINDS = ("zoom_areas", "zoom_topics", "zoom_neurons")
+RECALL_KINDS = ("zoom_areas", "zoom_topics", "zoom_neurons", "skim_neurons", "read_neurons")
 
 
 def run(k: int = 8) -> int:
