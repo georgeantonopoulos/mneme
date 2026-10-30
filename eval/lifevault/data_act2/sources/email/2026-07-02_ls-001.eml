@@ -1,0 +1,16 @@
+Message-ID: <ls-001@lifevault.example>
+Date: Thu, 02 Jul 2026 21:00:00 +0100
+From: Aerolis Airways <bookings@aerolis.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Booking confirmed AE7QK2
+X-LifeVault-Id: ls-001
+X-LifeVault-Thread: ls-flight
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Booking reference: AE7QK2
+Outbound: Thu 8 Oct 2026, BRS 06:40 -> LIS 09:35
+Return:  Tue 13 Oct 2026, LIS 19:10 -> BRS 22:00
+Passenger: Ms Nia Okafor

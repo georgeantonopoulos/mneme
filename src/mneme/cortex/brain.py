@@ -41,8 +41,10 @@ CREATE TABLE IF NOT EXISTS neurons (
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS neuron_text USING fts5(title, text, tokenize='porter unicode61');
 CREATE TABLE IF NOT EXISTS regions (
-    id TEXT PRIMARY KEY, parent TEXT, level INTEGER NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, gist TEXT NOT NULL DEFAULT ''
+    id TEXT PRIMARY KEY, parent TEXT, level INTEGER NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, gist TEXT NOT NULL DEFAULT '',
+    dirty INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS perceived (neuron TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS membership (neuron TEXT NOT NULL, region TEXT NOT NULL, PRIMARY KEY (neuron, region));
 CREATE TABLE IF NOT EXISTS synapses (
     src TEXT NOT NULL, dst TEXT NOT NULL, relation TEXT NOT NULL, weight REAL NOT NULL, made_by TEXT NOT NULL,
@@ -189,19 +191,36 @@ class Brain:
     def ingest_sources(self, root: Path) -> dict:
         return self.ingest(read_sources(Path(root)))
 
-    def ingest(self, episodes: Iterable[Episode]) -> dict:
+    def ingest(self, episodes: Iterable[Episode], *, incremental: bool = False) -> dict:
+        """Store episodes as neurons. ``incremental`` keeps what is already known: unseen episodes are added,
+        and an episode whose content changed is added as a new version beside the old one (memories are never
+        rewritten, so questions about the past still see what was true then)."""
         conn = self.conn
-        conn.executescript("DELETE FROM neurons; DELETE FROM neuron_text;")
-        count = 0
-        for n, ep in enumerate(episodes, 1):
-            meta = dict(ep.meta)
+        if not incremental:
+            conn.executescript("DELETE FROM neurons; DELETE FROM neuron_text;")
+        known = {r["id"]: r for r in conn.execute("SELECT id, title, text, meta, known_at FROM neurons")}
+        n = conn.execute("SELECT COALESCE(MAX(n), 0) FROM neurons").fetchone()[0]
+        added = versions = 0
+        for ep in episodes:
+            meta_json = json.dumps(dict(ep.meta), ensure_ascii=False)
+            neuron_id = ep.id
+            old = known.get(neuron_id)
+            if old is not None:
+                if (old["title"], old["text"], old["meta"], old["known_at"]) == (ep.title, ep.text, meta_json, ep.known_at):
+                    continue
+                neuron_id = f"{ep.id}~{ep.known_at[:10]}"
+                if neuron_id in known:
+                    continue
+                versions += 1
+            n += 1
+            added += 1
             conn.execute("INSERT INTO neurons VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                         (ep.id, n, ep.source, ep.doc, json.dumps(ep.refs), ep.title, ep.text, json.dumps(meta, ensure_ascii=False),
+                         (neuron_id, n, ep.source, ep.doc, json.dumps(ep.refs), ep.title, ep.text, meta_json,
                           ep.known_at, ep.event_time, ep.thread))
-            conn.execute("INSERT INTO neuron_text(rowid, title, text) VALUES (?,?,?)", (n, ep.title, f"{meta.get('header', '')}\n{ep.text}"))
-            count += 1
+            conn.execute("INSERT INTO neuron_text(rowid, title, text) VALUES (?,?,?)", (n, ep.title, f"{ep.meta.get('header', '')}\n{ep.text}"))
+            known[neuron_id] = {"title": ep.title, "text": ep.text, "meta": meta_json, "known_at": ep.known_at}
         conn.commit()
-        return {"neurons": count}
+        return {"neurons": len(known), "added": added, "new_versions": versions}
 
     def _neurons(self, where: str = "1=1", params: tuple = ()) -> list[sqlite3.Row]:
         return self.conn.execute(f"SELECT * FROM neurons WHERE {where} ORDER BY COALESCE(event_time, known_at), id", params).fetchall()
@@ -231,13 +250,18 @@ class Brain:
 
     # ------------------------------------------------------------------ perception (LLM)
     def perceive(self, *, batch_size: int = 20) -> dict:
-        """Run the three perception phases. Resumable: with a deferred mind, rerun after answers arrive."""
+        """Run the three perception phases on whatever is new. Resumable: with a deferred mind, rerun after
+        answers arrive. The region map is formed once; later runs perceive only unperceived neurons and
+        rewrite only the gists of regions that gained members (reorganising the map is left to sleep)."""
         stats = {"regions": self._form_regions()}
         stats["perceived"] = self._perceive_neurons(batch_size)
         stats["gists"] = self._consolidate()
         return stats
 
     def _form_regions(self) -> int:
+        existing = self.conn.execute("SELECT count(*) FROM regions WHERE level = 1").fetchone()[0]
+        if existing:
+            return existing
         rows = self._neurons()
         view = [f"{self._sid(r)} | {r['source']} | {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 60)} | {_clip(r['text'], 70)}" for r in rows]
         (answer,) = self.mind.ask_many([Task("regions", REGIONS_INSTRUCTIONS, {"neurons": view}, REGIONS_SHAPE)])
@@ -262,6 +286,10 @@ class Brain:
 
     def _perceive_neurons(self, batch_size: int) -> int:
         rows = self._neurons()
+        done = {r[0] for r in self.conn.execute("SELECT neuron FROM perceived")}
+        pending = [r for r in rows if r["id"] not in done]
+        if not pending:
+            return 0
         topics = [{"id": r["id"], "title": r["title"], "description": r["description"]}
                   for r in self.conn.execute("SELECT * FROM regions WHERE level = 2 ORDER BY id")]
         by_thread: dict[str, list[str]] = defaultdict(list)
@@ -271,7 +299,7 @@ class Brain:
         short = {r["id"]: f"{r['source']} {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 50)} | {_clip(r['text'], 110)}" for r in rows}
         sid = {r["id"]: self._sid(r) for r in rows}
         tasks = []
-        for batch in _batches(rows, batch_size):
+        for batch in _batches(pending, batch_size):
             neurons = []
             for r in batch:
                 view = self._neuron_view(r, 600)
@@ -284,7 +312,7 @@ class Brain:
         known = {sid[r["id"]]: r["id"] for r in rows}
         valid_topics = {t["id"] for t in topics}
         conn = self.conn
-        conn.executescript("DELETE FROM membership; DELETE FROM judgements; DELETE FROM synapses WHERE made_by = 'mind';")
+        conn.executemany("INSERT OR IGNORE INTO perceived VALUES (?)", [(r["id"],) for r in pending])
         for answer in answers:
             for item in answer.get("neurons", []):
                 nid = known.get(item.get("id"))
@@ -293,6 +321,7 @@ class Brain:
                 for topic in item.get("topics", [])[:2]:
                     if topic in valid_topics:
                         conn.execute("INSERT OR IGNORE INTO membership VALUES (?,?)", (nid, topic))
+                        conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (topic,))
                 conn.execute("INSERT OR REPLACE INTO judgements VALUES (?,?,?,?)",
                              (nid, "suspicious" if item.get("trust") == "suspicious" else "ok", item.get("trust_reason", "") or "",
                               str(item.get("caption", "") or "")[:200]))
@@ -306,7 +335,7 @@ class Brain:
 
     def _consolidate(self) -> int:
         now = max(r["known_at"] for r in self.conn.execute("SELECT known_at FROM neurons"))
-        topics = self.conn.execute("SELECT * FROM regions WHERE level = 2 ORDER BY id").fetchall()
+        topics = self.conn.execute("SELECT * FROM regions WHERE level = 2 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for topic in topics:
             members = self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?)", (topic["id"],))
@@ -328,14 +357,15 @@ class Brain:
             tasks.append(Task("topic_gist", TOPIC_GIST_INSTRUCTIONS,
                               {"topic": {"title": topic["title"], "description": topic["description"]}, "neurons": views, "now": now[:10]}, GIST_SHAPE))
         for topic, answer in zip(topics, self.mind.ask_many(tasks)):
-            self.conn.execute("UPDATE regions SET gist = ? WHERE id = ?", (answer.get("gist", ""), topic["id"]))
-        areas = self.conn.execute("SELECT * FROM regions WHERE level = 1 ORDER BY id").fetchall()
+            self.conn.execute("UPDATE regions SET gist = ?, dirty = 0 WHERE id = ?", (answer.get("gist", ""), topic["id"]))
+            self.conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (topic["parent"],))
+        areas = self.conn.execute("SELECT * FROM regions WHERE level = 1 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for area in areas:
             children = [{"title": t["title"], "gist": t["gist"]} for t in self.conn.execute("SELECT * FROM regions WHERE parent = ? ORDER BY id", (area["id"],))]
             tasks.append(Task("area_gist", AREA_GIST_INSTRUCTIONS, {"area": area["title"], "topics": children, "now": now[:10]}, GIST_SHAPE))
         for area, answer in zip(areas, self.mind.ask_many(tasks)):
-            self.conn.execute("UPDATE regions SET gist = ? WHERE id = ?", (answer.get("gist", ""), area["id"]))
+            self.conn.execute("UPDATE regions SET gist = ?, dirty = 0 WHERE id = ?", (answer.get("gist", ""), area["id"]))
         self.conn.commit()
         return len(topics) + len(areas)
 

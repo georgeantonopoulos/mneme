@@ -1,0 +1,27 @@
+Message-ID: <hl-005@lifevault.example>
+Date: Tue, 30 Jun 2026 17:30:00 +0100
+From: Nia Okafor <nia@okafor.example>
+To: Halcyon Labs Accounts <accounts@halcyonlabs.example>
+Subject: Invoice INV-2026-012
+X-LifeVault-Id: hl-005
+X-LifeVault-Thread: hl-inv12
+X-LifeVault-Folder: sent
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="lifevault-hl-005-0"
+
+--lifevault-hl-005-0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Invoice INV-2026-012 attached, £4,050 (9 days, June).
+
+--lifevault-hl-005-0
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="INV-2026-012.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjQKJSBMaWZlVmF1bHQgZmljdGlvbmFsIHBsYWNlaG9sZGVyIGF0dGFjaG1lbnQKJSVF
+T0YK
+
+--lifevault-hl-005-0--

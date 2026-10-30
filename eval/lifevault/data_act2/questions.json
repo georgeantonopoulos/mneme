@@ -1,0 +1,593 @@
+[
+  {
+    "id": "l-01",
+    "split": "act2",
+    "category": "loop_closed",
+    "question": "Has INV-2026-017 been paid?",
+    "answer": "Yes - £6,000 received on 30 Oct",
+    "evidence": [
+      "email:a2-001",
+      "task:a2-t-hl"
+    ],
+    "accept": [
+      [
+        "6,000"
+      ],
+      [
+        "30 oct",
+        "paid",
+        "received"
+      ]
+    ],
+    "reject": [
+      "not yet"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "l-02",
+    "split": "act2",
+    "category": "loop_closed",
+    "question": "Is the boiler fixed?",
+    "answer": "Yes - new diverter valve fitted on 4 Nov",
+    "evidence": [
+      "chat:Tom (landlord)@2026-11-04T12:30",
+      "journal:2026-11-04",
+      "note:Projects/Flat Move.md"
+    ],
+    "accept": [
+      [
+        "4 nov",
+        "fitted",
+        "fixed",
+        "hot water"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "l-03",
+    "split": "act2",
+    "category": "loop_closed",
+    "question": "Does Sam still have my book?",
+    "answer": "No - returned to the letterbox on 11 Nov",
+    "evidence": [
+      "chat:Sam@2026-11-11T19:20"
+    ],
+    "accept": [
+      [
+        "letterbox",
+        "returned"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "l-04",
+    "split": "act2",
+    "category": "loop_closed",
+    "question": "How did the deposit dispute end?",
+    "answer": "£160 back to Nia, £80 to the landlord for the oven",
+    "evidence": [
+      "email:a2-005",
+      "note:Projects/Flat Move.md"
+    ],
+    "accept": [
+      [
+        "160"
+      ],
+      [
+        "80"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "l-05",
+    "split": "act2",
+    "category": "loop_closed",
+    "question": "Have I paid the Christmas market stall fee?",
+    "answer": "Yes - received, per the 6 Nov email",
+    "evidence": [
+      "email:a2-003"
+    ],
+    "accept": [
+      [
+        "received"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "c-01",
+    "split": "act2",
+    "category": "changed_again",
+    "question": "When is the Kestrel dev handoff?",
+    "answer": "Friday 27 November (moved from 6 Nov, then 20 Nov)",
+    "evidence": [
+      "email:a2-006",
+      "event:ev-a2-handoff"
+    ],
+    "accept": [
+      [
+        "27 nov",
+        "2026-11-27"
+      ]
+    ],
+    "reject": [
+      "20 november is"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "c-02",
+    "split": "act2",
+    "category": "changed_again",
+    "question": "Can I go running yet?",
+    "answer": "Yes - 3 x 10 min easy runs a week, flat only, no hills until December",
+    "evidence": [
+      "email:a2-002",
+      "note:Health/Knee Rehab.md"
+    ],
+    "accept": [
+      [
+        "10 min"
+      ],
+      [
+        "hills",
+        "flat"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "c-03",
+    "split": "act2",
+    "category": "changed_again",
+    "question": "When is the Christmas market?",
+    "answer": "Sunday 13 and Monday 14 December (corrected from 12-13)",
+    "evidence": [
+      "email:a2-003"
+    ],
+    "accept": [
+      [
+        "13"
+      ],
+      [
+        "14 dec",
+        "14 december"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "c-04",
+    "split": "act2",
+    "category": "changed_again",
+    "question": "What do I still owe the accountant?",
+    "answer": "Pension contribution statements (P60 and expenses received)",
+    "evidence": [
+      "email:a2-004"
+    ],
+    "accept": [
+      [
+        "pension"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "c-05",
+    "split": "act2",
+    "category": "changed_again",
+    "question": "When is my next physio appointment?",
+    "answer": "18 December, 08:15",
+    "evidence": [
+      "email:a2-002",
+      "event:ev-a2-physio",
+      "note:Health/Knee Rehab.md"
+    ],
+    "accept": [
+      [
+        "18 dec",
+        "2026-12-18"
+      ]
+    ],
+    "reject": [
+      "6 november"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "u-01",
+    "split": "act2",
+    "category": "user_correction",
+    "question": "What's my accountant's email address?",
+    "answer": "rhea.k@ledgerline.example (the old address bounces)",
+    "evidence": [
+      "chat:Assistant@2026-11-08T21:02"
+    ],
+    "accept": [
+      [
+        "rhea.k@ledgerline.example"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "u-02",
+    "split": "act2",
+    "category": "user_correction",
+    "question": "When is Mum's hip operation?",
+    "answer": "2 February 2027 (moved from 19 January)",
+    "evidence": [
+      "chat:Assistant@2026-11-09T08:40"
+    ],
+    "accept": [
+      [
+        "2 feb",
+        "february 2"
+      ]
+    ],
+    "reject": [
+      "19 january is"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "n-01",
+    "split": "act2",
+    "category": "new_fact",
+    "question": "What did Ms Adeyemi say at parents' evening?",
+    "answer": "Times tables much better, reading excellent, try chess club",
+    "evidence": [
+      "journal:2026-11-05"
+    ],
+    "accept": [
+      [
+        "times tables"
+      ],
+      [
+        "chess",
+        "reading"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "h-a2-01",
+    "split": "act2",
+    "category": "history_kept",
+    "question": "As of 1 November, was the boiler fixed?",
+    "answer": "No - still on a temporary bypass, part awaited",
+    "evidence": [
+      "chat:Tom (landlord)@2026-10-28T21:30",
+      "email:mv-021"
+    ],
+    "accept": [
+      [
+        "not",
+        "awaiting",
+        "bypass",
+        "next week"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-01T12:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "h-a2-02",
+    "split": "act2",
+    "category": "history_kept",
+    "question": "As of 31 October, when was the Kestrel handoff?",
+    "answer": "20 November",
+    "evidence": [
+      "email:hl-017",
+      "event:ev-hl-handoff2"
+    ],
+    "accept": [
+      [
+        "20 nov",
+        "2026-11-20"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-10-31T12:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "h-a2-03",
+    "split": "act2",
+    "category": "history_kept",
+    "question": "What was my accountant's email before I changed it?",
+    "answer": "rhea@ledgerline.example",
+    "evidence": [
+      "note:People/Rhea Kapoor.md",
+      "email:tx-003"
+    ],
+    "accept": [
+      [
+        "rhea@ledgerline.example"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "single-04",
+    "split": "act2_regression",
+    "category": "single_hop",
+    "question": "What day does Ivy have PE?",
+    "answer": "Tuesdays and Thursdays",
+    "evidence": [
+      "note:Areas/Larkfield Primary.md",
+      "email:iv-002"
+    ],
+    "accept": [
+      [
+        "tuesday"
+      ],
+      [
+        "thursday"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "tail-01",
+    "split": "act2_regression",
+    "category": "long_tail",
+    "question": "Why did we drop the campaign wizard?",
+    "answer": "5 of 6 charities in testing found it patronising (June)",
+    "evidence": [
+      "email:hl-004",
+      "note:Projects/Kestrel Redesign.md"
+    ],
+    "accept": [
+      [
+        "patronising"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "ent-01",
+    "split": "act2_regression",
+    "category": "entity_disambiguation",
+    "question": "What did Sam say about Ivy's swimming?",
+    "answer": "Coach Sam Doherty: she passed Stage 5, Stage 6 from January (Sundays 10:45)",
+    "evidence": [
+      "email:iv-005",
+      "journal:2026-10-19"
+    ],
+    "accept": [
+      [
+        "stage 6",
+        "stage 5"
+      ]
+    ],
+    "reject": [
+      "salt orchard"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "tok-01",
+    "split": "act2_regression",
+    "category": "exact_token",
+    "question": "What's AE7QK2?",
+    "answer": "Aerolis flight booking for Lisbon (out 9 Oct, back 13 Oct)",
+    "evidence": [
+      "email:ls-001",
+      "email:ls-003",
+      "note:Travel/Lisbon October.md"
+    ],
+    "accept": [
+      [
+        "lisbon",
+        "aerolis",
+        "flight"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "upd-02",
+    "split": "act2_regression",
+    "category": "knowledge_update",
+    "question": "Who is my accountant?",
+    "answer": "Rhea Kapoor at Ledgerline (since 22 Sept; Felix Grant retired)",
+    "evidence": [
+      "email:tx-003",
+      "note:Finance/Tax 2025-26.md",
+      "journal:2026-09-22",
+      "note:People/Rhea Kapoor.md",
+      "note:People/Felix Grant.md",
+      "email:tx-002",
+      "task:t-tx-1"
+    ],
+    "accept": [
+      [
+        "rhea"
+      ]
+    ],
+    "reject": [
+      "felix is my accountant"
+    ],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "hist-01",
+    "split": "act2_regression",
+    "category": "historical_state",
+    "question": "Where was I living when I first viewed the Alder Street flat?",
+    "answer": "14 Cotham Rise",
+    "evidence": [
+      "note:Projects/Flat Move.md",
+      "event:ev-mv-viewing",
+      "note:People/Gemma Holt.md"
+    ],
+    "accept": [
+      [
+        "cotham"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "imp-01",
+    "split": "act2_regression",
+    "category": "implicit",
+    "question": "How much did the movers cost?",
+    "answer": "£280 (Bristol Man & Van)",
+    "evidence": [
+      "email:mv-007",
+      "task:t-mv-2"
+    ],
+    "accept": [
+      [
+        "280"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "abs-02",
+    "split": "act2_regression",
+    "category": "abstention",
+    "question": "When is Ivy's ballet recital?",
+    "answer": "No record of ballet",
+    "evidence": [],
+    "accept": [],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": true,
+    "note": ""
+  },
+  {
+    "id": "h-16",
+    "split": "act2_regression",
+    "category": "exact_token",
+    "question": "What's CDR-2219?",
+    "answer": "Casa do Rio hotel reservation in Lisbon, 9-13 Oct",
+    "evidence": [
+      "email:ls-002",
+      "email:ls-005",
+      "email:ls-004"
+    ],
+    "accept": [
+      [
+        "casa do rio",
+        "reservation"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  },
+  {
+    "id": "h-18",
+    "split": "act2_regression",
+    "category": "implicit",
+    "question": "Where were Sam's birthday drinks?",
+    "answer": "The Grain Barge",
+    "evidence": [
+      "event:ev-so-sam"
+    ],
+    "accept": [
+      [
+        "grain barge"
+      ]
+    ],
+    "reject": [],
+    "forbidden": [],
+    "as_of": "2026-11-12T18:00:00+00:00",
+    "abstain": false,
+    "note": ""
+  }
+]

@@ -12,12 +12,15 @@ Outputs, all fictional:
     data/sources/tasks/         task-app export, JSON
     data/questions.json         eval questions with gold evidence (from truth.py)
     data/manifest.json          counts and the fixture "now"
+    data_act2/                  act 1 plus two more weeks (story_act2.py): new memories, edited notes,
+                                user corrections, and learning questions asked at the act-2 "now"
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import filecmp
+import importlib
 import json
 import shutil
 import sys
@@ -33,6 +36,7 @@ sys.dont_write_bytecode = True
 
 import noise  # noqa: E402
 import story  # noqa: E402
+import story_act2  # noqa: E402
 import truth  # noqa: E402
 
 LONDON = ZoneInfo("Europe/London")
@@ -173,7 +177,13 @@ def write_vault(root: Path) -> int:
     return count
 
 
-def build(root: Path) -> dict:
+def build(root: Path, act: int = 1) -> dict:
+    global story, noise, truth, story_act2
+    # Fresh module state per build: the storylines append to module-level collections.
+    story = importlib.reload(story)
+    noise = importlib.reload(noise)
+    truth = importlib.reload(truth)
+    story_act2 = importlib.reload(story_act2)
     story.moving()
     story.halcyon()
     story.bramble()
@@ -185,6 +195,10 @@ def build(root: Path) -> dict:
     story.pottery()
     story.social()
     noise.build_noise()
+    now = story.NOW
+    if act == 2:
+        story_act2.apply()
+        now = story_act2.NOW
     root.mkdir(parents=True)
     counts = {
         "notes": write_vault(root),
@@ -193,11 +207,18 @@ def build(root: Path) -> dict:
         "chat_messages": write_chats(root),
         "tasks": write_tasks(root),
     }
-    questions = truth.questions() + truth.holdout_questions()
+    if act == 1:
+        questions = truth.questions() + truth.holdout_questions()
+    else:
+        act1 = {q["id"]: q for q in truth.questions() + truth.holdout_questions()}
+        regression = [{**act1[qid], "split": "act2_regression", "as_of": now} for qid in story_act2.REGRESSION_IDS]
+        questions = story_act2.questions() + regression
     truth.validate(questions, root)
     (root / "questions.json").write_text(json.dumps(questions, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     counts["questions"] = len(questions)
-    manifest = {"name": "lifevault", "persona": "Nia Okafor (fictional)", "now": story.NOW, "counts": counts}
+    manifest = {"name": "lifevault" if act == 1 else "lifevault-act2", "persona": "Nia Okafor (fictional)", "now": now, "counts": counts}
+    if act == 2:
+        manifest["changed_notes"] = sorted(story_act2.NOTE_EDITS)
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -214,21 +235,23 @@ def _same_tree(a: Path, b: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", type=Path, default=HERE / "data")
-    parser.add_argument("--check", action="store_true", help="Exit non-zero if --out differs from a fresh build")
+    parser.add_argument("--check", action="store_true", help="Exit non-zero if data/ or data_act2/ differs from a fresh build")
     args = parser.parse_args()
+    ok = True
     with tempfile.TemporaryDirectory() as tmp:
-        fresh = Path(tmp) / "data"
-        manifest = build(fresh)
-        if args.check:
-            ok = args.out.exists() and _same_tree(fresh, args.out)
-            print("lifevault fixture up to date" if ok else "lifevault fixture is stale: run eval/lifevault/build.py")
-            return 0 if ok else 1
-        if args.out.exists():
-            shutil.rmtree(args.out)
-        shutil.copytree(fresh, args.out)
-    print(json.dumps(manifest, indent=2))
-    return 0
+        for act, out in ((1, HERE / "data"), (2, HERE / "data_act2")):
+            fresh = Path(tmp) / f"act{act}"
+            manifest = build(fresh, act)
+            if args.check:
+                same = out.exists() and _same_tree(fresh, out)
+                ok &= same
+                print(f"{out.name}: {'up to date' if same else 'stale - run eval/lifevault/build.py'}")
+                continue
+            if out.exists():
+                shutil.rmtree(out)
+            shutil.copytree(fresh, out)
+            print(json.dumps(manifest))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -181,3 +181,32 @@ def test_suspicious_content_never_reaches_gists(tmp_path: Path):
     gist_inputs = json.dumps([t.payload for t in mind.seen if t.kind == "topic_gist"])
     assert "Plant beans" not in gist_inputs
     assert "instructions aimed at an assistant" in gist_inputs
+
+
+def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    root = _vault(tmp_path)
+    mind = ScriptedMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    brain.perceive()
+    first = len(mind.seen)
+
+    # Nothing new: perceiving again asks the mind nothing.
+    assert brain.ingest(read_sources(root), incremental=True)["added"] == 0
+    brain.perceive()
+    assert len(mind.seen) == first
+
+    # A new memory plus an edited note: one new neuron, one new version, old version kept.
+    (root / "vault" / "Projects" / "Boat.md").write_text("---\nupdated: 2026-06-20\n---\n# Boat\n\n- Mooring renewed until 2027\n", encoding="utf-8")
+    (root / "vault" / "Projects" / "Kayak.md").write_text("---\nupdated: 2026-06-21\n---\n# Kayak\n\n- Bought a kayak\n", encoding="utf-8")
+    stats = brain.ingest(read_sources(root), incremental=True)
+    assert stats == {"neurons": 6, "added": 2, "new_versions": 1}
+    brain.perceive()
+    new = mind.seen[first:]
+    assert [t.kind for t in new if t.kind == "regions"] == []  # the map is kept
+    assert sum(len(t.payload["neurons"]) for t in new if t.kind == "perceive") == 2
+    assert {t.payload["topic"]["title"] for t in new if t.kind == "topic_gist"} <= {"Boat", "Garden"}
+    old = brain.recall("mooring", as_of="2026-06-01T00:00:00+00:00")
+    assert all("2027" not in h.text for h in old)  # the past still answers as it was

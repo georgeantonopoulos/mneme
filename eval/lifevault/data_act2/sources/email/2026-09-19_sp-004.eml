@@ -1,0 +1,15 @@
+Message-ID: <sp-004@lifevault.example>
+Date: Sat, 19 Sep 2026 11:11:00 +0100
+From: Parcel Service <track@parcel-redelivery.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Missed delivery - fee due
+X-LifeVault-Id: sp-004
+X-LifeVault-Thread: sp-004
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: spam
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+We could not deliver your parcel. Pay the =C2=A31.99 redelivery fee via the l=
+ink to rebook.

@@ -1,0 +1,15 @@
+Message-ID: <rc-62@lifevault.example>
+Date: Thu, 02 Jul 2026 20:04:00 +0100
+From: Kiln House <lena@kilnhouse.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Firing invoice
+X-LifeVault-Id: rc-62
+X-LifeVault-Thread: rc-62
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your purchase. Total paid: £30.00.
+This is an automated receipt.

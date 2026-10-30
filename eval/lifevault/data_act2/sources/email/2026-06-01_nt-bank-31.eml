@@ -1,0 +1,14 @@
+Message-ID: <nt-bank-31@lifevault.example>
+Date: Mon, 01 Jun 2026 06:30:00 +0100
+From: Northmoor Bank <alerts@northmoorbank.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your statement is ready
+X-LifeVault-Id: nt-bank-31
+X-LifeVault-Thread: nt-bank-31
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: notification
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Your latest statement for the account ending 4471 is ready to view in the app.

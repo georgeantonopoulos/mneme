@@ -1,0 +1,29 @@
+Message-ID: <br-003@lifevault.example>
+Date: Tue, 25 Aug 2026 10:00:00 +0100
+From: Nia Okafor <nia@okafor.example>
+To: Josie Bramble <josie@brambleandco.example>
+In-Reply-To: <br-002@lifevault.example>
+References: <br-002@lifevault.example>
+Subject: Invoice INV-2026-015
+X-LifeVault-Id: br-003
+X-LifeVault-Thread: br-cancel
+X-LifeVault-Folder: sent
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="lifevault-br-003-0"
+
+--lifevault-br-003-0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Kill fee per contract clause 7: 30% of £2,400 = £720. Due 24 September.
+
+--lifevault-br-003-0
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="INV-2026-015.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjQKJSBMaWZlVmF1bHQgZmljdGlvbmFsIHBsYWNlaG9sZGVyIGF0dGFjaG1lbnQKJSVF
+T0YK
+
+--lifevault-br-003-0--
