@@ -113,3 +113,49 @@ def test_task_ids_are_content_hashes():
 def test_parse_json_reply_rejects_non_json():
     with pytest.raises(ValueError):
         parse_json_reply("no json here")
+
+
+def test_openai_compatible_mind_talks_to_any_endpoint(tmp_path: Path):
+    import http.server
+    import threading
+
+    seen = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen["auth"] = self.headers.get("Authorization")
+            reply = {"choices": [{"message": {"content": '{"ok": true}'}}]}
+            data = json.dumps(reply).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        from mneme.cortex.mind import mind_from_config
+        import os
+        os.environ["TEST_MIND_KEY"] = "secret"
+        mind = mind_from_config({"provider": "openai-compatible", "base_url": f"http://127.0.0.1:{server.server_port}/v1",
+                                 "model": "local-model", "api_key_env": "TEST_MIND_KEY"})
+        assert mind.ask_many([Task("demo", "Answer", {"q": 1}, {"ok": True})]) == [{"ok": True}]
+        assert seen["body"]["model"] == "local-model" and seen["auth"] == "Bearer secret"
+    finally:
+        server.shutdown()
+
+
+def test_command_mind_and_role_routing(tmp_path: Path):
+    import sys
+    from mneme.cortex.mind import CommandMind, MeteredMind, RoleMind
+
+    echo = CommandMind(f"{sys.executable} -c \"import sys; sys.stdin.read(); print('{{\\\"who\\\": \\\"cmd\\\"}}')\"")
+    other = FunctionMind(lambda prompt: '{"who": "fn"}')
+    mind = MeteredMind(RoleMind(other, {"special": echo}))
+    out = mind.ask_many([Task("plain", "a", {}), Task("special", "b", {}), Task("plain", "c", {})])
+    assert [o["who"] for o in out] == ["fn", "cmd", "fn"]
+    assert mind.calls == {"plain": 2, "special": 1}

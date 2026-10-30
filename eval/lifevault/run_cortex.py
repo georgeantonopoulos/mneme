@@ -20,16 +20,21 @@ sys.path.insert(0, str(HERE.parents[1] / "src"))
 sys.dont_write_bytecode = True
 
 from mneme.cortex import AwaitingMind, Brain, FileMind  # noqa: E402
+from mneme.cortex.mind import MeteredMind  # noqa: E402
 
 DATA = HERE / "data"
 MIND = HERE / "mind"
 RECALL = HERE / "results" / "cortex_recall.json"
+TOKENS = HERE / "results" / "cortex_tokens.json"
+PERCEPTION_KINDS = ("regions", "perceive", "topic_gist", "area_gist")
+RECALL_KINDS = ("zoom_areas", "zoom_topics", "zoom_neurons")
 
 
 def run(k: int = 8) -> int:
-    mind = FileMind(MIND)
-    for stale in mind.outbox.glob("*.json"):
+    files = FileMind(MIND)
+    for stale in files.outbox.glob("*.json"):
         stale.unlink()
+    mind = MeteredMind(files)
     questions = json.loads((DATA / "questions.json").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory() as tmp:
         brain = Brain(Path(tmp) / "cortex.sqlite", mind)
@@ -46,6 +51,16 @@ def run(k: int = 8) -> int:
     RECALL.parent.mkdir(parents=True, exist_ok=True)
     RECALL.write_text(json.dumps({q["id"]: [{"refs": h.refs, "text": h.context_text()} for h in hits]
                                   for q, hits in zip(questions, results)}, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    tokens = {
+        "note": "prompt tokens estimated as characters / 4",
+        "perception_tokens": sum(mind.chars[k] for k in PERCEPTION_KINDS) // 4,
+        "perception_calls": sum(mind.calls[k] for k in PERCEPTION_KINDS),
+        "recall_tokens_per_question": sum(mind.chars[k] for k in RECALL_KINDS) // 4 // len(questions),
+        "recall_calls_per_question": sum(mind.calls[k] for k in RECALL_KINDS) / len(questions),
+        "by_kind": {k: {"calls": mind.calls[k], "tokens": mind.chars[k] // 4} for k in sorted(mind.calls)},
+    }
+    TOKENS.write_text(json.dumps(tokens, indent=1) + "\n", encoding="utf-8")
+    print(json.dumps({k: v for k, v in tokens.items() if k != "by_kind"}))
     print(f"recall complete for {len(questions)} questions -> {RECALL}")
     return 0
 
