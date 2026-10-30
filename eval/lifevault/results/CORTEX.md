@@ -153,6 +153,13 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - no regressions on unchanged questions;
 - the update cost 18% of a full rebuild.
 
+## Learning from use
+
+`USE.md` covers confirmed answers becoming leads for later questions:
+- held-out answer-in-context rose from 0.96 to 1.00 and reask fell from 0.96 to 0.92, both within noise;
+- recall prompt tokens rose 25%;
+- the mechanism costs nothing until the user gives feedback.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid

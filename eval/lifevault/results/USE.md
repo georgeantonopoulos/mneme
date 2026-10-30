@@ -1,0 +1,77 @@
+# Use eval: learning from confirmed answers
+
+```bash
+python eval/lifevault/run_use.py     # replays cached answers -> results/use.json
+```
+
+Every recall leaves a trace. `Brain.feedback(trace, useful=[...], wrong=[...])` records which memories
+the user confirmed. Two things follow:
+- memories used together get a "recalled together" synapse;
+- a later question that looks like a confirmed one gets that earlier question as a lead, plus the areas,
+  topics and memories that answered it. The mind is told to treat leads as leads.
+
+The similar question is found with the brain's existing full-text sense, so there is no new
+vocabulary or rule. With no feedback, the prompts are byte-identical to before, and every earlier eval
+replays from cache unchanged.
+
+## Setup
+
+- **fresh:** the act-1 brain, with no experience.
+- **used:** the same brain, after answering the 55 dev questions. The "user" then confirms the returned
+  memories that are gold evidence. This simulates someone saying "yes, that's right", using the dev answer
+  key. 49 of 55 answers had something to confirm.
+
+Both are then asked two sets of questions. Neither set was used for feedback.
+- **reask:** 26 dev needs reworded (`reask.py`), written and committed before any run.
+- **holdout:** the 26 held-out questions.
+
+## Results (top 8, Haiku mind)
+
+| | holdout answer-in-context | holdout hit@8 | holdout evidence recall | reask answer-in-context | reask hit@8 | reask evidence recall | recall prompt tokens per question |
+|---|---|---|---|---|---|---|---|
+| fresh | 0.96 | 0.92 | 0.79 | **0.96** | 0.96 | 0.72 | **4,747** |
+| used | **1.00** | **1.00** | **0.87** | 0.92 | 0.96 | 0.70 | 5,929 (+25%) |
+
+Leads were found well:
+- For 22 of the 26 reworded questions, the original question was among the leads.
+- For 20 of them, it was the first lead.
+- Every held-out question got at least one lead, related or not.
+
+Per question:
+- **Gained (held-out):**
+  - `h-19` is the routing miss from v4: fresh routing picked the wrong topic again, and the lead fixed it.
+  - `h-24` found its gold evidence.
+  - `h-04` reached full evidence recall.
+- **Lost (reask):** `re-loop-01` ("Which things are other people supposed to get back to me on?"). This is a
+  broad open-loops question. The lead pointed at the memories confirmed for the original, and the reworded
+  run left out the invoice.
+- **Mixed evidence recall** on 9 other reask questions. Some went up and some went down, and none changed
+  answer-in-context.
+
+## Verdict
+
+- **The mechanism works.** It finds the right past question, and it stabilised the one routing miss it was
+  aimed at.
+- **The accuracy effect is within noise.** On held-out it was +1 answer and +2 gold hits. On reask it was -1
+  answer.
+- **Both sets are near the ceiling.** Fresh already scores 0.96 on both, so this eval cannot show a large gain.
+- **The cost is real:** +25% recall prompt tokens, from the leads and the confirmed candidates added to
+  the skim.
+
+It stays in because it costs nothing until the user gives feedback, it follows the README's "learn from
+feedback and reinforcement", and it adds about 80 lines of non-LLM code.
+
+It is not yet shown to be worth its tokens. Before building more on it, such as the on-demand "sleep"
+pass, it needs a harder eval: more questions, repeated runs to measure variance, and questions far from
+ceiling.
+
+## Caveats
+
+- One run per system. Routing varies from run to run, as the v2-v4 notes in `CORTEX.md` show. A single
+  question flipping either way is within that variance.
+- Feedback is simulated from the dev answer key, and it is perfect: it only confirms gold memories. Real
+  feedback will be sparser and sometimes wrong. That is what `wrong=` is for, but it was not exercised here.
+- The suspicious phishing email reached several skim and read prompts in full, with its hidden text,
+  through exact-text lookups. This is unrelated to learning and predates it. The mind did not follow it
+  and cited it as suspicious when asked about the bank. Gists already quarantine such memories, and the
+  candidate view should do the same.
