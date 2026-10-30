@@ -313,7 +313,14 @@ class Brain:
             ids = {m["id"] for m in members}
             views = []
             for m in members:
-                view = self._neuron_view(m, 280)
+                judgement = self.conn.execute("SELECT trust, reason FROM judgements WHERE neuron = ?", (m["id"],)).fetchone()
+                if judgement and judgement["trust"] != "ok":
+                    # Quarantine: content the mind judged suspicious never travels up into gists,
+                    # so injected text cannot reach routing prompts. The raw neuron stays recallable.
+                    view = {"id": self._sid(m), "source": m["source"], "date": _date(m["event_time"] or m["known_at"]),
+                            "suspicious": judgement["reason"] or "flagged during perception"}
+                else:
+                    view = self._neuron_view(m, 280)
                 links = [f"{s['relation']} {self._sid_of(s['dst'])}" for s in self.conn.execute("SELECT * FROM synapses WHERE src = ?", (m["id"],)) if s["dst"] in ids]
                 if links:
                     view["links"] = links

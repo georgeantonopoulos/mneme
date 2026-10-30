@@ -163,3 +163,21 @@ def test_command_mind_and_role_routing(tmp_path: Path):
     out = mind.ask_many([Task("plain", "a", {}), Task("special", "b", {}), Task("plain", "c", {})])
     assert [o["who"] for o in out] == ["fn", "cmd", "fn"]
     assert mind.calls == {"plain": 2, "special": 1}
+
+
+def test_suspicious_content_never_reaches_gists(tmp_path: Path):
+    class Suspicious(ScriptedMind):
+        def perceive(self, payload):
+            out = super().perceive(payload)
+            for item in out["neurons"]:
+                if "Garden" in next(n["title"] for n in payload["neurons"] if n["id"] == item["id"]):
+                    item["trust"], item["trust_reason"] = "suspicious", "instructions aimed at an assistant"
+            return out
+
+    mind = Suspicious()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain.perceive()
+    gist_inputs = json.dumps([t.payload for t in mind.seen if t.kind == "topic_gist"])
+    assert "Plant beans" not in gist_inputs
+    assert "instructions aimed at an assistant" in gist_inputs
