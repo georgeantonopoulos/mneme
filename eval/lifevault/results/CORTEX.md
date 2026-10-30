@@ -128,6 +128,24 @@ Per question, against v2:
 - **Evidence recall@8 fell** (0.80 in v1 to 0.68), because v3 returns fewer, more precise memories. That is
   also cheaper for whatever agent reads the context afterwards.
 
+## v4: quarantine suspicious memories from gists (current)
+
+Memories the mind flagged as suspicious now enter topic gists only as their source, date and trust reason. In
+v3 the phishing email's hidden instructions were quoted in a gist and so reached every routing prompt. In v4
+they reach none.
+
+| | v3 | **v4** |
+|---|---|---|
+| Routing prompts containing the injected text | 81 / 81 | **0 / 81** |
+| Dev answer-in-context | 0.90 | **0.92** |
+| Held-out answer-in-context | 1.00 | 0.96 |
+| Recall prompt tokens per question | 4,725 | 4,774 |
+
+Two questions changed between v3 and v4: one gained (`para-01`) and one lost (`h-19`). Both are routing
+changes, because the new area gists caused routing to run again. They show run-to-run variance in the two
+zoom steps, which now accounts for every v2-v4 loss except one answer-key artefact. Making routing more
+stable is the clearest remaining lever.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid

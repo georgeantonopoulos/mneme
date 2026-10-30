@@ -1,21 +1,21 @@
 {
  "note": "prompt tokens estimated as characters / 4",
- "perception_tokens": 202426,
+ "perception_tokens": 202140,
  "perception_calls": 60,
- "recall_tokens_per_question": 4725,
- "recall_calls_per_question": 3.9382716049382718,
+ "recall_tokens_per_question": 4774,
+ "recall_calls_per_question": 3.925925925925926,
  "by_kind": {
   "area_gist": {
    "calls": 9,
-   "tokens": 5987
+   "tokens": 6018
   },
   "perceive": {
    "calls": 21,
    "tokens": 148144
   },
   "read_neurons": {
-   "calls": 76,
-   "tokens": 45144
+   "calls": 75,
+   "tokens": 55501
   },
   "regions": {
    "calls": 1,
@@ -23,19 +23,19 @@
   },
   "skim_neurons": {
    "calls": 81,
-   "tokens": 146466
+   "tokens": 141494
   },
   "topic_gist": {
    "calls": 29,
-   "tokens": 36524
+   "tokens": 36207
   },
   "zoom_areas": {
    "calls": 81,
-   "tokens": 121596
+   "tokens": 120300
   },
   "zoom_topics": {
    "calls": 81,
-   "tokens": 69583
+   "tokens": 69473
   }
  }
 }
