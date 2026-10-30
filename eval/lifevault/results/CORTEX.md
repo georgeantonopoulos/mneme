@@ -146,6 +146,13 @@ changes, because the new area gists caused routing to run again. They show run-t
 zoom steps, which now accounts for every v2-v4 loss except one answer-key artefact. Making routing more
 stable is the clearest remaining lever.
 
+## Learning (act 2)
+
+The incremental update and the stale-vs-learning comparison are in `LEARNING.md`. In short:
+- act-2 answer-in-context was 1.00 incremental vs 0.44 stale;
+- no regressions on unchanged questions;
+- the update cost 18% of a full rebuild.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
