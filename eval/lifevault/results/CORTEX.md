@@ -70,6 +70,32 @@ The full table is in `baseline.json` under `by_category`.
   string metric counts it.
 - 7 of 81 recalls returned no evidence. 5 of those 7 are correct abstentions.
 
+## v2: cheaper prompts (captions, short ids, cache-friendly order)
+
+v2 keeps the same design. Three things changed:
+- perception also writes a one-line caption for each memory;
+- prompts use short ids, compact JSON, and put the question last;
+- the final zoom reads captions; full text is shown only for verbatim lookups.
+
+Measured with `MeteredMind`; the v1 figures come from replaying v1's cached prompts.
+
+| | v1 | v2 |
+|---|---|---|
+| Recall prompt tokens per question | 6,066 | **4,204** (-31%) |
+| Perception prompt tokens (402 memories) | 248k | **202k** (-18%) |
+| Dev answer-in-context | **0.90** | 0.86 |
+| Held-out answer-in-context | **1.00** | 0.96 |
+| Phishing surfaced | 0 | 0 |
+
+The cost is accuracy: 4 questions got worse and 2 got better.
+- **Caption detail loss (2):** "landlord's email address" and "what does Tomasz's wife do". The caption dropped
+  the exact detail the question asks for, so the mind never saw it.
+- **Run-to-run variation (2):** the region map differs between runs, and two questions were routed to the
+  wrong topics.
+- **Gained (2):** "who has Ivy on the deadline night" and "what am I waiting on".
+
+v2 is cheaper but slightly less accurate. Captions alone are not a free win.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
