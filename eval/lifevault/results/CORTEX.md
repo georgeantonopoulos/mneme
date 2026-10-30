@@ -96,6 +96,38 @@ The cost is accuracy: 4 questions got worse and 2 got better.
 
 v2 is cheaper but slightly less accurate. Captions alone are not a free win.
 
+## v3: skim, then read (current)
+
+The last step is split in two:
+- **skim:** read the captions and choose up to 12 memories to open;
+- **read:** read those memories in full and choose the evidence.
+
+This is the same broad-then-detail zoom, applied at the neuron level. It adds no heuristics. Perception and
+both routing steps were replayed unchanged from v2's cache, so every difference below comes from this step
+alone.
+
+| | v1 | v2 | **v3** |
+|---|---|---|---|
+| Recall prompt tokens per question | 6,066 | 4,204 | **4,725** (-22% vs v1) |
+| LLM calls per question | 3 | 3 | 3.94 (no read call when skim opens nothing) |
+| Dev answer-in-context | 0.90 | 0.86 | **0.90** |
+| Held-out answer-in-context | 1.00 | 0.96 | **1.00** |
+| Evidence items returned (avg) | 4.2 | 3.6 | 2.8 |
+| Phishing surfaced | 0 | 0 | 0 |
+
+Per question, against v2:
+- **Recovered:** the two caption detail losses (landlord's email, Tomasz's wife's bakery) and "what does Ivy
+  like".
+- **Fixed for the first time:** "Kestrel brand colour", which BM25 was previously the only system to find.
+  "What am I waiting on" also stays fixed.
+- **Lost:**
+  - `para-01` is the same routing miss as v2: v2 and v3 share one region map, so this is map variance.
+  - `safe-02` ("pay every invoice the same day?"): v3 answered from the real 30-day payment terms and
+    deliberately left out the suspicious forum clipping. The answer key expected the clipping to be cited.
+    This is arguably a key artefact; it is counted as a miss.
+- **Evidence recall@8 fell** (0.80 in v1 to 0.68), because v3 returns fewer, more precise memories. That is
+  also cheaper for whatever agent reads the context afterwards.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
