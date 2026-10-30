@@ -36,10 +36,10 @@ def _seed_quality_db(db: Path) -> dict[str, str]:
     conn = sqlite3.connect(db)
     init_db(conn)
     nodes = {
-        "sequency": _obs(conn, "blocked", "Sequency App", "Projects/sequency-app.md", "Sequency App launch partner notes and active follow up list."),
+        "lumora": _obs(conn, "blocked", "Lumora App", "Projects/lumora-app.md", "Lumora App launch partner notes and active follow up list."),
         "maya": _obs(conn, "blocked", "Maya Greek Summer Camp", "events/maya-greek-summer-camp.md", "Maya Greek summer camp current booking and contact details.", node_type="event"),
-        "cassini": _obs(conn, "risk", "Cassini Broken Window", "vendors/cassini-property.md", "Cassini broken window open repair issue, awaiting landlord response.", node_type="vendor"),
-        "chepstow": _obs(conn, "blocked", "Chepstow House School Fees", "Projects/chepstow-house-fees.md", "Chepstow House school fees current payment plan and finance contact.", node_type="finance"),
+        "harbourview": _obs(conn, "risk", "Harbourview Broken Window", "vendors/harbourview-property.md", "Harbourview broken window open repair issue, awaiting landlord response.", node_type="vendor"),
+        "elmfield": _obs(conn, "blocked", "Elmfield House School Fees", "Projects/elmfield-house-fees.md", "Elmfield House school fees current payment plan and finance contact.", node_type="finance"),
         "moraitis": _obs(conn, "blocked", "Moraitis Placement Quiz", "people/moraitis-school.md", "Moraitis placement quiz school-related items and preparation notes.", node_type="person"),
         "belvedere": _obs(conn, "blocked", "Belvedere Tony Xu", "vendors/belvedere-tony-xu.md", "Belvedere Tony Xu property agent viewing thread.", node_type="vendor"),
         "invoice": _obs(conn, "blocked", "Power of Play Invoice", "Projects/power-of-play-invoice.md", "Power of Play invoice finance item needs reconciliation.", node_type="finance"),
@@ -51,10 +51,10 @@ def _seed_quality_db(db: Path) -> dict[str, str]:
         "vague": _obs(conn, "blocked", "Current Status", "Projects/current-status.md", "Current status overview with live project work."),
     }
     stale = [
-        ("Sequency Daily", "archive/daily/2026-04-01.md", "Sequency App old daily summary resolved sent paid."),
+        ("Lumora Daily", "archive/daily/2026-04-01.md", "Lumora App old daily summary resolved sent paid."),
         ("Maya Daily", "daily/2026-04-02.md", "Maya Greek summer camp archived daily note."),
-        ("Cassini Complaint", "archive/daily/2026-03-28.md", "Cassini broken window resolved complaint sent."),
-        ("Chepstow Deadline", "daily/2026-04-01.md", "Chepstow House school fees April deadline summary paid."),
+        ("Harbourview Complaint", "archive/daily/2026-03-28.md", "Harbourview broken window resolved complaint sent."),
+        ("Elmfield Deadline", "daily/2026-04-01.md", "Elmfield House school fees April deadline summary paid."),
         ("Moraitis Briefing", "memory/2026-04-01.md", "Moraitis placement quiz old daily briefing."),
         ("Old Urgent", "daily/2026-03-31.md", "Urgent deadline due tomorrow Mar 31."),
         ("Old GWS Memory", "memory/2026-04-01.md", "gws email calendar old memory summary."),
@@ -77,10 +77,10 @@ def _seed_quality_db(db: Path) -> dict[str, str]:
 
 
 EVAL_CASES = [
-    RetrievalEvalCase("Sequency App", ["Projects/sequency-app.md"], ["Sequency App"], [r"old daily"]),
+    RetrievalEvalCase("Lumora App", ["Projects/lumora-app.md"], ["Lumora App"], [r"old daily"]),
     RetrievalEvalCase("Maya Greek summer camp", ["events/maya-greek-summer-camp.md"], ["Maya Greek Summer Camp"], [r"archived daily"]),
-    RetrievalEvalCase("Cassini broken window", ["vendors/cassini-property.md"], ["Cassini Broken Window"], [r"resolved complaint"]),
-    RetrievalEvalCase("Chepstow House school fees", ["Projects/chepstow-house-fees.md"], ["Chepstow House School Fees"], [r"April deadline"]),
+    RetrievalEvalCase("Harbourview broken window", ["vendors/harbourview-property.md"], ["Harbourview Broken Window"], [r"resolved complaint"]),
+    RetrievalEvalCase("Elmfield House school fees", ["Projects/elmfield-house-fees.md"], ["Elmfield House School Fees"], [r"April deadline"]),
     RetrievalEvalCase("Moraitis placement quiz", ["people/moraitis-school.md"], ["Moraitis Placement Quiz"], [r"old daily briefing"]),
     RetrievalEvalCase("Belvedere Tony Xu", ["vendors/belvedere-tony-xu.md"], ["Belvedere Tony Xu"], []),
     RetrievalEvalCase("Power of Play invoice", ["Projects/power-of-play-invoice.md"], ["Power of Play Invoice"], []),
@@ -113,7 +113,7 @@ def test_retrieval_smoke(tmp_path: Path):
 
 def test_retrieval_authority_and_staleness(tmp_path: Path):
     assert _retrieval_source_authority("memory/2026-04-01.md", None) <= 0.25
-    assert _retrieval_source_authority("Projects/sequency-app.md", None) == 1.2
+    assert _retrieval_source_authority("Projects/lumora-app.md", None) == 1.2
     assert _retrieval_edge_source_authority("user_confirmed") == 1.4
     assert _retrieval_edge_source_authority("candidate") == 0.7
     assert _retrieval_staleness("Due tomorrow Mar 31", "memory/2026-04-01.md") < 0.5

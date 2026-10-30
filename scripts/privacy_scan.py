@@ -3,6 +3,7 @@
 
 This script is intentionally generic. Projects can add comma-separated custom
 terms via MNEME_FORBIDDEN_TERMS without storing those private terms in the repo.
+Custom terms match whole words, case-insensitively.
 """
 from __future__ import annotations
 
@@ -91,7 +92,7 @@ def scan_text() -> list[str]:
     patterns = list(BASE_PATTERNS)
     custom = [term.strip() for term in os.environ.get("MNEME_FORBIDDEN_TERMS", "").split(",") if term.strip()]
     for term in custom:
-        patterns.append(("custom_forbidden_term", re.compile(re.escape(term), re.I)))
+        patterns.append(("custom_forbidden_term", re.compile(rf"\b{re.escape(term)}\b", re.I)))
 
     failures: list[str] = []
     for path in iter_files():

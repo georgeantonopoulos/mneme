@@ -116,9 +116,9 @@ def run_retrieval_eval(db_path: Path | str, cases: list[RetrievalCase], *, k: in
 # --- Self-contained fixture so the harness runs without the test module -------
 
 DEMO_CASES = [
-    RetrievalCase("Sequency App", ["Projects/sequency-app.md"], ["Sequency App"], [r"old daily"]),
-    RetrievalCase("Cassini broken window", ["vendors/cassini-property.md"], ["Cassini Broken Window"], [r"resolved complaint"]),
-    RetrievalCase("Chepstow House school fees", ["Projects/chepstow-house-fees.md"], ["Chepstow House School Fees"], [r"April deadline"]),
+    RetrievalCase("Lumora App", ["Projects/lumora-app.md"], ["Lumora App"], [r"old daily"]),
+    RetrievalCase("Harbourview broken window", ["vendors/harbourview-property.md"], ["Harbourview Broken Window"], [r"resolved complaint"]),
+    RetrievalCase("Elmfield House school fees", ["Projects/elmfield-house-fees.md"], ["Elmfield House School Fees"], [r"April deadline"]),
     RetrievalCase("due tomorrow", ["gws://tasks/fresh-due-tomorrow"], ["Fresh Due Tomorrow"], [r"Mar 31"]),
     RetrievalCase("urgent deadline", ["email://inbox/urgent-deadline"], ["Fresh Urgent Deadline"], [r"Mar 31"]),
     RetrievalCase("gws email calendar", ["gws://calendar/source-authority"], ["GWS Calendar Item"], [r"old memory"]),
@@ -135,17 +135,17 @@ def seed_demo_db(db_path: Path) -> None:
         node_id = upsert_node(conn, node_type, name, path, 0.95)
         add_observation(conn, node_id, kind, text, path, score)
 
-    obs("Sequency App", "Projects/sequency-app.md", "Sequency App launch partner notes and active follow up list.")
-    obs("Cassini Broken Window", "vendors/cassini-property.md", "Cassini broken window open repair issue, awaiting landlord response.", kind="risk", node_type="vendor")
-    obs("Chepstow House School Fees", "Projects/chepstow-house-fees.md", "Chepstow House school fees current payment plan and finance contact.", node_type="finance")
+    obs("Lumora App", "Projects/lumora-app.md", "Lumora App launch partner notes and active follow up list.")
+    obs("Harbourview Broken Window", "vendors/harbourview-property.md", "Harbourview broken window open repair issue, awaiting landlord response.", kind="risk", node_type="vendor")
+    obs("Elmfield House School Fees", "Projects/elmfield-house-fees.md", "Elmfield House school fees current payment plan and finance contact.", node_type="finance")
     obs("Fresh Due Tomorrow", "gws://tasks/fresh-due-tomorrow", "Due tomorrow: call current supplier about booking.", node_type="event")
     obs("Fresh Urgent Deadline", "email://inbox/urgent-deadline", "Urgent deadline from email: submit current form.", kind="risk", node_type="event")
     obs("GWS Calendar Item", "gws://calendar/source-authority", "gws email calendar sources contain the live appointment.", node_type="event")
     # Stale distractors that must not outrank the live items.
     for name, path, text in [
-        ("Sequency Daily", "archive/daily/2026-03-28.md", "Sequency App old daily archived note."),
-        ("Cassini Complaint", "archive/daily/2026-03-28.md", "Cassini broken window resolved complaint sent."),
-        ("Chepstow Deadline", "daily/2026-04-01.md", "Chepstow House school fees April deadline summary paid."),
+        ("Lumora Daily", "archive/daily/2026-03-28.md", "Lumora App old daily archived note."),
+        ("Harbourview Complaint", "archive/daily/2026-03-28.md", "Harbourview broken window resolved complaint sent."),
+        ("Elmfield Deadline", "daily/2026-04-01.md", "Elmfield House school fees April deadline summary paid."),
         ("Old Urgent", "daily/2026-03-31.md", "Urgent deadline due tomorrow Mar 31."),
         ("Old GWS Memory", "memory/2026-04-01.md", "gws email calendar old memory summary."),
     ]:
