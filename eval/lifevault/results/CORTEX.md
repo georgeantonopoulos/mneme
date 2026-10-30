@@ -146,6 +146,11 @@ changes, because the new area gists caused routing to run again. They show run-t
 zoom steps, which now accounts for every v2-v4 loss except one answer-key artefact. Making routing more
 stable is the clearest remaining lever.
 
+Follow-up: gists were quarantined, but recall candidates were not. An exact-text lookup could still show
+a suspicious memory in full in the skim step. Now skim shows only its caption and the trust warning, and
+the full text arrives only if the mind opens it. In this eval, one skim prompt changed; dev stayed 0.92
+and held-out 0.96.
+
 ## Learning (act 2)
 
 The incremental update and the stale-vs-learning comparison are in `LEARNING.md`. In short:
@@ -156,7 +161,7 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 ## Learning from use
 
 `USE.md` covers confirmed answers becoming leads for later questions:
-- held-out answer-in-context rose from 0.96 to 1.00 and reask fell from 0.96 to 0.92, both within noise;
+- held-out answer-in-context rose from 0.96 to 1.00 and reask fell from 0.96 to 0.88, both within noise;
 - recall prompt tokens rose 25%;
 - the mechanism costs nothing until the user gives feedback.
 

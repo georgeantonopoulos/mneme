@@ -182,6 +182,16 @@ def test_suspicious_content_never_reaches_gists(tmp_path: Path):
     assert "Plant beans" not in gist_inputs
     assert "instructions aimed at an assistant" in gist_inputs
 
+    # Recall: even an exact-text hit shows only a caption and the warning until the mind opens it.
+    mind.zoom_areas = lambda payload: {"areas": ["a1"], "lookups": ["Plant beans"]}
+    before = len(mind.seen)
+    brain.recall("What should I plant?", as_of="2026-06-01T00:00:00+00:00")
+    skim = next(t for t in mind.seen[before:] if t.kind == "skim_neurons")
+    garden = [c for c in skim.payload["candidates"] if c.get("trust")]
+    assert garden and "Plant beans" not in json.dumps(skim.payload)
+    read = next(t for t in mind.seen[before:] if t.kind == "read_neurons")
+    assert "Plant beans" in json.dumps(read.payload)  # opened on purpose: read in full, still labelled
+
 
 def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
     from mneme.cortex.senses import read_sources

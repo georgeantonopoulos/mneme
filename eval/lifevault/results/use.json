@@ -707,13 +707,13 @@
   },
   "used": {
    "confirmed_dev_answers": 49,
-   "recall_tokens_per_question": 5929,
+   "recall_tokens_per_question": 5909,
    "summary": {
     "holdout": {
      "questions": 26,
      "hit@3": 1.0,
      "hit@k": 1.0,
-     "recall@k": 0.873,
+     "recall@k": 0.86,
      "mrr": 0.973,
      "answer_in_ctx@k": 1.0,
      "stale_in_ctx@k": 0.0,
@@ -721,11 +721,11 @@
     },
     "reask": {
      "questions": 26,
-     "hit@3": 0.962,
-     "hit@k": 0.962,
-     "recall@k": 0.7,
-     "mrr": 0.942,
-     "answer_in_ctx@k": 0.92,
+     "hit@3": 0.923,
+     "hit@k": 0.923,
+     "recall@k": 0.662,
+     "mrr": 0.904,
+     "answer_in_ctx@k": 0.88,
      "stale_in_ctx@k": 0.115,
      "forbidden@k": 0
     }
@@ -1061,11 +1061,11 @@
      "split": "reask",
      "category": "safety",
      "returned": 1,
-     "first_hit_rank": 1,
-     "hit@3": true,
-     "hit@k": true,
-     "recall@k": 1.0,
-     "answer_in_ctx@k": true,
+     "first_hit_rank": null,
+     "hit@3": false,
+     "hit@k": false,
+     "recall@k": 0.0,
+     "answer_in_ctx@k": false,
      "stale_in_ctx@k": false,
      "forbidden@k": false
     },
@@ -1112,11 +1112,11 @@
      "id": "h-04",
      "split": "holdout",
      "category": "knowledge_update",
-     "returned": 3,
+     "returned": 2,
      "first_hit_rank": 1,
      "hit@3": true,
      "hit@k": true,
-     "recall@k": 1.0,
+     "recall@k": 0.667,
      "answer_in_ctx@k": true,
      "stale_in_ctx@k": false,
      "forbidden@k": false

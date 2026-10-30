@@ -423,7 +423,7 @@ class Brain:
             ids = [nid for nid in dict.fromkeys(self._id_of(s) for s in skim.get("open", [])) if nid in pool][:max_open]
             opened.append(ids)
             if ids:
-                memories = [self._candidate_view(pool[nid], set(ids), full_text=True, text_limit=900) for nid in ids]
+                memories = [self._candidate_view(pool[nid], set(ids), full_text=True, text_limit=900, opened=True) for nid in ids]
                 tasks.append(Task("read_neurons", READ_INSTRUCTIONS, {"k": k, "memories": memories, "now": now[:16], "question": q}, READ_SHAPE))
                 asked.append(len(opened) - 1)
         reads = dict(zip(asked, self.mind.ask_many(tasks))) if tasks else {}
@@ -509,10 +509,16 @@ class Brain:
         rows = {r["id"]: r for r in self._neurons(f"id IN ({','.join('?' * len(ordered))}) AND known_at <= ?", (*ordered, now))} if ordered else {}
         return {i: rows[i] for i in ordered if i in rows}, set(seeds)
 
-    def _candidate_view(self, row: sqlite3.Row, pool: set[str], *, full_text: bool = False, text_limit: int = 320) -> dict:
+    def _candidate_view(self, row: sqlite3.Row, pool: set[str], *, full_text: bool = False, text_limit: int = 320,
+                        opened: bool = False) -> dict:
         judgement = self.conn.execute("SELECT * FROM judgements WHERE neuron = ?", (row["id"],)).fetchone()
         caption = judgement["caption"] if judgement and judgement["caption"] else ""
-        if full_text or not caption:
+        suspicious = judgement is not None and judgement["trust"] != "ok"
+        if suspicious and not opened:
+            # Quarantined like in gists: its content reaches the mind only if the mind chooses to open it.
+            view = {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"]),
+                    "caption": caption or row["title"]}
+        elif full_text or not caption:
             view = self._neuron_view(row, text_limit)
         else:
             view = {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"]), "caption": caption}
