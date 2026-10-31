@@ -97,17 +97,15 @@ GIST_SHAPE = {"gist": "..."}
 
 ZOOM_AREAS_INSTRUCTIONS = """
 You are recalling memories to answer a question. INPUT.now is the moment the question is asked.
-INPUT.areas are the broad regions of memory with their gists. Choose the areas most likely to hold
-the evidence: 1-3 for a question about one thing, or every area that could contribute when the
-question asks for a list, a total, or all of something across your life. Also list up to 4 exact strings worth looking up verbatim (names, codes,
+INPUT.areas are the broad regions of memory with their gists. Choose the 1-3 areas most likely to
+hold the evidence. Also list up to 4 exact strings worth looking up verbatim (names, codes,
 reference numbers, distinctive phrases) if any would help; otherwise none.
 """
 ZOOM_AREAS_SHAPE = {"areas": ["a1"], "lookups": ["..."]}
 
 ZOOM_TOPICS_INSTRUCTIONS = """
 You are recalling memories to answer a question asked at INPUT.now. INPUT.topics are the topics
-inside the areas you chose, with their gists. Choose the topics most likely to hold the evidence:
-1-4 for a question about one thing, or up to 8 when it asks for a list, a total, or all of something.
+inside the areas you chose, with their gists. Choose the 1-4 topics most likely to hold the evidence.
 """
 ZOOM_TOPICS_SHAPE = {"topics": ["a1.t1"]}
 
@@ -383,7 +381,7 @@ class Brain:
                                      for (q, _), now in zip(questions, nows)])
         tasks = []
         for (q, _), now, pick in zip(questions, nows, level1):
-            chosen = [a for a in pick.get("areas", []) if isinstance(a, str)]
+            chosen = [a for a in pick.get("areas", []) if isinstance(a, str)][:3]
             topics = [{"id": r["id"], "title": r["title"], "gist": r["gist"]}
                       for r in self.conn.execute(f"SELECT * FROM regions WHERE parent IN ({','.join('?' * len(chosen))}) ORDER BY id", tuple(chosen))] if chosen else []
             tasks.append(Task("zoom_topics", ZOOM_TOPICS_INSTRUCTIONS, {"topics": topics, "now": now[:16], "question": q}, ZOOM_TOPICS_SHAPE))
@@ -391,7 +389,7 @@ class Brain:
         # Skim captions, then open the chosen memories and read them in full: broad strokes, then detail.
         tasks, pools = [], []
         for (q, _), now, pick1, pick2 in zip(questions, nows, level1, level2):
-            pool, verbatim = self._candidate_pool(pick2.get("topics", [])[:8], pick1.get("lookups", [])[:4], now, max_candidates)
+            pool, verbatim = self._candidate_pool(pick2.get("topics", [])[:4], pick1.get("lookups", [])[:4], now, max_candidates)
             pools.append(pool)
             views = [self._candidate_view(r, set(pool), full_text=r["id"] in verbatim) for r in pool.values()]
             tasks.append(Task("skim_neurons", SKIM_INSTRUCTIONS,
@@ -423,14 +421,14 @@ class Brain:
             if isinstance(phrase, str):
                 ids += self.phrase_lookup(phrase, as_of=now)
         seeds = list(ids)
+        for topic in topics:
+            if isinstance(topic, str):
+                members = self.conn.execute(
+                    "SELECT n.id FROM membership m JOIN neurons n ON n.id = m.neuron WHERE m.region = ? AND n.known_at <= ? "
+                    "ORDER BY COALESCE(n.event_time, n.known_at) DESC", (topic, now)).fetchall()
+                ids += [r["id"] for r in members]
         for seed in seeds:  # one synaptic hop from verbatim matches
             ids += [r["dst"] for r in self.conn.execute("SELECT dst FROM synapses WHERE src = ? ORDER BY weight DESC LIMIT 4", (seed,))]
-        members = [[r["id"] for r in self.conn.execute(
-            "SELECT n.id FROM membership m JOIN neurons n ON n.id = m.neuron WHERE m.region = ? AND n.known_at <= ? "
-            "ORDER BY COALESCE(n.event_time, n.known_at) DESC", (topic, now))] for topic in topics if isinstance(topic, str)]
-        # Take the newest memories of each chosen topic in turn, so a broad question that spans many topics
-        # still sees every one of them within the cap.
-        ids += [m[i] for i in range(max(map(len, members), default=0)) for m in members if i < len(m)]
         ordered = list(dict.fromkeys(ids))[:cap]
         rows = {r["id"]: r for r in self._neurons(f"id IN ({','.join('?' * len(ordered))}) AND known_at <= ?", (*ordered, now))} if ordered else {}
         return {i: rows[i] for i in ordered if i in rows}, set(seeds)

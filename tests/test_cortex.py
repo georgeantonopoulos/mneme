@@ -221,12 +221,3 @@ def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
     old = brain.recall("mooring", as_of="2026-06-01T00:00:00+00:00")
     assert all("2027" not in h.text for h in old)  # the past still answers as it was
 
-
-
-def test_broad_recall_sees_every_chosen_topic_within_the_cap(tmp_path: Path):
-    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
-    brain.ingest_sources(_vault(tmp_path))
-    brain.perceive()
-    pool, _ = brain._candidate_pool(["a1.t1", "a1.t2"], [], "2026-12-31T00:00:00+00:00", 2)
-    topics = {r["region"] for nid in pool for r in brain.conn.execute("SELECT region FROM membership WHERE neuron = ?", (nid,))}
-    assert topics == {"a1.t1", "a1.t2"}

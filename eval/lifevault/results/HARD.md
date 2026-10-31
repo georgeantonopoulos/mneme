@@ -59,3 +59,35 @@ is the clearest remaining weakness, and it is structural, not noise.
 - The sub-agents had file access. In the first round, two agents listed the outbox folder and read prompts
   outside their batch. Prompts hold no answers, and they wrote nothing for them. Later rounds forbade
   directory listings.
+
+## Tried and reverted: broad recall
+
+Change (commit 72efe57, reverted):
+- for questions asking for a list, a total, or all of something, the mind could choose every relevant area
+  and up to 8 topics;
+- the candidate pool took each chosen topic's newest memories in turn.
+
+It was aimed at `hd-03` and `hd-07`. It was measured on this set (3 runs) and on the 81 dev and held-out
+questions. Every prompt was asked afresh.
+
+| | before | broad recall |
+|---|---|---|
+| hard, answer-in-context mean [min-max] | **0.94** [0.93-0.97] | 0.90 [0.87-0.93] |
+| hard, right in every run / some / none | **28 / 1 / 1** | 24 / 5 / 1 |
+| dev answer-in-context | **0.92** | 0.90 |
+| held-out answer-in-context | **0.96** | 0.92 |
+| recall prompt tokens per question | 4,772 | 4,802 |
+
+- **Gained:** `hd-03` (November deadlines) passed in 2 of 3 runs instead of 1.
+- **Not fixed:** `hd-07` ("Who is supposed to get back to me?") still failed in every run. The mind now
+  routed to 6-7 topics, and the evidence was in the candidates, but it still did not count the unpaid invoice
+  or the deposit decision as "someone getting back to me". The miss is interpretation, not routing.
+- **Lost:** specific questions became less stable.
+  - `hd-22` (Kestrel accent colour) failed in 2 of 3 runs.
+  - `hd-06`, `hd-23` and `hd-27` each failed once.
+  - In the dev and held-out sets, `para-01`, `h-01` and `hop-03` were lost and `h-24` was gained.
+
+  Several losses were empty answers. Once breadth was allowed, the skim saw a differently ordered and
+  wider pool and opened nothing.
+
+Net, broad recall cost about 1 question in 25 and fixed half of one, so it was reverted.
