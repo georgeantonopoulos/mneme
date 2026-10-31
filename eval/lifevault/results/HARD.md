@@ -80,8 +80,9 @@ questions. Every prompt was asked afresh.
 
 - **Gained:** `hd-03` (November deadlines) passed in 2 of 3 runs instead of 1.
 - **Not fixed:** `hd-07` ("Who is supposed to get back to me?") still failed in every run. The mind now
-  routed to 6-7 topics, and the evidence was in the candidates, but it still did not count the unpaid invoice
-  or the deposit decision as "someone getting back to me". The miss is interpretation, not routing.
+  routed to 6-7 topics, covering the invoice and the deposit, but the evidence it chose was still mostly the
+  boiler. Its notes treat the unpaid invoice and the deposit decision as not "someone getting back to me",
+  so the miss looks like interpretation rather than routing. This is not verified memory by memory.
 - **Lost:** specific questions became less stable.
   - `hd-22` (Kestrel accent colour) failed in 2 of 3 runs.
   - `hd-06`, `hd-23` and `hd-27` each failed once.
