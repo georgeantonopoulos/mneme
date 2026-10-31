@@ -1,5 +1,9 @@
 # Use eval: learning from confirmed answers
 
+> **Removed.** After the repeated-run eval in `HARD.md` showed no gain (0.92 vs 0.94 fresh) at +24% tokens,
+> the traces, `feedback()` and experience leads were taken out of the core, along with `run_use.py` and
+> `reask.py`. This page records the experiment. The code is in git history (commit f45442d).
+
 ```bash
 python eval/lifevault/run_use.py     # replays cached answers -> results/use.json
 ```

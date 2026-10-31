@@ -5,11 +5,9 @@
 
 The 30 questions in hard.py go to:
     bm25    keyword baseline (deterministic, one run)
-    fresh   act-1 cortex, no experience
-    used    act-1 cortex after confirmed feedback on the 55 dev questions (as in run_use.py)
+    cortex  the act-1 cortex
 
-Perception and the dev-feedback phase are shared and cached (mind/answers), so every run starts from the same
-brain. The recall of the hard questions is asked afresh in each run: run 1 uses the shared cache, and runs
+Perception is shared and cached (mind/answers), so every run starts from the same brain. The recall of the hard questions is asked afresh in each run: run 1 uses the shared cache, and runs
 2+ use their own folders (mind/runs/rN). Results go to results/hard.json.
 """
 from __future__ import annotations
@@ -48,17 +46,11 @@ class Switch:
         return self.target.ask_many(tasks)
 
 
-def _cortex(name: str, run_mind: FileMind, shared: FileMind, dev: list[dict], tests: list[dict], k: int, tmp: str) -> list[dict]:
+def _cortex(run_mind: FileMind, shared: FileMind, tests: list[dict], k: int, tmp: str) -> list[dict]:
     switch = Switch(shared)
-    brain = Brain(Path(tmp) / f"{name}-{run_mind.root.name}.sqlite", switch)
+    brain = Brain(Path(tmp) / f"cortex-{run_mind.root.name}.sqlite", switch)
     brain.ingest(read_sources(DATA))
     brain.perceive()
-    if name == "used":
-        answers = brain.recall_many([(q["question"], q["as_of"]) for q in dev], k=k)
-        for q, trace, hits in zip(dev, brain.last_traces, answers):
-            useful = [h.id for h in hits if set(h.refs) & set(q["evidence"])]
-            if useful:
-                brain.feedback(trace, useful=useful)
     switch.target = run_mind
     hits = brain.recall_many([(q["question"], q["as_of"]) for q in tests], k=k)
     return [rb.score(q, [{"refs": h.refs, "text": h.context_text()} for h in found], k) for q, found in zip(tests, hits)]
@@ -70,19 +62,17 @@ def run(runs: int, k: int = 8) -> int:
     for mind in run_minds:
         for stale in mind.outbox.glob("*.json"):
             stale.unlink()
-    all_q = json.loads((DATA / "questions.json").read_text(encoding="utf-8"))
-    dev = [q for q in all_q if q["split"] == "dev"]
     tests = hard.questions()
 
     bm25 = rb.BM25(rb.load_documents())
     report: dict = {"k": k, "runs": runs, "systems": {"bm25": [[rb.score(q, bm25.search(q, k), k) for q in tests]]}}
     pending: dict[str, int] = defaultdict(int)
     with tempfile.TemporaryDirectory() as tmp:
-        for name in ("fresh", "used"):
+        for name in ("cortex",):
             report["systems"][name] = []
             for mind in run_minds:
                 try:
-                    report["systems"][name].append(_cortex(name, mind, shared, dev, tests, k, tmp))
+                    report["systems"][name].append(_cortex(mind, shared, tests, k, tmp))
                 except AwaitingMind as waiting:
                     for task_id in waiting.pending:
                         pending[f"{mind.root.relative_to(MIND) if mind.root != MIND else '.'}:{task_id.rsplit('-', 1)[0]}"] += 1

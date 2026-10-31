@@ -221,30 +221,3 @@ def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
     old = brain.recall("mooring", as_of="2026-06-01T00:00:00+00:00")
     assert all("2027" not in h.text for h in old)  # the past still answers as it was
 
-
-def test_feedback_turns_confirmed_recalls_into_leads(tmp_path: Path):
-    mind = ScriptedMind()
-    brain = Brain(tmp_path / "c.sqlite", mind)
-    brain.ingest_sources(_vault(tmp_path))
-    brain.perceive()
-    now = "2026-06-10T00:00:00+00:00"
-    hits = brain.recall("When is the mooring renewal due?", as_of=now)
-    assert not any("past" in t.payload for t in mind.seen)  # no experience yet: prompts as before
-
-    useful = [h.id for h in hits]
-    brain.feedback(brain.last_traces[0], useful=useful + ["not-a-neuron"])
-    assert len(useful) > 1
-    made = brain.conn.execute("SELECT relation FROM synapses WHERE made_by = 'use'").fetchall()
-    assert len(made) == len(useful) * (len(useful) - 1) and {r["relation"] for r in made} == {"recalled together"}
-
-    before = len(mind.seen)
-    brain.recall("mooring renewal date?", as_of=now)
-    asked = mind.seen[before:]
-    zoom = next(t for t in asked if t.kind == "zoom_areas")
-    assert zoom.payload["past"] == [{"question": "When is the mooring renewal due?", "areas": ["a1"]}]
-    skim = next(t for t in asked if t.kind == "skim_neurons")
-    assert any(c.get("confirmed_for") for c in skim.payload["candidates"])
-    # Experience is only what was known then: an earlier "now" sees none.
-    before = len(mind.seen)
-    brain.recall("mooring renewal date?", as_of="2026-06-01T00:00:00+00:00")
-    assert not any("past" in t.payload for t in mind.seen[before:])
