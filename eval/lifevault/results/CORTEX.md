@@ -165,6 +165,14 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - recall prompt tokens rose 25%;
 - the mechanism costs nothing until the user gives feedback.
 
+## Hard questions, repeated runs
+
+`HARD.md` has 30 new questions, with the cortex run 3 times:
+- fresh cortex 0.94 [0.93-0.97] vs BM25 0.77;
+- run-to-run variance is about one question;
+- confirmed experience scored 0.92, so it did not help;
+- the remaining weakness is broad questions whose answer spans many areas.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
