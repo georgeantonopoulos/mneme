@@ -20,6 +20,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Only from main
+        run: |
+          [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "Releases are made from main, not $GITHUB_REF"; exit 1; }
+
       - uses: actions/checkout@v4
 
       - name: Check the version
@@ -29,6 +33,15 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 1.2.3"; exit 1; }
           grep -qx "version = \"$VERSION\"" pyproject.toml || { echo "pyproject.toml is not at $VERSION"; exit 1; }
           grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "CHANGELOG.md has no [$VERSION] section"; exit 1; }
+
+      - name: An existing tag must point at this commit
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git fetch --force --tags origin
+          if tagged=$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}"); then
+            [ "$tagged" = "$GITHUB_SHA" ] || { echo "v$VERSION already points at $tagged, not $GITHUB_SHA"; exit 1; }
+          fi
 
       - name: Release notes from the changelog
         env:
