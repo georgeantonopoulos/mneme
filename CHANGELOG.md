@@ -11,6 +11,10 @@
   saving anything.
 - `OllamaMind` (native `/api/chat`, local or `https://ollama.com` with `OLLAMA_API_KEY`). Minds now answer
   several tasks at once (`workers`) and re-ask once when a reply is not valid JSON.
+- Topics divide as they grow. At sleep time the mind splits a topic of more than 50 memories into
+  sub-topics with their own gists, and recall zooms down through them. Chosen topics share the 120
+  skim slots fairly, so a large topic no longer hides a small one. On a 1,917-memory vault, dev recall
+  rose from 0.84 to 0.88 and recall used 12% fewer tokens.
 - The installer opens the setup wizard when run in a terminal. `--no-setup` skips it, for agents.
 
 ### Changed

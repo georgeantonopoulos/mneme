@@ -179,7 +179,9 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - cortex: 0.84 dev and 0.92 held-out, down from 0.92 and 0.96; BM25 0.61 and 0.68;
 - recall tokens rose 40%, to 6.7k per question;
 - losses come from questions that ask for everything, and from the 120-candidate cap hiding a quarantined
-  phishing email behind genuine bank alerts.
+  phishing email behind genuine bank alerts;
+- after topics divide at sleep time and chosen topics share the candidate slots: XL 0.88 dev / 0.92
+  held-out, recall 5.9k tokens; small vault 0.90 / 0.96, within one question of before.
 
 ## Cost and caveats
 
