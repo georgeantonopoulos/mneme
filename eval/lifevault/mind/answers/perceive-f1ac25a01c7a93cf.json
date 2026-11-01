@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1160","caption":"Product Notes 'behind the scenes' newsletter received 16 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1672","caption":"Chat with Mum, 16 Oct 2026: Grace asks 'did you see the rain?!'.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n33","caption":"Idea note 16 Oct 2026: garden boxes, ask Lena, maybe later.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n32","relation":"same idea, earlier note","weight":0.4},{"to":"n31","relation":"same idea, earlier note","weight":0.3}]},
+{"id":"n1673","caption":"Grace visits Mon 26 to Wed, train 11:40; Nia booked Ivy into Kickstart holiday club Thursday, 16 Oct 2026.","topics":["a4.t2","a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1906","relation":"follows up on childcare task","weight":0.6}]},
+{"id":"n1161","caption":"Greenbox Garden order ORD-ENJ5C confirmed 16 Oct 2026: air purifier, £149.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1173","relation":"same item, later order","weight":0.3}]},
+{"id":"n1164","caption":"TAP: Porto flight Fri 23 Oct cancelled; rebooked Thu 22 Oct, booking Q8JNB, 16 Oct 2026.","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n705","relation":"changes original booking","weight":0.8}]},
+{"id":"n1674","caption":"Chat with Mum, 16 Oct 2026: Nia asks about coffee next week; Grace asks if she has watched it.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1158","caption":"Invoice INV-G134 sent to Quarry Health: 10 days at £575, total £5,750, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n979","relation":"earlier invoice, same client","weight":0.5},{"to":"n782","relation":"earlier invoice, same client","weight":0.4}]},
+{"id":"n1163","caption":"SketchCloud price rises from £9.00 to £10.80 a month from next month, notice 16 Oct 2026.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1162","caption":"Harbour Books receipt, 16 Oct 2026: total paid £19.24.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1167","caption":"Product Notes 'the autumn issue' newsletter received 17 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1168","caption":"Harbour Life 'tools and tips' newsletter received 17 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n152","caption":"Journal 17 Oct 2026: long walk after work.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1910","caption":"Open task: return library book (Home project), status open as of 17 Oct 2026.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1887","relation":"same open chore, earlier","weight":0.5},{"to":"n1882","relation":"earlier completed instance","weight":0.3}]},
+{"id":"n1166","caption":"Pia Gilchrist moves website refresh deadline from Fri 30 Oct to Fri 6 Nov 2026.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1171","caption":"Design Weekly 'what's new this week' newsletter received 18 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1826","caption":"Nia reports no heat or hot water, boiler error F28; landlord Tom will send Flowline Monday, 18 Oct 2026.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1177","relation":"engineer visit booked from this report","weight":0.8},{"to":"n1827","relation":"follow-up from Tom","weight":0.7},{"to":"n1828","relation":"later chase","weight":0.5}]},
+{"id":"n1170","caption":"Payment of £5,175.00 from Quarry Health credited to account 4471 on 18 Oct 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n831","relation":"same payer, earlier payment","weight":0.3}]},
+{"id":"n1309","caption":"Ivy swimming, Sunday 18 Oct 2026 at 10:00, Riverside Pool, confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1315","relation":"same weekly slot, later","weight":0.3}]},
+{"id":"n1169","caption":"Isla Moreau moves annual report deadline from Sat 31 Oct to Sat 7 Nov 2026.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1042","relation":"earlier push, dates conflict","weight":0.5}]}
+]}

@@ -1,0 +1,23 @@
+{"neurons":[
+{"id":"n990","caption":"Product Notes 'our favourite links' newsletter received 17 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n989","caption":"Clay Times 'a quick update' newsletter received 17 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n986","caption":"Payment of £5,200.00 from Copper Partners credited to account 4471 on 17 Sep 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n744","relation":"same payer, earlier payment","weight":0.3},{"to":"n1200","relation":"same payer, later payment","weight":0.3}]},
+{"id":"n988","caption":"Design Weekly 'five things we loved' newsletter received 17 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1284","caption":"Kestrel check-in with Daniel on Thu 17 Sep 2026 at 10:00, confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1287","relation":"same recurring check-in, later","weight":0.2}]},
+{"id":"n1790","caption":"Chat with Sam, 17 Sep 2026: Nia says 'did you see the rain?!' and Sam replies 'lol yes'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n991","caption":"Pet Pantry receipt, 17 Sep 2026: total paid £7.38.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n134","caption":"Journal 17 Sep 2026: rainy, cosy evening.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n992","caption":"WashWorks revised quote JOB-HHDXE: washing machine drum needs extra part, revised total £240.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n933","relation":"revises original quote","weight":0.9}]},
+{"id":"n987","caption":"Uma Nakata: annual report deadline pushed from Wed 23 Sep to Wed 7 Oct 2026.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n939","relation":"earlier push, dates conflict","weight":0.3},{"to":"n1042","relation":"later push, dates conflict","weight":0.4}]},
+{"id":"n1785","caption":"Kestrel check-in on 17 Sep 2026 confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1450","caption":"Chat with Lena, 17 Sep 2026: Lena asks Nia to send the recipe.","topics":["a2.t1","a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1791","caption":"Chat with Sam, 17 Sep 2026: Nia replies 'lol yes'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n985","caption":"Invoice INV-G144 sent to Copper Health: 12 days at £450, total £5,400, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n622","relation":"earlier invoice, same client and amount","weight":0.4}]},
+{"id":"n984","caption":"Redland Juniors: football moves from Thursday to Monday from next week, same time.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n759","relation":"changes day of","weight":0.8}]},
+{"id":"n995","caption":"Harbour Life 'behind the scenes' newsletter received 18 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n996","caption":"Parenting Today 'events near you' newsletter received 18 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n993","caption":"Design Weekly 'our favourite links' newsletter received 18 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n994","caption":"Clay Times 'events near you' newsletter received 18 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n997","caption":"Corner Cafe receipt, 18 Sep 2026: total paid £29.15.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1285","caption":"Mum's haircut at Shear Genius, Fri 18 Sep 2026 at 11:00, confirmed.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n737","relation":"confirmed by booking email","weight":0.9}]}
+]}
