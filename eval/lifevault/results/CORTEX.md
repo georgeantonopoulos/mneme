@@ -188,7 +188,8 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 `MAIN_VS_CORTEX.md` runs `main`'s own retrieval, from a checkout of `main`, on the same questions:
 - small vault: 0.31 / 0.08 for `main` vs 0.90 / 0.96 for the cortex (dev / held-out);
 - XL vault: 0.31 / 0.08 vs 0.84 / 0.92;
-- `main` wins only the two safety questions, where the cortex distrusted the right memory but did not report it.
+- the two safety questions, once lost to `main`, now pass: suspicious memories that bear on a question are
+  returned labelled, as a warning.
 
 ## Cost and caveats
 

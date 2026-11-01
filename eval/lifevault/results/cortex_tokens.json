@@ -2,7 +2,7 @@
  "note": "prompt tokens estimated as characters / 4",
  "perception_tokens": 202140,
  "perception_calls": 60,
- "recall_tokens_per_question": 4627,
+ "recall_tokens_per_question": 4597,
  "recall_calls_per_question": 3.925925925925926,
  "by_kind": {
   "area_gist": {
@@ -15,7 +15,7 @@
   },
   "read_neurons": {
    "calls": 75,
-   "tokens": 43777
+   "tokens": 40681
   },
   "regions": {
    "calls": 1,
@@ -23,7 +23,7 @@
   },
   "skim_neurons": {
    "calls": 81,
-   "tokens": 141307
+   "tokens": 141975
   },
   "topic_gist": {
    "calls": 29,
