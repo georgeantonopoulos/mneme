@@ -1,0 +1,16 @@
+Message-ID: <g-ap2-2@lifevault.example>
+Date: Sat, 26 Sep 2026 11:46:00 +0100
+From: Harbour Health Centre <bookings@harbourhealthcen.example>
+To: Nia Okafor <nia@okafor.example>
+In-Reply-To: <g-ap2-1@lifevault.example>
+References: <g-ap2-1@lifevault.example>
+Subject: Your GP appointment has moved
+X-LifeVault-Id: g-ap2-2
+X-LifeVault-Thread: g-ap2
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+Sorry, we need to move your GP appointment from Thursday 1 October to Thursda=
+y 8 October at 15:00.

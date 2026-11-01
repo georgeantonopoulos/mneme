@@ -1,0 +1,140 @@
+[
+  {
+    "id": "xl-g-cl0-inv",
+    "text": "INV-G003 from Hollow Studio (£2,200) due 5 Nov",
+    "evidence": [
+      "email:g-cl0-inv3",
+      "task:g-cl0-t"
+    ],
+    "match": [
+      [
+        "INV-G003"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl1-inv",
+    "text": "INV-G013 from Lantern Press (£1,600) due 1 Nov",
+    "evidence": [
+      "email:g-cl1-inv3",
+      "task:g-cl1-t"
+    ],
+    "match": [
+      [
+        "INV-G013"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl4-inv",
+    "text": "INV-G043 from Kestrel & Sons (£4,400) due 2 Nov",
+    "evidence": [
+      "email:g-cl4-inv3",
+      "task:g-cl4-t"
+    ],
+    "match": [
+      [
+        "INV-G043"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl6-inv",
+    "text": "INV-G063 from Juniper Works (£4,675) due 5 Nov",
+    "evidence": [
+      "email:g-cl6-inv3",
+      "task:g-cl6-t"
+    ],
+    "match": [
+      [
+        "INV-G063"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl7-inv",
+    "text": "INV-G073 from Paper Health (£4,400) due 29 Oct",
+    "evidence": [
+      "email:g-cl7-inv3",
+      "task:g-cl7-t"
+    ],
+    "match": [
+      [
+        "INV-G073"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl8-inv",
+    "text": "INV-G083 from Willow Health (£3,250) due 10 Nov",
+    "evidence": [
+      "email:g-cl8-inv3",
+      "task:g-cl8-t"
+    ],
+    "match": [
+      [
+        "INV-G083"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl11-inv",
+    "text": "INV-G114 from Signal Works (£4,750) due 4 Nov",
+    "evidence": [
+      "email:g-cl11-inv4",
+      "task:g-cl11-t"
+    ],
+    "match": [
+      [
+        "INV-G114"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-cl15-inv",
+    "text": "INV-G154 from Copper Partners (£5,200) due 7 Nov",
+    "evidence": [
+      "email:g-cl15-inv4",
+      "task:g-cl15-t"
+    ],
+    "match": [
+      [
+        "INV-G154"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-ap5",
+    "text": "car service appointment 6 Nov",
+    "evidence": [
+      "email:g-ap5-1",
+      "event:ev-g-ap5"
+    ],
+    "match": [
+      [
+        "service"
+      ],
+      [
+        "6 Nov",
+        "Friday 6 November"
+      ]
+    ]
+  },
+  {
+    "id": "xl-g-ap14",
+    "text": "Ivy's haircut appointment 10 Nov",
+    "evidence": [
+      "email:g-ap14-2",
+      "event:ev-g-ap14b"
+    ],
+    "match": [
+      [
+        "haircut"
+      ],
+      [
+        "10 Nov",
+        "Tuesday 10 November"
+      ]
+    ]
+  }
+]

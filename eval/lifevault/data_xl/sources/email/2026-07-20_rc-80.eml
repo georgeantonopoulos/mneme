@@ -1,0 +1,15 @@
+Message-ID: <rc-80@lifevault.example>
+Date: Mon, 20 Jul 2026 21:17:00 +0100
+From: Train Tickets <tickets@rail.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your e-ticket: Bristol Temple Meads - Cheltenham Spa
+X-LifeVault-Id: rc-80
+X-LifeVault-Thread: rc-80
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your purchase. Total paid: £22.10.
+This is an automated receipt.

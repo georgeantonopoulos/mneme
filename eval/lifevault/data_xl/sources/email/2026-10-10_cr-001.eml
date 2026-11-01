@@ -1,0 +1,16 @@
+Message-ID: <cr-001@lifevault.example>
+Date: Sat, 10 Oct 2026 07:30:00 +0100
+From: Brightway Insurance <renewals@brightway-insurance.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your renewal quote
+X-LifeVault-Id: cr-001
+X-LifeVault-Thread: cr-renew
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Your car insurance renews on 14 November 2026.
+Renewal premium: £612.00 (last year £498.00)
+Address on policy: 14 Cotham Rise, Bristol
+To accept, do nothing. To discuss, call us.

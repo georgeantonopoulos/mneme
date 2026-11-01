@@ -1,0 +1,14 @@
+Message-ID: <g-rc235@lifevault.example>
+Date: Fri, 10 Jul 2026 10:24:00 +0100
+From: Pet Pantry <receipts@petpantry.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your receipt from Pet Pantry
+X-LifeVault-Id: g-rc235
+X-LifeVault-Thread: g-rc235
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Total paid: £33.87. Thanks for shopping with us.

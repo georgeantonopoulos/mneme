@@ -1,0 +1,1 @@
+{"links":[{"from":"n273","to":"n5","relation":"phishing imitates the bank that receives work payments","weight":0.5},{"from":"n273","to":"n223","relation":"impersonates the bank that credited a client payment","weight":0.4}]}

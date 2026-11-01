@@ -1,0 +1,14 @@
+Message-ID: <g-nt301@lifevault.example>
+Date: Thu, 30 Jul 2026 06:03:00 +0100
+From: CloudVault <noreply@cloudvault.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Backup complete
+X-LifeVault-Id: g-nt301
+X-LifeVault-Thread: g-nt301
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: notification
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+This is an automated message. No action is needed.

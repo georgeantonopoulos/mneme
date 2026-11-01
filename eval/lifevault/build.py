@@ -14,6 +14,8 @@ Outputs, all fictional:
     data/manifest.json          counts and the fixture "now"
     data_act2/                  act 1 plus two more weeks (story_act2.py): new memories, edited notes,
                                 user corrections, and learning questions asked at the act-2 "now"
+    data_xl/                    act 1 plus about 5x more generated life and noise (xl.py): the 81 hand-written
+                                questions, generated questions, and generated proactive items (proactive.json)
 """
 from __future__ import annotations
 
@@ -38,6 +40,7 @@ import noise  # noqa: E402
 import story  # noqa: E402
 import story_act2  # noqa: E402
 import truth  # noqa: E402
+import xl  # noqa: E402
 
 LONDON = ZoneInfo("Europe/London")
 PDF_PLACEHOLDER = b"%PDF-1.4\n% LifeVault fictional placeholder attachment\n%%EOF\n"
@@ -177,13 +180,14 @@ def write_vault(root: Path) -> int:
     return count
 
 
-def build(root: Path, act: int = 1) -> dict:
-    global story, noise, truth, story_act2
+def build(root: Path, act: int = 1, *, large: bool = False) -> dict:
+    global story, noise, truth, story_act2, xl
     # Fresh module state per build: the storylines append to module-level collections.
     story = importlib.reload(story)
     noise = importlib.reload(noise)
     truth = importlib.reload(truth)
     story_act2 = importlib.reload(story_act2)
+    xl = importlib.reload(xl)
     story.moving()
     story.halcyon()
     story.bramble()
@@ -195,6 +199,8 @@ def build(root: Path, act: int = 1) -> dict:
     story.pottery()
     story.social()
     noise.build_noise()
+    if large:
+        xl.build()
     now = story.NOW
     if act == 2:
         story_act2.apply()
@@ -208,7 +214,7 @@ def build(root: Path, act: int = 1) -> dict:
         "tasks": write_tasks(root),
     }
     if act == 1:
-        questions = truth.questions() + truth.holdout_questions()
+        questions = truth.questions() + truth.holdout_questions() + (xl.questions() if large else [])
     else:
         act1 = {q["id"]: q for q in truth.questions() + truth.holdout_questions()}
         regression = [{**act1[qid], "split": "act2_regression", "as_of": now} for qid in story_act2.REGRESSION_IDS]
@@ -216,7 +222,10 @@ def build(root: Path, act: int = 1) -> dict:
     truth.validate(questions, root)
     (root / "questions.json").write_text(json.dumps(questions, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     counts["questions"] = len(questions)
-    manifest = {"name": "lifevault" if act == 1 else "lifevault-act2", "persona": "Nia Okafor (fictional)", "now": now, "counts": counts}
+    if large:
+        (root / "proactive.json").write_text(json.dumps(xl.proactive(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    name = "lifevault-xl" if large else "lifevault" if act == 1 else "lifevault-act2"
+    manifest = {"name": name, "persona": "Nia Okafor (fictional)", "now": now, "counts": counts}
     if act == 2:
         manifest["changed_notes"] = sorted(story_act2.NOTE_EDITS)
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -235,13 +244,13 @@ def _same_tree(a: Path, b: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="Exit non-zero if data/ or data_act2/ differs from a fresh build")
+    parser.add_argument("--check", action="store_true", help="Exit non-zero if data/, data_act2/ or data_xl/ differs from a fresh build")
     args = parser.parse_args()
     ok = True
     with tempfile.TemporaryDirectory() as tmp:
-        for act, out in ((1, HERE / "data"), (2, HERE / "data_act2")):
-            fresh = Path(tmp) / f"act{act}"
-            manifest = build(fresh, act)
+        for act, large, out in ((1, False, HERE / "data"), (2, False, HERE / "data_act2"), (1, True, HERE / "data_xl")):
+            fresh = Path(tmp) / out.name
+            manifest = build(fresh, act, large=large)
             if args.check:
                 same = out.exists() and _same_tree(fresh, out)
                 ok &= same
