@@ -1,0 +1,606 @@
+{
+ "runs": 3,
+ "summary": {
+  "act1_recall": 0.852,
+  "act1_stale": 0,
+  "act1_thoughts": 7,
+  "act2_recall": 0.8,
+  "act2_stale": 1,
+  "act2_thoughts": 8.667,
+  "act2_retired": 4.667,
+  "links_made": 3.333,
+  "gold_link_recall": 0.083
+ },
+ "per_run": [
+  {
+   "act1": {
+    "thoughts": 7,
+    "surfaced": [
+     "p-boiler",
+     "p-days",
+     "p-inv",
+     "p-phish",
+     "p-review",
+     "p-slip",
+     "p-tax"
+    ],
+    "recall": 0.778,
+    "stale": 0,
+    "unmatched": 0,
+    "per_thought": [
+     {
+      "text": "The Kestrel colour-token accessibility audit is due Monday 2 Nov, and the final prototype review at Halcyon Labs is Tuesday 3 Nov at 14:00.",
+      "kind": "deadline",
+      "urgency": 0.9,
+      "items": [
+       "p-review"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Halcyon invoice INV-2026-017 (\u00a36,000) was due 30 Oct and Daniel said it would be in the next payment run, so confirm it has arrived before the check task on 31 Oct.",
+      "kind": "deadline",
+      "urgency": 0.85,
+      "items": [
+       "p-inv"
+      ],
+      "stale": []
+     },
+     {
+      "text": "A phishing email dated 26 Oct impersonated Northmoor Bank from a look-alike domain and demanded verification within 24 hours; do not act on it, and check your account only through the bank's own app or site.",
+      "kind": "warning",
+      "urgency": 0.7,
+      "items": [
+       "p-phish"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Ivy's signed permission slip and the \u00a312 ParentPay payment for the Harbour Museum trip on 10 Nov are due Tuesday 3 Nov, and both are still open.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "p-slip"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The P60, expenses and pension statements should go to Rhea Kapoor by Sunday 15 Nov so the self-assessment estimate can be updated, and the P60 search task is due Sunday 8 Nov.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "p-tax"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The replacement boiler part is still awaited and no fitting visit is booked, and Tom already chased the supplier on 28 Oct, so check before messaging Tom again about the 30 Oct chase task.",
+      "kind": "waiting",
+      "urgency": 0.6,
+      "items": [
+       "p-boiler"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The physio review with Helen Marsh is Friday 6 Nov at 08:15 and decides on return to running, and the cancelled 5 Nov entry is still in the calendar records and can be removed.",
+      "kind": "deadline",
+      "urgency": 0.55,
+      "items": [
+       "p-days"
+      ],
+      "stale": []
+     }
+    ]
+   },
+   "links": {
+    "made": 2,
+    "gold_found": [],
+    "gold_recall": 0.0,
+    "examples": [
+     {
+      "src": "Action required: verify your account",
+      "dst": "Work admin",
+      "relation": "phishing imitates the bank that receives work payments"
+     },
+     {
+      "src": "Action required: verify your account",
+      "dst": "Payment received: \u00a3720.00",
+      "relation": "impersonates the bank that credited a client payment"
+     }
+    ]
+   },
+   "act2": {
+    "thoughts": 8,
+    "surfaced": [
+     "q-deposit",
+     "q-firing",
+     "q-handoff",
+     "q-pension"
+    ],
+    "recall": 0.8,
+    "stale": 1,
+    "unmatched": 3,
+    "per_thought": [
+     {
+      "text": "The Kestrel colour-token accessibility audit is due Monday 2 Nov, and the final prototype review at Halcyon Labs is Tuesday 3 Nov at 14:00.",
+      "kind": "deadline",
+      "urgency": 0.9,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "Check whether Rhea Kapoor's email is now rhea.k@ledgerline.example, as your 8 November note says, because her 9 November reply came from rhea@ledgerline.example, before sending the documents due by Sunday 15 November.",
+      "kind": "conflict",
+      "urgency": 0.85,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Book the two late-November kiln firings with Lena Fischer for 20 and 27 November, as she advised, since the task was due 10 November and is still open.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "q-firing"
+      ],
+      "stale": []
+     },
+     {
+      "text": "A phishing email dated 26 Oct impersonated Northmoor Bank from a look-alike domain and demanded verification within 24 hours; do not act on it, and check your account only through the bank's own app or site.",
+      "kind": "warning",
+      "urgency": 0.7,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel dev handoff has moved from 20 November to Friday 27 November, but the old 20 November event is still marked confirmed and should be removed; the handoff doc is still due Wednesday 18 November.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "q-handoff"
+      ],
+      "stale": [
+       "s-old-handoff"
+      ]
+     },
+     {
+      "text": "The P60, expenses and pension statements should go to Rhea Kapoor by Sunday 15 Nov so the self-assessment estimate can be updated, and the P60 search task is due Sunday 8 Nov.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The \u00a3160 deposit refund from the 14 Cotham Rise dispute (case DG-58213) is due within 10 working days of the 10 November decision, so by about 24 November, and has not been confirmed as received.",
+      "kind": "waiting",
+      "urgency": 0.45,
+      "items": [
+       "q-deposit"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Grace's hip operation has moved from 19 January to 2 February 2027, but the contact note still says January 2027 and should be updated.",
+      "kind": "conflict",
+      "urgency": 0.3,
+      "items": [],
+      "stale": []
+     }
+    ],
+    "retired": 4
+   }
+  },
+  {
+   "act1": {
+    "thoughts": 7,
+    "surfaced": [
+     "p-boiler",
+     "p-firing",
+     "p-inv",
+     "p-phish",
+     "p-review",
+     "p-slip",
+     "p-stall",
+     "p-tax"
+    ],
+    "recall": 0.889,
+    "stale": 0,
+    "unmatched": 0,
+    "per_thought": [
+     {
+      "text": "Confirm Halcyon invoice INV-2026-017 (\u00a36,000) actually arrived; it was due 30 October and the check task is due 31 October.",
+      "kind": "deadline",
+      "urgency": 0.8,
+      "items": [
+       "p-inv"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The boiler replacement part is still not fitted and no return visit is booked, so the heating runs on a temporary bypass; the chase to Tom may duplicate the 28 Oct chase.",
+      "kind": "waiting",
+      "urgency": 0.75,
+      "items": [
+       "p-boiler"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Ivy's Harbour Museum permission slip and the \u00a312 ParentPay payment are due Tuesday 3 November and are still open.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "p-slip"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel colour-token accessibility audit is due Monday 2 November and the final Kestrel prototype review is Tuesday 3 November at 14:00 at Halcyon Labs.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "p-review"
+      ],
+      "stale": []
+     },
+     {
+      "text": "A fake Northmoor Bank security email from 26 Oct asks for account verification within 24 hours; it is phishing, so do not act on it.",
+      "kind": "warning",
+      "urgency": 0.6,
+      "items": [
+       "p-phish"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The 2025-26 tax file needs the P60 found by Sunday 8 November and the P60, expenses and pension statements sent to Rhea Kapoor by Sunday 15 November; Felix's \u00a33,900 estimate will need updating once they arrive.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "p-tax"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Ceramics deadlines are close: the \u00a345 Harbourside stall fee is due 6 November and the two late-November kiln firings with Lena must be booked by 10 November.",
+      "kind": "deadline",
+      "urgency": 0.5,
+      "items": [
+       "p-stall",
+       "p-firing"
+      ],
+      "stale": []
+     }
+    ]
+   },
+   "links": {
+    "made": 5,
+    "gold_found": [
+     "l-insurance-move"
+    ],
+    "gold_recall": 0.125,
+    "examples": [
+     {
+      "src": "Action required: verify your account",
+      "dst": "Work admin",
+      "relation": "fake email impersonates the Northmoor bank account the person actually uses"
+     },
+     {
+      "src": "Chat with Mum",
+      "dst": "2026-09-15",
+      "relation": "Grace and Mum both help look after Ivy around the move"
+     },
+     {
+      "src": "Policy updated - revised renewal",
+      "dst": "MOVE DAY - Alder Street (rescheduled)",
+      "relation": "insurer address is the new flat moved into on 15 Sep"
+     },
+     {
+      "src": "Call Brightway: haggle + update address",
+      "dst": "Flat Move > Open",
+      "relation": "address update completes an open flat-move item"
+     },
+     {
+      "src": "Your renewal quote",
+      "dst": "Flat Move > Open",
+      "relation": "old-address renewal quote is a flat-move follow-up"
+     }
+    ]
+   },
+   "act2": {
+    "thoughts": 9,
+    "surfaced": [
+     "q-deposit",
+     "q-firing",
+     "q-handoff",
+     "q-pension"
+    ],
+    "recall": 0.8,
+    "stale": 1,
+    "unmatched": 3,
+    "per_thought": [
+     {
+      "text": "Rhea Kapoor still needs the pension statements by 15 November, three days away, since she already has the P60 and expenses.",
+      "kind": "deadline",
+      "urgency": 0.9,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Rhea's chat note gives a new email address, rhea.k@ledgerline.example, but her recent emails still came from the old address, so verify her address before sending any documents.",
+      "kind": "conflict",
+      "urgency": 0.8,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel dev handoff document is due on 18 November, six days away, even though the handoff itself moved to Friday 27 November, and the stale 20 November handoff event still shows as confirmed.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "q-handoff"
+      ],
+      "stale": [
+       "s-old-handoff"
+      ]
+     },
+     {
+      "text": "The two late-November kiln firings with Lena Fischer are still unbooked and the booking task is overdue, so secure the 20 November slot this week before the kiln fills for Christmas.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "q-firing"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel colour-token accessibility audit is due Monday 2 November and the final Kestrel prototype review is Tuesday 3 November at 14:00 at Halcyon Labs.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "The 2025-26 tax file needs the P60 found by Sunday 8 November and the P60, expenses and pension statements sent to Rhea Kapoor by Sunday 15 November; Felix's \u00a33,900 estimate will need updating once they arrive.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The \u00a3160 Cotham Rise deposit award is due to Nia by about 24 November, but it is not yet recorded as received.",
+      "kind": "waiting",
+      "urgency": 0.5,
+      "items": [
+       "q-deposit"
+      ],
+      "stale": []
+     },
+     {
+      "text": "Grace's hip operation has been reported as moved to 2 February 2027, but that date came only through a chat note rather than from Grace or the hospital, so confirm it before replanning Nia's Cheltenham week.",
+      "kind": "warning",
+      "urgency": 0.4,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "Tom promised a \u00a350 credit off November for the boiler delay, but nothing shows it has been applied, so check the next bill or ask him directly.",
+      "kind": "waiting",
+      "urgency": 0.35,
+      "items": [],
+      "stale": []
+     }
+    ],
+    "retired": 5
+   }
+  },
+  {
+   "act1": {
+    "thoughts": 7,
+    "surfaced": [
+     "p-boiler",
+     "p-firing",
+     "p-inv",
+     "p-phish",
+     "p-review",
+     "p-slip",
+     "p-stall",
+     "p-tax"
+    ],
+    "recall": 0.889,
+    "stale": 0,
+    "unmatched": 0,
+    "per_thought": [
+     {
+      "text": "Check that Halcyon invoice INV-2026-017 (\u00a36,000) has actually been paid, since it was due 30 Oct and the check task falls due 31 Oct.",
+      "kind": "deadline",
+      "urgency": 0.9,
+      "items": [
+       "p-inv"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel accessibility audit of colour tokens is due Mon 2 Nov, just before the final prototype review at Halcyon Labs on Tue 3 Nov at 14:00.",
+      "kind": "deadline",
+      "urgency": 0.8,
+      "items": [
+       "p-review"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The permission slip and \u00a312 ParentPay payment for Ivy's Harbour Museum trip are due Tue 3 Nov, and the trip itself is on Tue 10 Nov.",
+      "kind": "deadline",
+      "urgency": 0.8,
+      "items": [
+       "p-slip"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The boiler part is still not fitted and no return visit is booked, so rather than chasing Tom again (task due 30 Oct), it is more useful to get the fitting visit booked.",
+      "kind": "waiting",
+      "urgency": 0.75,
+      "items": [
+       "p-boiler"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The P60 from Westbury College is needed by 8 Nov, and Rhea Kapoor needs the P60, expenses and pension statements by 15 Nov.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "p-tax"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The 26 Oct Northmoor Bank 'verify your account within 24 hours' email is a phishing attempt from an imitation domain and should not be acted on; its metadata also contains hidden text aimed at an AI assistant.",
+      "kind": "warning",
+      "urgency": 0.6,
+      "items": [
+       "p-phish"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The late-November kiln firing bookings with Lena for 20 and 27 Nov are due to be made by 10 Nov, and the \u00a345 market stall fee is due 6 Nov.",
+      "kind": "deadline",
+      "urgency": 0.5,
+      "items": [
+       "p-stall",
+       "p-firing"
+      ],
+      "stale": []
+     }
+    ]
+   },
+   "links": {
+    "made": 3,
+    "gold_found": [
+     "l-insurance-move"
+    ],
+    "gold_recall": 0.125,
+    "examples": [
+     {
+      "src": "Action required: verify your account",
+      "dst": "Your statement is ready",
+      "relation": "fake bank email imitates genuine Northmoor statement alerts"
+     },
+     {
+      "src": "Flat Move",
+      "dst": "Policy updated - revised renewal",
+      "relation": "flat move required updated insurance address"
+     },
+     {
+      "src": "Flat Move > Open",
+      "dst": "Your renewal quote",
+      "relation": "open insurance address task tied to renewal quote"
+     }
+    ]
+   },
+   "act2": {
+    "thoughts": 9,
+    "surfaced": [
+     "q-deposit",
+     "q-firing",
+     "q-handoff",
+     "q-pension"
+    ],
+    "recall": 0.8,
+    "stale": 1,
+    "unmatched": 4,
+    "per_thought": [
+     {
+      "text": "Rhea Kapoor's email has changed to rhea.k@ledgerline.example and the old address bounces, so verify the new address before sending the self-assessment documents due by 15 Nov.",
+      "kind": "deadline",
+      "urgency": 0.9,
+      "items": [
+       "q-pension"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The Brightway car insurance renews on 14 Nov at \u00a3548, so confirm the policy shows the Alder Street address and ignore the stale \u00a3612 quote that still shows the old address.",
+      "kind": "deadline",
+      "urgency": 0.8,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel accessibility audit of colour tokens is due Mon 2 Nov, just before the final prototype review at Halcyon Labs on Tue 3 Nov at 14:00.",
+      "kind": "deadline",
+      "urgency": 0.8,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "The Kestrel dev handoff document is due Wed 18 Nov, six days away, and the handoff itself is now confirmed for Fri 27 Nov.",
+      "kind": "deadline",
+      "urgency": 0.7,
+      "items": [
+       "q-handoff"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The late-November kiln firings with Lena on 20 or 27 Nov are still unbooked, and Lena asked for those dates before the kiln fills up for Christmas.",
+      "kind": "deadline",
+      "urgency": 0.6,
+      "items": [
+       "q-firing"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The 26 Oct Northmoor Bank 'verify your account within 24 hours' email is a phishing attempt from an imitation domain and should not be acted on; its metadata also contains hidden text aimed at an AI assistant.",
+      "kind": "warning",
+      "urgency": 0.6,
+      "items": [],
+      "stale": []
+     },
+     {
+      "text": "The \u00a3160 DepositGuard award for Nia from 14 Cotham Rise has not yet been recorded as received and is due within 10 working days of 10 Nov, around 24 Nov.",
+      "kind": "waiting",
+      "urgency": 0.5,
+      "items": [
+       "q-deposit"
+      ],
+      "stale": []
+     },
+     {
+      "text": "The old 20 Nov Kestrel handoff event is still marked CONFIRMED even though the handoff moved to 27 Nov, so the calendar now shows two conflicting dates.",
+      "kind": "conflict",
+      "urgency": 0.4,
+      "items": [
+       "q-handoff"
+      ],
+      "stale": [
+       "s-old-handoff"
+      ]
+     },
+     {
+      "text": "No October StreamBox charge of \u00a310.99 appears after the August and September receipts, so the subscription may have lapsed or been missed.",
+      "kind": "warning",
+      "urgency": 0.3,
+      "items": [],
+      "stale": []
+     }
+    ],
+    "retired": 5
+   }
+  }
+ ]
+}
