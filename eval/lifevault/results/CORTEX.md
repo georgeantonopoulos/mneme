@@ -173,6 +173,14 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - confirmed experience scored 0.92, so it did not help;
 - the remaining weakness is broad questions whose answer spans many areas.
 
+## A haystack 5 times bigger
+
+`XL.md` runs the same questions against 1,917 memories (4.8x):
+- cortex: 0.84 dev and 0.92 held-out, down from 0.92 and 0.96; BM25 0.61 and 0.68;
+- recall tokens rose 40%, to 6.7k per question;
+- losses come from questions that ask for everything, and from the 120-candidate cap hiding a quarantined
+  phishing email behind genuine bank alerts.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
