@@ -180,8 +180,8 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - recall tokens rose 40%, to 6.7k per question;
 - losses come from questions that ask for everything, and from the 120-candidate cap hiding a quarantined
   phishing email behind genuine bank alerts;
-- after topics divide at sleep time and chosen topics share the candidate slots: XL 0.88 dev / 0.92
-  held-out, recall 5.9k tokens; small vault 0.90 / 0.96, within one question of before.
+- dividing large topics raised XL dev to 0.88, only 2 questions, and was removed; chosen topics now
+  share the candidate slots fairly (small vault 0.90 / 0.96).
 
 ## Cost and caveats
 

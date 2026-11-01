@@ -94,16 +94,6 @@ You are perceiving new memories (neurons) for a person's memory. For EACH neuron
 PERCEIVE_SHAPE = {"neurons": [{"id": "n1", "caption": "...", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "",
                                "synapses": [{"to": "...", "relation": "...", "weight": 0.8}]}]}
 
-DIVIDE_INSTRUCTIONS = """
-One topic in a person's memory has grown large. INPUT.topic says what it is; INPUT.neurons are its
-memories as "id | date | source | caption". Divide it into 2 to 8 sub-topics, each specific enough
-that a question would usually concern one or two of them (a counterparty, a matter, a stream).
-Put every neuron in one sub-topic, two at most. If it is a single stream that no question would
-want divided, return no sub-topics.
-"""
-DIVIDE_SHAPE = {"subtopics": [{"title": "...", "description": "one sentence", "neurons": ["n1"]}]}
-DIVIDE_AT = 50  # a topic with more members than this is offered to the mind for division
-
 TOPIC_GIST_INSTRUCTIONS = """
 Write the gist of one topic in a person's memory, as of INPUT.now. INPUT.neurons are its memories
 in time order (with links between them). In at most 150 words cover: what this topic is, the CURRENT
@@ -129,12 +119,6 @@ You are recalling memories to answer a question asked at INPUT.now. INPUT.topics
 inside the areas you chose, with their gists. Choose the 1-4 topics most likely to hold the evidence.
 """
 ZOOM_TOPICS_SHAPE = {"topics": ["a1.t1"]}
-
-ZOOM_DEEPER_INSTRUCTIONS = """
-You are recalling memories to answer a question asked at INPUT.now. Some topics you chose are divided
-into sub-topics; INPUT.subtopics lists them with their gists. Choose the 1-4 sub-topics most likely to
-hold the evidence.
-"""
 
 SKIM_INSTRUCTIONS = """
 You are recalling memories to answer a question asked at INPUT.now. INPUT.candidates are memories,
@@ -314,7 +298,6 @@ class Brain:
         rewrite only the gists of regions that gained members (reorganising the map is left to sleep)."""
         stats = {"regions": self._form_regions(map_sample)}
         stats["perceived"] = self._perceive_neurons(batch_size)
-        stats["divided"] = self._divide()
         stats["gists"] = self._consolidate()
         return stats
 
@@ -356,7 +339,8 @@ class Brain:
         pending = [r for r in rows if r["id"] not in done]
         if not pending:
             return 0
-        topics = [{"id": r["id"], "title": r["title"], "description": r["description"]} for r in self._leaves()]
+        topics = [{"id": r["id"], "title": r["title"], "description": r["description"]}
+                  for r in self.conn.execute("SELECT * FROM regions WHERE level = 2 ORDER BY id")]
         by_thread: dict[str, list[str]] = defaultdict(list)
         for r in rows:
             if r["thread"]:
@@ -385,7 +369,8 @@ class Brain:
                     continue
                 for topic in item.get("topics", [])[:2]:
                     if topic in valid_topics:
-                        self._join(nid, topic)
+                        conn.execute("INSERT OR IGNORE INTO membership VALUES (?,?)", (nid, topic))
+                        conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (topic,))
                 conn.execute("INSERT OR REPLACE INTO judgements VALUES (?,?,?,?)",
                              (nid, "suspicious" if item.get("trust") == "suspicious" else "ok", item.get("trust_reason", "") or "",
                               str(item.get("caption", "") or "")[:200]))
@@ -397,64 +382,9 @@ class Brain:
         conn.commit()
         return sum(len(a.get("neurons", [])) for a in answers)
 
-    def _leaves(self) -> list[sqlite3.Row]:
-        """The finest regions below the areas: topics, or their sub-topics where a topic has been divided."""
-        return self.conn.execute("SELECT * FROM regions r WHERE level >= 2 AND NOT EXISTS "
-                                 "(SELECT 1 FROM regions c WHERE c.parent = r.id) ORDER BY id").fetchall()
-
-    def _join(self, neuron: str, region: str) -> None:
-        """A neuron in a sub-topic is also in every enclosing topic."""
-        while region:
-            row = self.conn.execute("SELECT parent, level FROM regions WHERE id = ?", (region,)).fetchone()
-            if row is None or row["level"] < 2:
-                return
-            self.conn.execute("INSERT OR IGNORE INTO membership VALUES (?,?)", (neuron, region))
-            self.conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (region,))
-            region = row["parent"]
-
-    def _divide(self, *, at: int = DIVIDE_AT, max_level: int = 4) -> int:
-        """Sleep-time growth: the mind splits any leaf topic that has outgrown `at` members into sub-topics,
-        so recall can keep zooming instead of skimming one long list. A topic the mind declines to divide
-        is asked again only once it has doubled."""
-        made = 0
-        while True:
-            big = []
-            for leaf in self._leaves():
-                size = self.conn.execute("SELECT count(*) FROM membership WHERE region = ?", (leaf["id"],)).fetchone()[0]
-                if size > at and leaf["level"] < max_level and size >= 2 * int(self._meta(f"undivided:{leaf['id']}", "0")):
-                    big.append((leaf, size))
-            if not big:
-                return made
-            tasks = []
-            for leaf, _ in big:
-                members = self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?)", (leaf["id"],))
-                view = []
-                for m in members:
-                    j = self.conn.execute("SELECT caption FROM judgements WHERE neuron = ?", (m["id"],)).fetchone()
-                    view.append(f"{self._sid(m)} | {_date(m['event_time'] or m['known_at'])} | {m['source']} | {_clip((j and j['caption']) or m['title'], 140)}")
-                tasks.append(Task("divide", DIVIDE_INSTRUCTIONS, {"topic": {"title": leaf["title"], "description": leaf["description"]},
-                                                                 "neurons": view}, DIVIDE_SHAPE))
-            for (leaf, size), answer in zip(big, self.mind.ask_many(tasks)):
-                parts = [p for p in answer.get("subtopics", []) if isinstance(p, dict) and p.get("neurons")]
-                if len(parts) < 2:
-                    self._set_meta(f"undivided:{leaf['id']}", str(size))
-                    continue
-                members = {r["neuron"] for r in self.conn.execute("SELECT neuron FROM membership WHERE region = ?", (leaf["id"],))}
-                for i, part in enumerate(parts[:8], 1):
-                    child = f"{leaf['id']}.s{i}"
-                    self.conn.execute("INSERT OR REPLACE INTO regions(id,parent,level,title,description) VALUES (?,?,?,?,?)",
-                                      (child, leaf["id"], leaf["level"] + 1, str(part.get("title", child))[:80], str(part.get("description", ""))[:200]))
-                    for short in part["neurons"]:
-                        nid = self._id_of(short)
-                        if nid in members:
-                            self._join(nid, child)
-                made += 1
-            self.conn.commit()
-
     def _consolidate(self) -> int:
         now = max(r["known_at"] for r in self.conn.execute("SELECT known_at FROM neurons"))
-        # Deepest first, so a topic's gist is written after its sub-topics changed.
-        topics = self.conn.execute("SELECT * FROM regions WHERE level >= 2 AND dirty = 1 ORDER BY level DESC, id").fetchall()
+        topics = self.conn.execute("SELECT * FROM regions WHERE level = 2 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for topic in topics:
             members = self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?)", (topic["id"],))
@@ -477,7 +407,7 @@ class Brain:
                               {"topic": {"title": topic["title"], "description": topic["description"]}, "neurons": views, "now": now[:10]}, GIST_SHAPE))
         for topic, answer in zip(topics, self.mind.ask_many(tasks)):
             self.conn.execute("UPDATE regions SET gist = ?, dirty = 0 WHERE id = ?", (answer.get("gist", ""), topic["id"]))
-            self.conn.execute("UPDATE regions SET dirty = 1 WHERE id = ? AND level = 1", (topic["parent"],))
+            self.conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (topic["parent"],))
         areas = self.conn.execute("SELECT * FROM regions WHERE level = 1 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for area in areas:
@@ -505,30 +435,10 @@ class Brain:
                       for r in self.conn.execute(f"SELECT * FROM regions WHERE parent IN ({','.join('?' * len(chosen))}) ORDER BY id", tuple(chosen))] if chosen else []
             tasks.append(Task("zoom_topics", ZOOM_TOPICS_INSTRUCTIONS, {"topics": topics, "now": now[:16], "question": q}, ZOOM_TOPICS_SHAPE))
         level2 = self.mind.ask_many(tasks)
-        chosen_topics = [[t for t in pick.get("topics", []) if isinstance(t, str)][:4] for pick in level2]
-        settled: list[set[str]] = [set() for _ in questions]  # divided topics the mind chose to keep whole
-        while True:  # zoom on down through divided topics until every chosen region is a leaf
-            tasks, asked = [], []
-            for i, ((q, _), now) in enumerate(zip(questions, nows)):
-                divided = [t for t in chosen_topics[i] if t not in settled[i]
-                           and self.conn.execute("SELECT 1 FROM regions WHERE parent = ?", (t,)).fetchone()]
-                if divided:
-                    subs = [{"id": r["id"], "title": r["title"], "gist": r["gist"]} for r in self.conn.execute(
-                        f"SELECT * FROM regions WHERE parent IN ({','.join('?' * len(divided))}) ORDER BY id", tuple(divided))]
-                    tasks.append(Task("zoom_deeper", ZOOM_DEEPER_INSTRUCTIONS, {"subtopics": subs, "now": now[:16], "question": q}, ZOOM_TOPICS_SHAPE))
-                    asked.append((i, divided, {sub["id"] for sub in subs}))
-            if not tasks:
-                break
-            for (i, divided, offered), pick in zip(asked, self.mind.ask_many(tasks)):
-                deeper = [t for t in pick.get("topics", []) if t in offered][:4]
-                if deeper:
-                    chosen_topics[i] = [t for t in chosen_topics[i] if t not in divided] + deeper
-                else:
-                    settled[i].update(divided)
         # Skim captions, then open the chosen memories and read them in full: broad strokes, then detail.
         tasks, pools = [], []
-        for (q, _), now, pick1, topics in zip(questions, nows, level1, chosen_topics):
-            pool, verbatim = self._candidate_pool(topics, pick1.get("lookups", [])[:4], now, max_candidates)
+        for (q, _), now, pick1, pick2 in zip(questions, nows, level1, level2):
+            pool, verbatim = self._candidate_pool(pick2.get("topics", [])[:4], pick1.get("lookups", [])[:4], now, max_candidates)
             pools.append(pool)
             views = [self._candidate_view(r, set(pool), full_text=r["id"] in verbatim) for r in pool.values()]
             tasks.append(Task("skim_neurons", SKIM_INSTRUCTIONS,

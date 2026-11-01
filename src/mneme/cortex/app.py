@@ -38,12 +38,10 @@ PRESETS = {
 LABELS = {
     "regions": "Mapping your memory",
     "perceive": "Reading memories",
-    "divide": "Dividing large topics",
     "topic_gist": "Summarising topics",
     "area_gist": "Summarising areas",
     "zoom_areas": "Choosing areas",
     "zoom_topics": "Choosing topics",
-    "zoom_deeper": "Choosing sub-topics",
     "skim_neurons": "Skimming memories",
     "read_neurons": "Reading closely",
     "answer": "Writing the answer",
@@ -432,7 +430,7 @@ def cmd_status(args, ui: UI) -> int:
         ui.banner("mneme", "not set up yet")
         ui.say(f"  Run {ui.style('mneme setup', 'cyan', 'bold')} to point Mneme at your notes and choose a model.\n")
         return 1
-    stats = {"neurons": 0, "pending": 0, "areas": 0, "topics": 0, "subtopics": 0, "synapses": 0, "suspicious": 0}
+    stats = {"neurons": 0, "pending": 0, "areas": 0, "topics": 0, "synapses": 0, "suspicious": 0}
     if Path(config["db"]).exists():
         brain = Brain(config["db"], FileMind(home / "mind-cache"))
         one = lambda sql: brain.conn.execute(sql).fetchone()[0]  # noqa: E731
@@ -440,7 +438,6 @@ def cmd_status(args, ui: UI) -> int:
                  "pending": one("SELECT count(*) FROM neurons WHERE id NOT IN (SELECT neuron FROM perceived)"),
                  "areas": one("SELECT count(*) FROM regions WHERE level = 1"),
                  "topics": one("SELECT count(*) FROM regions WHERE level = 2"),
-                 "subtopics": one("SELECT count(*) FROM regions WHERE level > 2"),
                  "synapses": one("SELECT count(*) FROM synapses"),
                  "suspicious": one("SELECT count(*) FROM judgements WHERE trust != 'ok'")}
     check = None
@@ -459,8 +456,7 @@ def cmd_status(args, ui: UI) -> int:
     if stats["neurons"] == 0:
         ui.warn("Nothing learned yet. Run: mneme learn")
     else:
-        ui.ok(f"{stats['neurons']} memories in {stats['areas']} areas and {stats['topics']} topics"
-              + (f" ({stats['subtopics']} sub-topics)" if stats["subtopics"] else "") + f", {stats['synapses']} links")
+        ui.ok(f"{stats['neurons']} memories in {stats['areas']} areas and {stats['topics']} topics, {stats['synapses']} links")
         if stats["pending"]:
             ui.warn(f"{stats['pending']} memories not perceived yet. Run: mneme learn")
         if stats["suspicious"]:
