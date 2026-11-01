@@ -412,3 +412,24 @@ def test_calendar_times_follow_their_tzid(tmp_path: Path):
     times = {e.title: e.event_time for e in read_ics(ics)}
     assert times["Call"].startswith("2026-07-01T13:00:00") and times["Lunch"].startswith("2026-07-01T12:00:00")
     assert times["Odd"].startswith("2026-07-01T12:00:00")  # unknown zone names fall back to London time
+
+
+def test_note_dates_from_frontmatter_or_the_file(tmp_path: Path):
+    import datetime as dt
+    import os
+
+    from mneme.cortex.senses import read_sources
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "Quoted.md").write_text('---\nupdated: "2026-10-31"\n---\n# Quoted\n\nA\n', encoding="utf-8")
+    (notes / "Timed.md").write_text("---\nupdated: 2026-10-31T08:15:00+00:00\n---\n# Timed\n\nB\n", encoding="utf-8")
+    (notes / "Odd.md").write_text("---\nupdated: last week\n---\n# Odd\n\nC\n", encoding="utf-8")
+    (notes / "Plain.md").write_text("# Plain\n\nD\n", encoding="utf-8")
+    morning = dt.datetime(2026, 11, 1, 8, 0, tzinfo=dt.timezone.utc).timestamp()
+    for name in ("Odd.md", "Plain.md"):
+        os.utime(notes / name, (morning, morning))
+    known = {e.title: e.known_at for e in read_sources(notes)}
+    assert known["Quoted"].startswith("2026-10-31")  # quotes no longer break the whole vault
+    assert known["Timed"] == "2026-10-31T08:15:00+00:00"  # a frontmatter time is kept
+    assert known["Plain"].startswith("2026-11-01T08:00:00") and known["Odd"] == known["Plain"]  # the file's real time, not noon

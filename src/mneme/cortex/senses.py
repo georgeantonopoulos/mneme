@@ -62,6 +62,18 @@ def _day_iso(day: str) -> str:
 # ---------------------------------------------------------------------------
 # Markdown notes
 # ---------------------------------------------------------------------------
+def _note_time(value: str | None) -> str | None:
+    """A frontmatter date or date-time. A bare date means that day (noon); an unreadable value gives None."""
+    if not value:
+        return None
+    try:
+        if len(value) > 10:
+            return _iso(dt.datetime.fromisoformat(value.replace("Z", "+00:00")))
+        return _day_iso(value)
+    except ValueError:
+        return None
+
+
 def _frontmatter(text: str) -> tuple[dict[str, str], str]:
     match = FRONTMATTER_RE.match(text)
     if not match:
@@ -70,7 +82,10 @@ def _frontmatter(text: str) -> tuple[dict[str, str], str]:
     for line in match.group(1).splitlines():
         if ":" in line:
             key, value = line.split(":", 1)
-            meta[key.strip()] = value.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            meta[key.strip()] = value
     return meta, text[match.end():]
 
 
@@ -100,8 +115,8 @@ def read_vault(vault: Path, *, journal_dir: str = "Journal") -> Iterator[Episode
         title = title_match.group(1).strip() if title_match else path.stem
         if title_match:
             body = body[title_match.end():]
-        updated = meta.get("updated") or meta.get("created") or dt.date.fromtimestamp(path.stat().st_mtime).isoformat()
-        known_at = _day_iso(updated)
+        known_at = _note_time(meta.get("updated") or meta.get("created")) or _iso(
+            dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc))
         if rel.startswith(journal_dir + "/") and DATED_RE.fullmatch(path.stem):
             yield Episode(id=f"journal:{path.stem}", source="journal", doc=rel, refs=[f"journal:{path.stem}"], title=title,
                           text=body.strip(), known_at=known_at, event_time=_day_iso(path.stem))
