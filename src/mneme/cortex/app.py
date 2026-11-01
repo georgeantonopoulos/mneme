@@ -24,7 +24,7 @@ from pathlib import Path
 
 from .brain import QUIET_DAYS, Brain, utc_now
 from .mind import AwaitingMind, FileMind, MeteredMind, OllamaMind, Task, is_deferred, mind_from_config
-from .senses import read_sources
+from .senses import read_graph_db, read_sources
 from .ui import UI
 
 COMMANDS = ("setup", "learn", "ask", "status", "reflect", "thoughts")
@@ -71,6 +71,21 @@ def home_dir(override: str | Path | None = None) -> Path:
 def load(home: Path) -> dict | None:
     path = home / "brain.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def earlier_install() -> dict:
+    """The vault and graph database of an earlier Mneme (`mneme init`), so setup can carry them over."""
+    path = Path(os.environ.get("MNEME_CONFIG") or Path.home() / ".config" / "mneme" / "config.json").expanduser()
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found = {}
+    if cfg.get("vault") and Path(cfg["vault"]).expanduser().is_dir():
+        found["vault"] = str(Path(cfg["vault"]).expanduser().resolve())
+    if cfg.get("db") and Path(cfg["db"]).expanduser().is_file():
+        found["db"] = str(Path(cfg["db"]).expanduser().resolve())
+    return found
 
 
 def save(home: Path, config: dict) -> Path:
@@ -206,12 +221,13 @@ def cmd_setup(args, ui: UI) -> int:
         ui.say(f"  {ui.style('Setup takes a minute. Everything stays in', 'dim')} {home}")
 
     # 1. Notes
+    earlier = earlier_install()
     notes = [str(Path(p).expanduser().resolve()) for p in (args.notes or [])]
     if not notes and interactive:
         ui.step(1, 3, "Your notes")
         ui.note("A folder of Markdown notes (any notes-app vault works), or a LifeVault-style folder")
         ui.note("with vault/ and sources/{email,calendar,chat,tasks}.")
-        default = (existing.get("notes") or [""])[0]
+        default = (existing.get("notes") or [earlier.get("vault", "")])[0]
         while True:
             raw = ui.ask("Where are they?", default)
             path = Path(raw).expanduser()
@@ -219,7 +235,7 @@ def cmd_setup(args, ui: UI) -> int:
                 notes = [str(path.resolve())]
                 break
             ui.warn("That folder does not exist. Try again (drag the folder into the terminal to paste its path).")
-    notes = notes or existing.get("notes") or []
+    notes = notes or existing.get("notes") or ([earlier["vault"]] if earlier.get("vault") else [])
     if not notes:
         return _fail(ui, args, "No notes folder given. Pass --notes PATH.")
     for root in notes:
@@ -229,6 +245,12 @@ def cmd_setup(args, ui: UI) -> int:
     for root in notes:
         for source, n in count_sources(Path(root)).items():
             counts[source] = counts.get(source, 0) + n
+    graph_db = None if args.no_graph else (str(Path(args.graph_db).expanduser().resolve()) if args.graph_db
+                                            else existing.get("graph_db") or earlier.get("db"))
+    if graph_db and not Path(graph_db).is_file():
+        return _fail(ui, args, f"No graph database at {graph_db}")
+    if graph_db:
+        counts["from the earlier graph"] = sum(1 for _ in read_graph_db(Path(graph_db)))
     total = sum(counts.values())
     if not args.json:
         if not interactive:
@@ -281,6 +303,8 @@ def cmd_setup(args, ui: UI) -> int:
             return _fail(ui, args, message, quiet=True)
 
     config = {"version": 1, "notes": notes, "db": str(home / "brain.sqlite"), "mind": block}
+    if graph_db:
+        config["graph_db"] = graph_db
     path = save(home, config)
     if args.json:
         print(json.dumps({"ok": True, "config": str(path), "memories": total, "mind": describe_mind(block), "test_seconds": tested}))
@@ -406,6 +430,8 @@ def cmd_learn(args, ui: UI) -> int:
     if not args.json:
         ui.banner("mneme learn", ", ".join(Path(p).name for p in config["notes"]))
     episodes = itertools.chain.from_iterable(_namespaced(read_sources(Path(root)), ns) for root, ns in _namespaces(config["notes"]))
+    if config.get("graph_db"):
+        episodes = itertools.chain(episodes, read_graph_db(Path(config["graph_db"])))
     added = brain.ingest(episodes, incremental=True)
     if not args.json:
         ui.ok(f"{added['neurons']} memories ({added['added']} new, {added['new_versions']} changed)")
@@ -516,11 +542,12 @@ def cmd_status(args, ui: UI) -> int:
         except Exception as error:  # noqa: BLE001
             check = {"ok": False, "error": friendly_error(error, config["mind"])}
     if args.json:
-        print(json.dumps({"ok": True, "set_up": True, "home": str(home), "notes": config["notes"],
+        print(json.dumps({"ok": True, "set_up": True, "home": str(home), "notes": config["notes"], "graph_db": config.get("graph_db"),
                           "mind": describe_mind(config["mind"]), "brain": stats, "check": check}))
         return 0
     ui.banner("mneme", "status")
-    ui.table([("notes", ", ".join(config["notes"])), ("mind", describe_mind(config["mind"])), ("home", str(home))])
+    ui.table([("notes", ", ".join(config["notes"]))] + ([("earlier graph", config["graph_db"])] if config.get("graph_db") else [])
+             + [("mind", describe_mind(config["mind"])), ("home", str(home))])
     ui.say()
     if stats["neurons"] == 0:
         ui.warn("Nothing learned yet. Run: mneme learn")
@@ -651,6 +678,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", "-y", action="store_true", help="Never prompt; use flags and existing settings")
     p.add_argument("--skip-test", action="store_true", help="Do not test the model connection")
     p.add_argument("--learn", action="store_true", help="Learn from the notes right after setup")
+    p.add_argument("--graph-db", help="Also learn from an earlier Mneme graph database (found automatically from `mneme init`)")
+    p.add_argument("--no-graph", action="store_true", help="Do not learn from an earlier Mneme graph database")
 
     sub.add_parser("learn", parents=[common], help="Read new and changed notes into the brain")
 

@@ -89,7 +89,7 @@ Rules:
 5. Run `mneme learn` before `ask` when notes changed. While idle, for example hourly, run `mneme learn --json && mneme reflect --json`.
 6. Exit code `2` with `"awaiting"` means the mind is the `file` provider. Answer each task in `outbox/` by writing only the JSON its prompt asks for to `answers/<same file name>`, then rerun the same command. This is how a host agent can be the mind itself.
 
-Set up non-interactively: `mneme setup --notes "$VAULT" --mind ollama --model qwen3:8b --yes --json`. `--mind` takes `ollama`, `ollama-cloud`, `lmstudio`, `openai` (with `--url`, `--api-key-env`), `command` (with `--command "..."`) or `file`.
+Set up non-interactively: `mneme setup --notes "$VAULT" --mind ollama --model qwen3:8b --yes --json`. With an earlier `mneme init` on the machine, `--notes` can be left out: setup reuses that vault, and `learn` also reads the old graph database read-only (world state, actions, predictions, aliases, validated and killed relationships, sensed email and calendar). `--no-graph` skips that. `--mind` takes `ollama`, `ollama-cloud`, `lmstudio`, `openai` (with `--url`, `--api-key-env`), `command` (with `--command "..."`) or `file`.
 
 ## Neural Think Path
 

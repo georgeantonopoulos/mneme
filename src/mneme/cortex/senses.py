@@ -15,6 +15,7 @@ import datetime as dt
 import email
 import json
 import re
+import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from email import policy
@@ -283,3 +284,90 @@ def _read_sources(root: Path) -> Iterable[Episode]:
         yield from read_chat_jsonl(chat)
     for tasks in sorted((sources / "tasks").glob("*.json")) if (sources / "tasks").is_dir() else []:
         yield from read_tasks_json(tasks)
+
+
+# ---------------------------------------------------------------------------
+# The graph database of earlier Mneme versions
+# ---------------------------------------------------------------------------
+def _stamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return _iso(dt.datetime.fromisoformat(str(value).replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def read_graph_db(path: Path) -> Iterator[Episode]:
+    """Memories from the SQLite graph of earlier Mneme versions, read-only. Every record becomes an ordinary
+    memory for the mind to perceive: world-state assertions (current and superseded), the action ledger,
+    predictions, aliases, validated or killed relationships, and what the email and calendar senses observed.
+    Left out: relationships drawn from wikilinks (the notes themselves hold them), unvalidated candidate
+    relationships, and temporary ``mneme://`` memories, which must stay removable as one unit."""
+    try:
+        conn = sqlite3.connect(f"file:{Path(path).expanduser()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return
+    conn.row_factory = sqlite3.Row
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+    def rows(sql: str):
+        return conn.execute(sql).fetchall()
+
+    def episode(kind: str, rid: str, title: str, lines: list[str], known: str | None, *, event: str | None = None,
+                meta: dict | None = None) -> Episode | None:
+        known_at = _stamp(known)
+        if not known_at:
+            return None
+        text = "\n".join(line for line in lines if line)
+        return Episode(id=f"{kind}:{rid}", source=kind, doc=f"graph:{kind}", refs=[f"{kind}:{rid}"], title=title[:120],
+                       text=text, known_at=known_at, event_time=_stamp(event), meta=meta or {})
+
+    found: list[Episode | None] = []
+    if "world_state_assertions" in tables:
+        for r in rows("SELECT * FROM world_state_assertions ORDER BY created_at, id"):
+            value = r["object_name"] or r["object_value"]
+            found.append(episode("state", r["id"], f"{r['subject_name']} {r['predicate']} {value}", [
+                f"Recorded state ({r['state_type']}, {r['status']}): {r['subject_name']} {r['predicate']} {value}.",
+                f"Valid from {r['valid_from']}" + (f" until {r['valid_until']}" if r["valid_until"] else "") if r["valid_from"] else "",
+                f"Evidence: {r['evidence_text']}", f"Source: {r['source_path']}"], r["updated_at"] or r["created_at"],
+                event=r["valid_from"], meta={"status": r["status"]}))
+    if "world_actions" in tables:
+        for r in rows("SELECT * FROM world_actions ORDER BY created_at, id"):
+            found.append(episode("action", r["id"], r["title"], [
+                f"Action by {r['actor']}: {r['title']} ({r['action_type']}, status {r['status']}).",
+                f"Side effects: {r['side_effect_level']}, reversibility: {r['reversibility']}.",
+                f"Reference: {r['external_ref']}" if r["external_ref"] else ""], r["created_at"], event=r["created_at"]))
+    if "world_predictions" in tables:
+        for r in rows("SELECT * FROM world_predictions ORDER BY created_at, id"):
+            found.append(episode("prediction", r["id"], r["title"], [
+                f"Expected: {r['title']} (status {r['status']}).",
+                f"Check after {r['check_after']}, expires {r['expires_at']}.",
+                f"Outcome: {r['outcome_summary']}" if r["outcome_summary"] else ""], r["updated_at"] or r["created_at"],
+                event=r["check_after"], meta={"status": r["status"]}))
+    if "entity_aliases" in tables:
+        for r in rows("SELECT * FROM entity_aliases ORDER BY created_at, alias_norm"):
+            found.append(episode("alias", r["alias_norm"], f"{r['alias_name']} = {r['canonical_name']}",
+                                 [f"'{r['alias_name']}' is another name for '{r['canonical_name']}' ({r['source']})."],
+                                 r["updated_at"] or r["created_at"]))
+    if {"edges", "nodes"} <= tables:
+        for r in rows("SELECT e.*, a.name AS src_name, b.name AS dst_name FROM edges e JOIN nodes a ON a.id = e.src_id "
+                      "JOIN nodes b ON b.id = e.dst_id WHERE e.status IN ('active', 'killed') "
+                      "AND COALESCE(e.source_type, 'vault') != 'vault' ORDER BY e.created_at, e.id"):
+            relation = r["relation"].replace("_", " ")
+            claim = (f"{r['src_name']} {relation} {r['dst_name']}" if r["status"] == "active"
+                     else f"It is false that {r['src_name']} {relation} {r['dst_name']}: this relationship was marked wrong.")
+            found.append(episode("relation", r["id"], f"{r['src_name']} {relation} {r['dst_name']}",
+                                 [claim + ".", f"Evidence: {r['evidence_text']}" if r["evidence_text"] else "",
+                                  f"Source: {r['source_path']}" if r["source_path"] else ""], r["updated_at"] or r["created_at"],
+                                 meta={"status": r["status"]}))
+    if {"observations", "nodes"} <= tables:
+        sensed: dict[str, list[sqlite3.Row]] = {}
+        for r in rows("SELECT o.*, n.name AS node_name FROM observations o JOIN nodes n ON n.id = o.note_id "
+                      "WHERE o.sense_event_id IS NOT NULL AND o.source_path NOT LIKE 'mneme://%' ORDER BY o.created_at, o.id"):
+            sensed.setdefault(r["note_id"], []).append(r)
+        for note_id, obs in sensed.items():
+            found.append(episode("sensed", note_id, obs[0]["node_name"], [f"- {o['text']}" for o in obs],
+                                 obs[-1]["created_at"], meta={"source": obs[0]["source_path"]}))
+    conn.close()
+    yield from bounded(e for e in found if e is not None)

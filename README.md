@@ -268,6 +268,11 @@ python scripts/sync_hermes_hook.py
 python scripts/sync_hermes_hook.py --check
 ```
 
+Upgrading an earlier install is safe. The update leaves the graph database, the vault and every graph command
+as they were. `mneme setup` then finds the earlier `mneme init`, uses its vault, and has `mneme learn` read the graph
+database read-only. World state, the action ledger, predictions, aliases, validated and killed relationships, and
+sensed email and calendar content all become memories of the new brain.
+
 Once `mneme setup` has run, the hook points Hermes at `mneme ask --json` and tells it how many open thoughts are waiting. To let the brain think while Hermes is idle, schedule `mneme learn --json && mneme reflect --json` (hourly is plenty).
 
 Use the compatibility harness when a deployment needs the deeper readiness checks:
