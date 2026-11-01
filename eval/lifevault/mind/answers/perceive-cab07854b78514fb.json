@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n254","caption":"Parcelpost Home security check passed notice dated 2026-05-01; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n258","caption":"Northmoor Bank: statement for account ending 4471 ready to view in the app, 2026-05-01.","topics":["a12.t2","a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n253","caption":"Harbour Life 'five things we loved' newsletter received 2026-05-01.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n252","caption":"Design Weekly 'five things we loved' newsletter received 2026-05-01.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n255","caption":"Bike Hub receipt dated 2026-05-01, total paid £50.51.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n251","caption":"Grace Castell (Quarry & Sons) offers brand guidelines work at £450 a day, starting Fri 8 May 2026.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n257","caption":"Bristol Eats newsletter on the best Sunday roasts, received 2026-05-01.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n47","caption":"Journal 2026-05-01: read for an hour before bed; admin, admin, admin.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n2","caption":"Archived 2024 flat hunt: Chandos Road flat at £1,250, deadline 2024-03-01, landlord Mr Pike never replied.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n211","relation":"earlier search before the 2026 Alder Street move","weight":0.3}]},
+{"id":"n19","caption":"Quarry & Sons client note: Grace Castell, brand guidelines, £450 a day, deadline 25 Aug, invoices net 30.","topics":["a1.t3","a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n791","relation":"deadline changed by","weight":0.9}]},
+{"id":"n171","caption":"Mum (Grace Okafor) lives in Cheltenham, helps with Ivy in half term; hip replacement booked for January 2027.","topics":["a4.t1","a4.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1664","relation":"confirms hip date of 19 January","weight":0.7},{"to":"n142","relation":"confirms hip op date","weight":0.6}]},
+{"id":"n190","caption":"Omar Nakata: friend from the old job, lives in Southville, birthday 23 May.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n256","caption":"CloudVault backup welcome email dated 2026-05-01: plan costs £4.99 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n261","caption":"CloudVault 'your parcel is on its way' automated notice, 2026-05-02, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n260","caption":"Harbour Life 'a quick update' newsletter received 2026-05-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n259","caption":"Product Notes 'five things we loved' newsletter received 2026-05-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1236","caption":"Ivy swimming Sat 2 May 2026 at 09:00, Riverside Pool, status confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1363","caption":"Chat with Lena 2026-05-02: Nia writes 'you're a star'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n48","caption":"Journal 2026-05-02: gym, upper body only because of the knee.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n178","caption":"Jo Oduya: friend from running club, lives in Montpelier, birthday 7 February.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

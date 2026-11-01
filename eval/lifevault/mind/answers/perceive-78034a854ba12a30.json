@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1106","caption":"Product Notes: tools and tips newsletter, 6 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1670","caption":"Chat with Mum, 6 Oct 2026: Grace says that's brilliant news.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1457","caption":"Chat with Lena, 6 Oct 2026: Lena says Ivy says hi; Nia running late, 10 mins.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1110","caption":"Gemma Holt, 6 Oct 2026: landlord rejects the £240 deposit deduction dispute; raise it via DepositGuard.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1093","relation":"replies to","weight":0.9},{"to":"n1115","relation":"precedes","weight":0.7}]},
+{"id":"n146","caption":"Journal 6 Oct 2026: slow morning, coffee, emails, nothing urgent.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n169","caption":"Gemma Holt contact: Harbourside Lets agent for 14 Cotham Rise; deducted £240; Nia disputes it, photos show spotless.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1080","relation":"describes","weight":0.6},{"to":"n1110","relation":"relates to","weight":0.5}]},
+{"id":"n1671","caption":"Chat with Mum, 6 Oct 2026: Nia says ugh mondays.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1101","caption":"Smile Dental booking: Ivy's dentist appointment Friday 23 Oct 2026 at 15:00.","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1314","relation":"confirmed by","weight":0.8}]},
+{"id":"n1299","caption":"Mum's optician at ClearView Opticians, Tuesday 6 Oct 2026 at 14:00, confirmed.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n896","relation":"confirmed by","weight":0.8}]},
+{"id":"n1109","caption":"Bike Hub receipt, 6 Oct 2026: total paid £17.45.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1102","caption":"Invoice INV-G003 to Hollow Studio, 6 Oct 2026: 4 days at £550 = £2,200, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1104","caption":"Invoice INV-G063 to Juniper Works, 6 Oct 2026: 11 days at £425 = £4,675, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1807","caption":"Chat with Sam, 6 Oct 2026: Nia says can't this weekend, sorry.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1458","caption":"Chat with Lena, 6 Oct 2026: Nia says can't this weekend, sorry.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1112","caption":"Product Notes newsletter, 7 Oct 2026: what's new this week.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1113","caption":"Parenting Today newsletter, 7 Oct 2026: our favourite links.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1111","caption":"Design Weekly newsletter, 7 Oct 2026: what's new this week.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1115","caption":"DepositGuard case DG-58213 opened 7 Oct 2026: £240 disputed; decision est. 20 Nov 2026; £1,360 released within 5 days.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1110","relation":"follows up on","weight":0.8},{"to":"n1147","relation":"precedes","weight":0.6},{"to":"n212","relation":"tracked by","weight":0.5}]},
+{"id":"n1114","caption":"Harbour Books receipt, 7 Oct 2026: total paid £13.47.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1119","caption":"CloudVault security check passed, 8 Oct 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

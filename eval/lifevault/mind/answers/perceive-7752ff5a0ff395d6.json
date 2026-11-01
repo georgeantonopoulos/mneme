@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n72","caption":"Journal 12 Jun 2026: viewed Alder Street flat; light in back room, clay basement store; good chat with Mum.","topics":["a6.t1","a11.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n418","relation":"follows up on","weight":0.5},{"to":"n1244","relation":"same visit as","weight":0.8},{"to":"n1618","relation":"precedes","weight":0.4}]},
+{"id":"n225","caption":"Reading notes on night photography, 12 Jun 2026: disagreed with the ending; a quote worth keeping.","topics":["a10.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1597","caption":"Chat with Mum, 12 Jun 2026: Grace asks if Nia has watched it yet.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1720","caption":"Chat with Sam, 12 Jun 2026: Sam says all good here x.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1244","caption":"Flat viewing at 22 Alder Street (Flat 3), Friday 12 Jun 2026 at 17:30, confirmed.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n418","relation":"confirms","weight":0.7}]},
+{"id":"n1598","caption":"Chat with Mum, 12 Jun 2026: Grace says how's your week going; all good here x.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n428","caption":"Pet Pantry receipt, 12 Jun 2026: total paid £50.27.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1245","caption":"Ivy swimming at Riverside Pool, Saturday 13 Jun 2026 at 09:00, confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1337","caption":"Chat with Elif Brennan, 13 Jun 2026: Elif asks to borrow the projector this weekend.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1338","relation":"is replied to by","weight":0.9},{"to":"n1339","relation":"resolved by","weight":0.8}]},
+{"id":"n1721","caption":"Chat with Sam, 13 Jun 2026: Nia asks how Sam's week is going.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n430","caption":"ParkEasy welcome email, 13 Jun 2026: plan costs £12.50 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n216","caption":"Reading notes on garden boxes, 13 Jun 2026: chapter thoughts; a quote worth keeping.","topics":["a10.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1843","caption":"Task 'Get tent back from Jo' open, Personal project, created 13 Jun 2026.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1599","caption":"Chat with Mum, 13 Jun 2026: Grace says that's brilliant news.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1389","caption":"Chat with Lena, 13 Jun 2026: Lena says that's brilliant news.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1722","caption":"Chat with Sam, 13 Jun 2026: Nia says ha, classic.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n429","caption":"Harbour Books receipt, 13 Jun 2026: total paid £44.89.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1338","caption":"Chat with Elif Brennan, 13 Jun 2026: Nia replies of course, grab it whenever (projector loan).","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1337","relation":"replies to","weight":0.9},{"to":"n1339","relation":"precedes","weight":0.5}]},
+{"id":"n434","caption":"CloudVault security check passed, 14 Jun 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n432","caption":"Clay Times newsletter, 14 Jun 2026: behind the scenes.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

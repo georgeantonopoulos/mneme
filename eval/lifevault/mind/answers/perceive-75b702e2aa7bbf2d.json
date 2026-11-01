@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n660","caption":"Bike Hub receipt, 26 Jul 2026: total paid £6.45.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1629","caption":"Chat with Mum, 26 Jul 2026: Nia asks Grace to send that recipe.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1575","caption":"Chat with Maya Lindqvist, 26 Jul 2026: Nia says of course, grab the camping stove whenever.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1574","relation":"replies to","weight":0.9},{"to":"n1868","relation":"relates to","weight":0.4}]},
+{"id":"n663","caption":"Parcel on its way notice, 27 Jul 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n666","caption":"Design Weekly #213, 27 Jul 2026: dark patterns regulation newsletter.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n662","caption":"Parenting Today newsletter, 27 Jul 2026: a quick update.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n665","caption":"MapPro email, 27 Jul 2026: plan rises from £3.99 to £4.79 a month from next month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n664","caption":"Pet Pantry receipt, 27 Jul 2026: total paid £50.93.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1416","caption":"Chat with Lena, 27 Jul 2026: Nia says all good here x; Lena says ha, classic.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n99","caption":"Journal 27 Jul 2026: quiet day.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1758","caption":"Chat with Sam, 27 Jul 2026: Nia asks how Sam's week is going.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n661","caption":"Invoice INV-G021 to Paper Press, 27 Jul 2026: 4 days at £625 = £2,500, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n832","relation":"precedes","weight":0.3}]},
+{"id":"n1417","caption":"Chat with Lena, 27 Jul 2026: Nia asks if Lena saw the rain.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n670","caption":"Calendar week-ahead notice, 28 Jul 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n669","caption":"Parenting Today newsletter, 28 Jul 2026: the long read.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n668","caption":"Clay Times newsletter, 28 Jul 2026: what's new this week.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n673","caption":"Tomasz Wren, 28 Jul 2026: agrees £1,425 pcm on a 15-month term from move-in; sign updated agreement by Friday.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n642","relation":"replies to","weight":0.9},{"to":"n1858","relation":"precedes","weight":0.5}]},
+{"id":"n672","caption":"Northmoor Bank: payment of £4,050.00 from HALCYON LABS LTD credited, 28 Jul 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n100","caption":"Journal 28 Jul 2026: too much coffee.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1532","caption":"Chat with Marcus, 28 Jul 2026: Nia says all good here x.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n534","caption":"Bristol Eats newsletter, the autumn issue, received 2026-07-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n537","caption":"Northmoor Bank: £149.00 refund from Parcelpost Home credited 2026-07-02.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1685","relation":"pays out refund promised in","weight":0.8}]},
+{"id":"n535","caption":"Clay Times newsletter, 'five things we loved', received 2026-07-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n539","caption":"City Pharmacy receipt 2026-07-02: total paid £9.87.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1851","caption":"Open task created 2026-07-02: chase Greenbox Garden refund for monitor arm (£75).","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1898","relation":"same Greenbox refund chase pattern","weight":0.3}]},
+{"id":"n1342","caption":"Chat with Greenbox Garden support, 2026-07-02: monitor arm from ORD-AF2BF arrived damaged; Nia asks to return it.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1343","relation":"is answered by","weight":0.9}]},
+{"id":"n538","caption":"Booknook order ORD-4W7JG confirmed 2026-07-02: monitor arm, £75.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n513","relation":"different order for same item","weight":0.3},{"to":"n1851","relation":"refund chased in task","weight":0.4}]},
+{"id":"n533","caption":"Redcliffe Garage: Ivy's car service booked Fri 31 Jul 2026 at 15:00.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n645","relation":"is rescheduled by","weight":0.9},{"to":"n1253","relation":"is confirmed at new time by","weight":0.8}]},
+{"id":"n542","caption":"Kiln House firing invoice 2026-07-02: £30.00 paid.","topics":["a2.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n678","relation":"later firing invoice","weight":0.4}]},
+{"id":"n540","caption":"Aerolis booking AE7QK2 confirmed 2026-07-02: BRS to LIS 8 Oct 06:40; return LIS to BRS 13 Oct 19:10.","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n967","relation":"is changed by","weight":0.9},{"to":"n1303","relation":"confirmed by calendar entry","weight":0.7},{"to":"n250","relation":"described in note","weight":0.4}]},
+{"id":"n541","caption":"Casa do Rio Lisbon reservation CDR-2219 confirmed 2026-07-02: 8-13 Oct 2026, 5 nights, double room.","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n976","relation":"is changed by","weight":0.9},{"to":"n968","relation":"change requested in","weight":0.6}]},
+{"id":"n1343","caption":"Greenbox Garden reply, 2026-07-02: return label sent, refund of £75 once item is back.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1342","relation":"replies to","weight":0.9}]},
+{"id":"n546","caption":"Parcelpost Home 'Backup complete' notification, 2026-07-03. No action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n544","caption":"Bristol Eats newsletter, 'the long read', received 2026-07-03.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n545","caption":"Product Notes newsletter, 'reader questions', received 2026-07-03.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1613","caption":"Chat with Mum, 2026-07-03: Grace says that's brilliant news.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1402","caption":"Chat with Lena, 2026-07-03: Nia says can't do this weekend, sorry.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n548","caption":"Bristol Eats newsletter, 'where to eat with kids', received 2026-07-03.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n85","caption":"Journal entry 2026-07-03: good chat with Mum.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1","caption":"Bramble moodboard draft note, 2026-07-03: superseded by final round 1; project cancelled.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n118","relation":"confirmed by cancellation in","weight":0.8},{"to":"n7","relation":"is an early stage of","weight":0.7}]}
+]}

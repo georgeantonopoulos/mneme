@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1668","caption":"Chat with Mum, 2 Oct 2026: Grace asks if Nia has watched it yet.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1566","caption":"Chat with Marcus, 2 Oct 2026: Nia asks if he has watched it and about coffee next week.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1080","caption":"Gemma Holt, 2 Oct 2026: proposes returning £1,360 of £1,600 deposit; £240 deducted for oven and carpet cleaning.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1093","relation":"disputed by","weight":0.9},{"to":"n1110","relation":"followed by","weight":0.6},{"to":"n1293","relation":"follows","weight":0.5}]},
+{"id":"n1075","caption":"Invoice INV-G013 to Lantern Press, 2 Oct 2026: 4 days at £400 = £1,600, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1087","caption":"Parcelpost Home backup notice, 3 Oct 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1086","caption":"Parenting Today newsletter, 3 Oct 2026: reader questions.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1084","caption":"Clay Times newsletter, 3 Oct 2026: the autumn issue.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1085","caption":"Harbour Life newsletter, 3 Oct 2026: our favourite links.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1082","caption":"Northmoor Bank: payment of £4,950.00 from COPPER HEALTH credited, 3 Oct 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1094","caption":"Kiln House gift voucher for Sam Petrov, 3 Oct 2026: pottery taster session, code KH-TASTE-0310.","topics":["a8.t1","a2.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n199","relation":"same person as","weight":0.9},{"to":"n1805","relation":"relates to","weight":0.5}]},
+{"id":"n1805","caption":"Chat with Sam, 3 Oct 2026: Nia says happy birthday, voucher is in your inbox.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1094","relation":"refers to","weight":0.6}]},
+{"id":"n1093","caption":"Nia to Gemma, 3 Oct 2026: rejects £240 deduction; oven and carpets cleaned 28 Sep with receipt; asks for full £1,600.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1080","relation":"replies to","weight":0.9},{"to":"n1110","relation":"is answered by","weight":0.7},{"to":"n1901","relation":"led to","weight":0.5}]},
+{"id":"n145","caption":"Journal 3 Oct 2026: quiet day.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1089","caption":"Tidy Living order ORD-QMTVM: rain jacket, £89, confirmed 3 Oct 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1890","relation":"relates to","weight":0.3}]},
+{"id":"n1090","caption":"Corner Cafe receipt, 3 Oct 2026: total paid £5.88.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1083","caption":"Invoice INV-G043 to Kestrel & Sons, 3 Oct 2026: 8 days at £550 = £4,400, due in 30 days.","topics":["a1.t4","a1.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1088","caption":"Quayside Outdoors order ORD-KYXQT: plant pots, £22, confirmed 3 Oct 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1848","relation":"relates to","weight":0.4},{"to":"n1361","relation":"relates to","weight":0.3}]},
+{"id":"n1669","caption":"Chat with Mum, 3 Oct 2026: Grace says Ivy says hi.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1297","caption":"Sam's birthday drinks, Saturday 3 Oct 2026 at 19:30 at The Grain Barge, confirmed.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1091","caption":"CoolFix revised quote JOB-FMY2S, 3 Oct 2026: fridge seal needs an extra part; revised total £255.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1054","relation":"revises","weight":0.9}]}
+]}

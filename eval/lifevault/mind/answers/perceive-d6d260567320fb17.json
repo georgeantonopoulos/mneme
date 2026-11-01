@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n559","caption":"Parenting Today 'tools and tips' newsletter received 2026-07-05.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n558","caption":"Design Weekly 'events near you' newsletter received 2026-07-05.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1693","caption":"Quinn Castell asks to borrow Nia's camping stove this weekend, 2026-07-05.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1694","relation":"replied to by","weight":0.9},{"to":"n1695","relation":"stove returned later on 30 July","weight":0.6}]},
+{"id":"n13","caption":"Kestrel & Sons client note: Sam Hartley, donor portal, £550 a day, deadline 1 Dec, invoices net 30.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1221","relation":"deadline moved by","weight":0.9}]},
+{"id":"n1616","caption":"Chat with Mum 2026-07-05: Grace asks whether Nia has watched it yet.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n561","caption":"Calendar 'your week ahead' automated email dated 2026-07-05; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n557","caption":"Sam Hartley offers donor portal work at £550 a day, starting Sun 12 July 2026.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n560","caption":"Tidy Living order ORD-X7D7Q for a monitor arm, £75, dated 2026-07-05.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1694","caption":"Nia tells Quinn she can borrow the camping stove whenever, 2026-07-05.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1693","relation":"replies to","weight":0.9}]},
+{"id":"n564","caption":"CloudVault 'backup complete' automated notice dated 2026-07-06; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n567","caption":"Design Weekly #210 on form design deep dive, received 2026-07-06.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n562","caption":"Product Notes 'behind the scenes' newsletter received 2026-07-06.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n563","caption":"Harbour Life 'behind the scenes' newsletter received 2026-07-06.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n565","caption":"Lumen Lighting order ORD-DS33M for a travel mug, £18, dated 2026-07-06.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1403","caption":"Chat with Lena 2026-07-06: Lena replies 'lol yes'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n86","caption":"Journal 2026-07-06: walked along the harbour at lunch.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1847","caption":"Task 'return library book' marked done on 2026-07-06.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n566","caption":"City Pharmacy receipt dated 2026-07-06, total paid £44.45.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1740","caption":"Chat with Sam 2026-07-06: Sam says can't do this weekend, sorry.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1519","caption":"Chat with Marcus 2026-07-06: Nia writes 'ugh mondays'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

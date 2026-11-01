@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n838","caption":"Aerolis booking JFUP8 confirmed 26 Aug 2026: Bristol to Valencia, out Thursday 1 October.","topics":["a9.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1032","relation":"superseded by","weight":0.9}]},
+{"id":"n1544","caption":"Chat with Marcus, 26 Aug 2026: Nia replies lol yes.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n832","caption":"Invoice INV-G022 to Paper Press, 26 Aug 2026: 6 days at £625 = £3,750, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n842","caption":"Security check passed notice, 27 Aug 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n841","caption":"Product Notes newsletter, 27 Aug 2026: five things the editors loved.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1267","caption":"Kestrel check-in with Daniel, Thursday 27 Aug 2026 at 10:00, confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1266","relation":"recurs after","weight":0.3}]},
+{"id":"n1644","caption":"Chat with Mum, 27 Aug 2026: Grace asks if Nia saw the rain.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n121","caption":"Journal 27 Aug 2026: rainy, cosy evening.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n165","caption":"Daniel Achterberg contact: Kestrel producer since 18 Aug 2026; direct; day rate £500 from Sept; Thursday 10:00 check-ins.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n844","relation":"confirmed by","weight":0.8},{"to":"n162","relation":"follows","weight":0.5}]},
+{"id":"n1870","caption":"Task 'Water plants' marked done 27 Aug 2026, Home project.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n844","caption":"Daniel email 27 Aug 2026: day rate £500 from 1 Sept; offline mode for volunteers, 8 extra days; keep Thursday 10:00.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n165","relation":"confirms","weight":0.8}]},
+{"id":"n1268","caption":"Ivy's vet at Paws & Claws Vets, Thursday 27 Aug 2026 at 16:00, confirmed.","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n758","relation":"confirmed by","weight":0.7}]},
+{"id":"n1645","caption":"Chat with Mum, 27 Aug 2026: Grace says sounds good.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1773","caption":"Chat with Sam, 27 Aug 2026: Nia says all good here x.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1545","caption":"Chat with Marcus, 27 Aug 2026: Marcus says sounds good.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n839","caption":"Harbour Youth Theatre, 27 Aug 2026: drama club moves from Tuesday to Thursday from next week, same time.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n708","relation":"reschedules","weight":0.8}]},
+{"id":"n1646","caption":"Chat with Mum, 27 Aug 2026: Grace says ugh mondays.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n843","caption":"City Pharmacy receipt, 27 Aug 2026: total paid £3.34.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n840","caption":"Bristol Makers: Ivy's coding club runs every Thursday after school, 15:30 to 16:30.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n851","caption":"CloudVault week-ahead notice, 28 Aug 2026; automated, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}
