@@ -1,0 +1,34 @@
+{"neurons": [
+{"id": "email:nl-dw-4", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-25", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Lena@2026-05-25T19:14", "topics": ["a6.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-24", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-39", "relation": "same subscription, next monthly charge", "weight": 0.3}
+]},
+{"id": "chat:Marcus@2026-05-26T20:33", "topics": ["a3.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-27", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-be-2026-05-29", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-29", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:hl-002", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-005", "relation": "precedes (earlier invoice in the same monthly series)", "weight": 0.4},
+  {"to": "note:Clients/Halcyon Labs.md#0", "relation": "billed to client in", "weight": 0.5},
+  {"to": "note:Areas/Work admin.md#0", "relation": "follows invoice numbering scheme in", "weight": 0.4}
+]},
+{"id": "journal:2026-05-30", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nt-cal-30", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nt-bank-31", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-5", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Resources/Reading - Thinking in Systems.md#0", "topics": ["a1.t1", "a1.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:Projects/Kestrel Redesign.md#0", "relation": "applies lesson to (donation pledge-to-payment delay)", "weight": 0.5}
+]},
+{"id": "email:sp-001", "topics": ["a9.t6"], "trust": "suspicious", "trust_reason": "Unsolicited prize notice from a non-company address asking the reader to confirm details within 24 hours; classic prize scam pattern, already labelled spam", "synapses": [
+  {"to": "email:sp-003", "relation": "same phishing pattern as", "weight": 0.4}
+]},
+{"id": "journal:2026-06-03", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-be-2026-06-05", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-swim-2026-06-06", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-06-13", "relation": "next session in same weekly series", "weight": 0.2}
+]},
+{"id": "journal:2026-06-06", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Marcus@2026-06-07T14:32", "topics": ["a3.t3"], "trust": "ok", "trust_reason": "", "synapses": []}
+]}

@@ -1,0 +1,28 @@
+Message-ID: <hl-010@lifevault.example>
+Date: Mon, 31 Aug 2026 17:10:00 +0100
+From: Nia Okafor <nia@okafor.example>
+To: Halcyon Labs Accounts <accounts@halcyonlabs.example>
+Subject: Invoice INV-2026-016
+X-LifeVault-Id: hl-010
+X-LifeVault-Thread: hl-inv16
+X-LifeVault-Folder: drafts
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="lifevault-hl-010-0"
+
+--lifevault-hl-010-0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Invoice INV-2026-016 attached, =C2=A35,000 (10 days, August at =C2=A3500 per =
+agreement... wait no)
+
+--lifevault-hl-010-0
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="INV-2026-016.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjQKJSBMaWZlVmF1bHQgZmljdGlvbmFsIHBsYWNlaG9sZGVyIGF0dGFjaG1lbnQKJSVF
+T0YK
+
+--lifevault-hl-010-0--

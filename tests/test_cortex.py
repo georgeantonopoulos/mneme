@@ -1,0 +1,475 @@
+"""The cortex core is LLM-agnostic: these tests drive it with a scripted mind."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from mneme.cortex import AwaitingMind, Brain, FileMind, FunctionMind, Task
+from mneme.cortex.mind import parse_json_reply
+
+
+def _vault(root: Path) -> Path:
+    notes = root / "vault" / "Projects"
+    notes.mkdir(parents=True)
+    (notes / "Boat.md").write_text("---\nupdated: 2026-05-02\n---\n# Boat\n\n- Mooring renewal due 2026-06-01\n", encoding="utf-8")
+    (notes / "Garden.md").write_text("---\nupdated: 2026-05-20\n---\n# Garden\n\n- Plant beans in May\n", encoding="utf-8")
+    chat = root / "sources" / "chat"
+    chat.mkdir(parents=True)
+    (chat / "messages.jsonl").write_text(
+        json.dumps({"ts": "2026-05-03T10:00", "chat": "Harbour", "from": "Harbour", "text": "Mooring renewal is now due 2026-06-15"}) + "\n"
+        + json.dumps({"ts": "2026-07-01T10:00", "chat": "Harbour", "from": "Harbour", "text": "Thanks, renewal received"}) + "\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+class ScriptedMind:
+    """Answers each task kind deterministically, the way an LLM would be asked to."""
+
+    def __init__(self):
+        self.seen: list[Task] = []
+
+    def ask_many(self, tasks):
+        self.seen.extend(tasks)
+        return [getattr(self, task.kind)(task.payload) for task in tasks]
+
+    def regions(self, payload):
+        return {"areas": [{"id": "a1", "title": "Home", "description": "", "topics": [
+            {"id": "a1.t1", "title": "Boat", "description": ""}, {"id": "a1.t2", "title": "Garden", "description": ""}]}]}
+
+    def perceive(self, payload):
+        out = []
+        for n in payload["neurons"]:
+            garden = "Garden" in n["title"]
+            synapses = [{"to": c["id"], "relation": "updates", "weight": 0.9} for c in n["candidates"] if "Mooring" in c["summary"] and not garden]
+            out.append({"id": n["id"], "topics": ["a1.t2" if garden else "a1.t1"], "trust": "ok", "trust_reason": "",
+                        "synapses": synapses + [{"to": "not-a-neuron", "relation": "x", "weight": 1}]})
+        return {"neurons": out}
+
+    def topic_gist(self, payload):
+        return {"gist": f"{payload['topic']['title']}: {len(payload['neurons'])} memories"}
+
+    def area_gist(self, payload):
+        return {"gist": "home things"}
+
+    def zoom_areas(self, payload):
+        return {"areas": ["a1"], "lookups": ["mooring renewal"]}
+
+    def zoom_topics(self, payload):
+        return {"topics": ["a1.t1"]}
+
+    def skim_neurons(self, payload):
+        return {"open": [c["id"] for c in payload["candidates"]] + ["invented-id"], "note": ""}
+
+    def read_neurons(self, payload):
+        ids = [m["id"] for m in payload["memories"]]
+        assert all("text" in m for m in payload["memories"])  # opened memories are read in full
+        return {"evidence": list(reversed(ids)) + ["invented-id"], "note": ""}
+
+
+def test_perceive_and_recall_with_any_mind(tmp_path: Path):
+    mind = ScriptedMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    assert brain.ingest_sources(_vault(tmp_path))["neurons"] == 4
+    stats = brain.perceive()
+    assert stats["regions"] == 1
+    assert brain.conn.execute("SELECT count(*) FROM synapses WHERE dst = 'not-a-neuron'").fetchone()[0] == 0
+    assert brain.conn.execute("SELECT count(*) FROM synapses").fetchone()[0] > 0
+    gists = dict(brain.conn.execute("SELECT id, gist FROM regions"))
+    assert gists["a1.t1"].startswith("Boat") and gists["a1"] == "home things"
+
+    hits = brain.recall("When is the mooring renewal due?", as_of="2026-06-01T00:00:00+00:00")
+    ids = [h.id for h in hits]
+    assert ids and "invented-id" not in ids
+    assert all("Garden" not in h.title for h in hits)  # only the chosen topic and lookups
+    assert not any(h.text.startswith("Harbour: Thanks") for h in hits)  # known only after as_of
+    assert {t.kind for t in mind.seen} >= {"regions", "perceive", "topic_gist", "zoom_areas", "zoom_topics", "skim_neurons", "read_neurons"}
+
+
+def test_file_mind_defers_then_resumes(tmp_path: Path):
+    mind = FileMind(tmp_path / "mind")
+    task = Task("demo", "Say hi", {"x": 1}, {"reply": "..."})
+    with pytest.raises(AwaitingMind) as waiting:
+        mind.ask_many([task])
+    assert waiting.value.pending == [task.id]
+    queued = json.loads((mind.outbox / f"{task.id}.json").read_text())
+    assert "Say hi" in queued["prompt"]
+    (mind.answers / f"{task.id}.json").write_text('```json\n{"reply": "hi"}\n```')
+    assert mind.ask_many([task]) == [{"reply": "hi"}]
+
+
+def test_function_mind_caches_answers(tmp_path: Path):
+    calls = []
+    mind = FunctionMind(lambda prompt: calls.append(prompt) or 'Sure! {"ok": true}', cache=FileMind(tmp_path / "mind"))
+    task = Task("demo", "Answer", {"q": 1}, {"ok": True})
+    assert mind.ask_many([task]) == [{"ok": True}]
+    assert mind.ask_many([task]) == [{"ok": True}]
+    assert len(calls) == 1
+
+
+def test_task_ids_are_content_hashes():
+    a = Task("k", "i", {"x": 1})
+    assert a.id == Task("k", "i", {"x": 1}).id != Task("k", "i", {"x": 2}).id
+
+
+def test_parse_json_reply_rejects_non_json():
+    with pytest.raises(ValueError):
+        parse_json_reply("no json here")
+
+
+def test_openai_compatible_mind_talks_to_any_endpoint(tmp_path: Path):
+    import http.server
+    import threading
+
+    seen = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen["auth"] = self.headers.get("Authorization")
+            reply = {"choices": [{"message": {"content": '{"ok": true}'}}]}
+            data = json.dumps(reply).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        from mneme.cortex.mind import mind_from_config
+        import os
+        os.environ["TEST_MIND_KEY"] = "secret"
+        mind = mind_from_config({"provider": "openai-compatible", "base_url": f"http://127.0.0.1:{server.server_port}/v1",
+                                 "model": "local-model", "api_key_env": "TEST_MIND_KEY"})
+        assert mind.ask_many([Task("demo", "Answer", {"q": 1}, {"ok": True})]) == [{"ok": True}]
+        assert seen["body"]["model"] == "local-model" and seen["auth"] == "Bearer secret"
+    finally:
+        server.shutdown()
+
+
+def test_command_mind_and_role_routing(tmp_path: Path):
+    import sys
+    from mneme.cortex.mind import CommandMind, MeteredMind, RoleMind
+
+    echo = CommandMind(f"{sys.executable} -c \"import sys; sys.stdin.read(); print('{{\\\"who\\\": \\\"cmd\\\"}}')\"")
+    other = FunctionMind(lambda prompt: '{"who": "fn"}')
+    mind = MeteredMind(RoleMind(other, {"special": echo}))
+    out = mind.ask_many([Task("plain", "a", {}), Task("special", "b", {}), Task("plain", "c", {})])
+    assert [o["who"] for o in out] == ["fn", "cmd", "fn"]
+    assert mind.calls == {"plain": 2, "special": 1}
+
+
+def test_suspicious_content_never_reaches_gists(tmp_path: Path):
+    class Suspicious(ScriptedMind):
+        def perceive(self, payload):
+            out = super().perceive(payload)
+            for item in out["neurons"]:
+                if "Garden" in next(n["title"] for n in payload["neurons"] if n["id"] == item["id"]):
+                    item["trust"], item["trust_reason"] = "suspicious", "instructions aimed at an assistant"
+            return out
+
+    mind = Suspicious()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain.perceive()
+    gist_inputs = json.dumps([t.payload for t in mind.seen if t.kind == "topic_gist"])
+    assert "Plant beans" not in gist_inputs
+    assert "instructions aimed at an assistant" in gist_inputs
+
+    # Recall: even an exact-text hit shows only a caption and the warning until the mind opens it.
+    mind.zoom_areas = lambda payload: {"areas": ["a1"], "lookups": ["Plant beans"]}
+    before = len(mind.seen)
+    brain.recall("What should I plant?", as_of="2026-06-01T00:00:00+00:00")
+    skim = next(t for t in mind.seen[before:] if t.kind == "skim_neurons")
+    garden = [c for c in skim.payload["candidates"] if c.get("trust")]
+    assert garden and "Plant beans" not in json.dumps(skim.payload)
+    read = next(t for t in mind.seen[before:] if t.kind == "read_neurons")
+    assert "Plant beans" in json.dumps(read.payload)  # opened on purpose: read in full, still labelled
+
+
+def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    root = _vault(tmp_path)
+    mind = ScriptedMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    brain.perceive()
+    first = len(mind.seen)
+
+    # Nothing new: perceiving again asks the mind nothing.
+    assert brain.ingest(read_sources(root), incremental=True)["added"] == 0
+    brain.perceive()
+    assert len(mind.seen) == first
+
+    # A new memory plus an edited note: one new neuron, one new version, old version kept.
+    (root / "vault" / "Projects" / "Boat.md").write_text("---\nupdated: 2026-06-20\n---\n# Boat\n\n- Mooring renewed until 2027\n", encoding="utf-8")
+    (root / "vault" / "Projects" / "Kayak.md").write_text("---\nupdated: 2026-06-21\n---\n# Kayak\n\n- Bought a kayak\n", encoding="utf-8")
+    stats = brain.ingest(read_sources(root), incremental=True)
+    assert stats == {"neurons": 6, "added": 2, "new_versions": 1}
+    brain.perceive()
+    new = mind.seen[first:]
+    assert [t.kind for t in new if t.kind == "regions"] == []  # the map is kept
+    assert sum(len(t.payload["neurons"]) for t in new if t.kind == "perceive") == 2
+    assert {t.payload["topic"]["title"] for t in new if t.kind == "topic_gist"} <= {"Boat", "Garden"}
+    old = brain.recall("mooring", as_of="2026-06-01T00:00:00+00:00")
+    assert all("2027" not in h.text for h in old)  # the past still answers as it was
+
+
+
+class ReflectingMind(ScriptedMind):
+    def reflect(self, payload):
+        self.last_reflect = payload
+        neurons = [c["id"] for c in payload["recent"]] or ["n1"]
+        return {"thoughts": [{"text": "Mooring renewal is due soon", "why_now": "date close", "kind": "deadline",
+                              "cites": neurons[:1], "urgency": 0.9},
+                             {"text": "Unsupported idea", "cites": ["n999"]},
+                             {"text": "Rejected by verify", "cites": neurons[:1]}],
+                "retire": [o["id"] for o in payload["open"]],
+                "bridges": [{"a": "a1.t1", "b": "a1.t2", "why": "test"}, {"a": "a1.t1", "b": "nope"}]}
+
+    def verify_thought(self, payload):
+        assert payload["memories"] and all("text" in m or "caption" in m for m in payload["memories"])
+        return {"keep": payload["thought"] != "Rejected by verify", "text": payload["thought"], "reason": ""}
+
+    def connect(self, payload):
+        return {"links": [{"from": payload["left"][0]["id"], "to": payload["right"][0]["id"], "relation": "same harbour", "weight": 0.6},
+                          {"from": payload["left"][0]["id"], "to": "n999", "relation": "invented"}]}
+
+
+def test_reflection_raises_verified_thoughts_retires_and_dreams(tmp_path: Path):
+    mind = ReflectingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain.perceive()
+    stats = brain.reflect(now="2026-07-02T00:00:00+00:00")
+    assert stats == {"proposed": 2, "raised": 1, "retired": 0, "links": 1}  # unsupported cite dropped, verify rejected one
+    (thought,) = brain.thoughts()
+    assert thought["text"] == "Mooring renewal is due soon" and thought["evidence"]
+    made = brain.conn.execute("SELECT src, dst, relation FROM synapses WHERE made_by = 'reflect'").fetchall()
+    assert len(made) == 2 and {r["relation"] for r in made} == {"same harbour"}  # one link, both directions
+
+    # Next pass: only new memories are "recent", the open thought is offered for retirement.
+    stats = brain.reflect(now="2026-07-03T00:00:00+00:00")
+    assert mind.last_reflect["recent"] == [] and mind.last_reflect["open"] == [{"id": f"t{thought['id']}", "text": thought["text"]}]
+    assert stats["retired"] == 1 and stats["raised"] == 1 and stats["links"] == 0  # the link already exists
+
+    # Dismissing inhibits a thought: it is passed as quiet until QUIET_DAYS have passed.
+    tid = brain.thoughts()[0]["id"]
+    assert brain.dismiss(tid, now="2026-07-03T00:00:00+00:00")
+    brain.reflect(now="2026-07-04T00:00:00+00:00")
+    assert "Mooring renewal is due soon" in mind.last_reflect["quiet"]
+    brain.reflect(now="2026-08-01T00:00:00+00:00")
+    assert mind.last_reflect["quiet"] == []
+
+
+class InboxMind(ScriptedMind):
+    """One long stream of bank alerts and a one-memory spam topic."""
+
+    def regions(self, payload):
+        return {"areas": [{"id": "a1", "title": "Inbox", "description": "", "topics": [
+            {"id": "a1.t1", "title": "Bank alerts", "description": ""}, {"id": "a1.t2", "title": "Spam", "description": ""}]}]}
+
+    def perceive(self, payload):
+        return {"neurons": [{"id": n["id"], "topics": ["a1.t2" if "verify" in n["text"] else "a1.t1"],
+                             "trust": "suspicious" if "verify" in n["text"] else "ok", "trust_reason": "phishing" if "verify" in n["text"] else "",
+                             "caption": n["text"][:60], "synapses": []} for n in payload["neurons"]]}
+
+    def zoom_areas(self, payload):
+        return {"areas": ["a1"], "lookups": []}
+
+    def zoom_topics(self, payload):
+        return {"topics": ["a1.t1", "a1.t2"]}
+
+
+def test_chosen_topics_share_the_candidate_cap(tmp_path: Path):
+    chat = tmp_path / "sources" / "chat"
+    chat.mkdir(parents=True)
+    lines = [{"ts": f"2026-0{1 + i // 28}-{1 + i % 28:02d}T09:00", "chat": "Bank", "from": "Bank", "text": f"Statement {i} is ready"}
+             for i in range(150)]
+    lines.append({"ts": "2026-01-15T12:00", "chat": "Fake bank", "from": "Fake bank", "text": "Action needed: verify your account now"})
+    (chat / "messages.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    mind = InboxMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(tmp_path)
+    brain.perceive()
+    brain.recall("Did my bank ask me to do anything?", as_of="2026-12-01T00:00:00+00:00")
+    skim = [t for t in mind.seen if t.kind == "skim_neurons"][-1].payload["candidates"]
+    assert len(skim) == 120  # the long topic is capped...
+    assert any(c.get("trust", "").startswith("suspicious") for c in skim)  # ...but cannot push the small one out
+
+
+def test_every_distinct_revision_is_kept_even_on_the_same_day(tmp_path: Path):
+    from mneme.cortex.senses import Episode
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    ep = lambda text: Episode(id="note:Plan.md#0", source="note", doc="Plan.md", refs=["note:Plan.md"],  # noqa: E731
+                              title="Plan", text=text, known_at="2026-05-01T00:00:00+00:00")
+    for text in ("original", "edit one", "edit two", "edit two", "original"):
+        brain.ingest([ep(text)], incremental=True)
+    texts = [r["text"] for r in brain.conn.execute("SELECT text FROM neurons ORDER BY n")]
+    assert texts == ["original", "edit one", "edit two", "original"]  # repeats skipped, a revert is the newest again
+    assert brain.ingest([ep("original")], incremental=True)["added"] == 0
+
+
+class SkippingMind(ScriptedMind):
+    """Answers every neuron except one whose text contains "skip me", until told otherwise."""
+
+    def __init__(self):
+        super().__init__()
+        self.skip = True
+
+    def perceive(self, payload):
+        out = super().perceive(payload)
+        out["neurons"] = [n for n, v in zip(out["neurons"], payload["neurons"]) if not (self.skip and "skip me" in v["text"])]
+        return out
+
+
+def test_a_memory_the_mind_skips_is_asked_about_again(tmp_path: Path):
+    root = _vault(tmp_path)
+    (root / "vault" / "Projects" / "Odd.md").write_text("# Odd\n\nskip me, please\n", encoding="utf-8")
+    mind = SkippingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    assert brain.perceive()["perceived"] == 4  # one of five skipped
+    odd = brain.conn.execute("SELECT id FROM neurons WHERE title = 'Odd'").fetchone()[0]
+    assert not brain.conn.execute("SELECT 1 FROM perceived WHERE neuron = ?", (odd,)).fetchone()
+
+    mind.skip = False
+    assert brain.perceive()["perceived"] == 1  # retried on its own, and answered
+    assert brain.conn.execute("SELECT 1 FROM membership WHERE neuron = ?", (odd,)).fetchone()
+    assert brain.perceive()["perceived"] == 0
+
+
+def test_a_memory_skipped_twice_is_left_to_word_lookup(tmp_path: Path):
+    root = _vault(tmp_path)
+    (root / "vault" / "Projects" / "Odd.md").write_text("# Odd\n\nskip me, please\n", encoding="utf-8")
+    mind = SkippingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    brain.perceive()
+    brain.perceive()
+    asked = sum(t.kind == "perceive" for t in mind.seen)
+    assert brain.perceive()["perceived"] == 0 and sum(t.kind == "perceive" for t in mind.seen) == asked  # no third ask
+    assert brain.lookup("skip me")  # still findable by its words
+
+
+def test_long_memories_are_split_so_reading_sees_all_of_them(tmp_path: Path):
+    from mneme.cortex.senses import MAX_EPISODE_CHARS, read_sources
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    paragraphs = [f"Paragraph {i}: " + "words " * 40 for i in range(12)] + ["The locker code is 4417."]
+    (notes / "Long.md").write_text("# Long\n\n" + "\n\n".join(paragraphs), encoding="utf-8")
+    parts = list(read_sources(notes))
+    assert len(parts) > 1 and all(len(p.text) <= MAX_EPISODE_CHARS for p in parts)
+    assert "4417" in parts[-1].text and parts[-1].title.startswith("Long (part")
+    assert len({p.id for p in parts}) == len(parts) and {tuple(p.refs) for p in parts} == {("note:Long.md",)}
+
+
+def test_undated_files_in_the_journal_folder_are_ordinary_notes(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    journal = tmp_path / "notes" / "Journal"
+    (journal / "Templates").mkdir(parents=True)
+    (journal / "2026-05-01.md").write_text("# Friday\n\nRan 5k.\n", encoding="utf-8")
+    (journal / "Index.md").write_text("# Index\n\nAll entries.\n", encoding="utf-8")
+    (journal / "Templates" / "Daily.md").write_text("# Daily\n\n- mood\n", encoding="utf-8")
+    sources = {e.title: e.source for e in read_sources(tmp_path / "notes")}
+    assert sources == {"Friday": "journal", "Index": "note", "Daily": "note"}
+
+
+def test_lookup_applies_the_time_cutoff_before_the_limit(tmp_path: Path):
+    from mneme.cortex.senses import Episode
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    old = Episode(id="note:Old.md#0", source="note", doc="Old.md", refs=["note:Old.md"], title="Gym",
+                  text="The locker code is 4417. " + "Plenty of other words about the gym and the pool. " * 20,
+                  known_at="2026-01-01T00:00:00+00:00")
+    newer = [Episode(id=f"note:N{i}.md#0", source="note", doc=f"N{i}.md", refs=[f"note:N{i}.md"], title=f"N{i}",
+                     text="locker code", known_at="2026-06-01T00:00:00+00:00") for i in range(11)]
+    brain.ingest([old, *newer])
+    assert brain.phrase_lookup("locker code", as_of="2026-02-01T00:00:00+00:00") == ["note:Old.md#0"]
+    assert brain.lookup("locker code", as_of="2026-02-01T00:00:00+00:00") == ["note:Old.md#0"]
+    assert "note:Old.md#0" not in brain.lookup("locker code", exclude="note:Old.md#0")
+
+
+def test_calendar_times_follow_their_tzid(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_text("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:e1@x\nSUMMARY:Call\n"
+                   "DTSTART;TZID=America/New_York:20260701T090000\nCREATED:20260601T120000Z\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:e2@x\nSUMMARY:Lunch\nDTSTART;TZID=Europe/London:20260701T130000\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:e3@x\nSUMMARY:Odd\nDTSTART;TZID=Not/AZone:20260701T130000\nEND:VEVENT\nEND:VCALENDAR\n",
+                   encoding="utf-8")
+    times = {e.title: e.event_time for e in read_ics(ics)}
+    assert times["Call"].startswith("2026-07-01T13:00:00") and times["Lunch"].startswith("2026-07-01T12:00:00")
+    assert times["Odd"].startswith("2026-07-01T12:00:00")  # unknown zone names fall back to London time
+
+
+def test_note_dates_from_frontmatter_or_the_file(tmp_path: Path):
+    import datetime as dt
+    import os
+
+    from mneme.cortex.senses import read_sources
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "Quoted.md").write_text('---\nupdated: "2026-10-31"\n---\n# Quoted\n\nA\n', encoding="utf-8")
+    (notes / "Timed.md").write_text("---\nupdated: 2026-10-31T08:15:00+00:00\n---\n# Timed\n\nB\n", encoding="utf-8")
+    (notes / "Odd.md").write_text("---\nupdated: last week\n---\n# Odd\n\nC\n", encoding="utf-8")
+    (notes / "Plain.md").write_text("# Plain\n\nD\n", encoding="utf-8")
+    morning = dt.datetime(2026, 11, 1, 8, 0, tzinfo=dt.timezone.utc).timestamp()
+    for name in ("Odd.md", "Plain.md"):
+        os.utime(notes / name, (morning, morning))
+    known = {e.title: e.known_at for e in read_sources(notes)}
+    assert known["Quoted"].startswith("2026-10-31")  # quotes no longer break the whole vault
+    assert known["Timed"] == "2026-10-31T08:15:00+00:00"  # a frontmatter time is kept
+    assert known["Plain"].startswith("2026-11-01T08:00:00") and known["Odd"] == known["Plain"]  # the file's real time, not noon
+
+
+def test_folded_calendar_lines_are_unfolded(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_bytes(b"BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1@x\r\nSUMMARY:Gym\r\nDTSTART:20260701T090000Z\r\n"
+                    b"DESCRIPTION:Meet at the entrance.\r\n The entry code is 4417.\r\n\tBring a towel.\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+    (event,) = read_ics(ics)
+    # RFC 5545: unfolding removes the line break and exactly one space or tab.
+    assert "Meet at the entrance.The entry code is 4417.Bring a towel." in event.text
+
+
+def test_a_notes_folder_with_a_sources_subfolder_is_still_a_notes_folder(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    notes = tmp_path / "notes"
+    (notes / "sources").mkdir(parents=True)
+    (notes / "Ideas.md").write_text("# Ideas\n\nA\n", encoding="utf-8")
+    (notes / "sources" / "Reference.md").write_text("# Reference\n\nB\n", encoding="utf-8")
+    assert {e.title for e in read_sources(notes)} == {"Ideas", "Reference"}
+
+
+def test_calendar_occurrences_and_alarms(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_text("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:standup@x\nSUMMARY:Standup\nDTSTART:20260701T090000Z\n"
+                   "RRULE:FREQ=WEEKLY\nDESCRIPTION:The meeting code is 4417.\nBEGIN:VALARM\nACTION:DISPLAY\n"
+                   "DESCRIPTION:Reminder\nEND:VALARM\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:standup@x\nRECURRENCE-ID:20260708T090000Z\nSUMMARY:Standup (moved)\n"
+                   "DTSTART:20260708T100000Z\nEND:VEVENT\nEND:VCALENDAR\n", encoding="utf-8")
+    events = list(read_ics(ics))
+    assert len({e.id for e in events}) == 2  # the moved occurrence is its own memory
+    assert "The meeting code is 4417." in events[0].text and "Reminder" not in events[0].text
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    for _ in range(3):
+        brain.ingest(read_ics(ics), incremental=True)
+    assert brain.conn.execute("SELECT count(*) FROM neurons").fetchone()[0] == 2  # re-reading adds nothing

@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n861","caption":"Parcelpost Home order ORD-7CWK7 confirmed: desk lamp for £42.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1688","relation":"follows up on","weight":0.6},{"to":"n1876","relation":"led to refund chase","weight":0.5}]},
+{"id":"n855","caption":"Mum's vet appointment booked for Sunday 11 October 2026 at 10:00, Paws & Claws Vets.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1305","relation":"confirms","weight":0.8}]},
+{"id":"n856","caption":"Invoice INV-G034 to Quarry & Sons: 11 days at £450, £4,950, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n866","caption":"Automated weekly calendar email says events are coming up; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n865","caption":"Parenting Today newsletter with weekly picks, links and a reader letter.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n863","caption":"Bristol Eats newsletter: five things the team loved this week.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n864","caption":"Harbour Life newsletter with a quick update and favourite links.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1440","caption":"Lena in chat asks Nia whether she saw the rain.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n123","caption":"Journal 30 Aug: made a clay octopus with Ivy, who wants to sell them.","topics":["a11.t1","a2.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1874","caption":"Open home task to order printer ink, status open as of 30 August 2026.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1845","relation":"same task as","weight":0.4},{"to":"n1867","relation":"repeats earlier completed task","weight":0.4},{"to":"n1896","relation":"later completed by","weight":0.4}]},
+{"id":"n1850","caption":"Done: booked Ivy's dentist check-up, completed 12 August 2026 (due 30 August).","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1441","caption":"Lena in chat replies that Nia's news is brilliant.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n868","caption":"Spoke & Chain quote JOB-78BHF: £270 to repair broken bike gears, parts and labour.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n869","caption":"MailShield subscription cancelled; the plan ends Sunday 13 September 2026.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n405","relation":"cancels subscription started by","weight":0.6}]},
+{"id":"n1775","caption":"Sam in chat complains that Mondays are tiring.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n862","caption":"Invoice INV-G072 to Paper Health Accounts: 9 days at £550, £4,950, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n870","caption":"Automated calendar email says events are coming up this week; open calendar to view.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1442","caption":"Lena in chat says all is good, with a kiss.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n867","caption":"Bike Hub receipt: total paid £34.91 for a purchase.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n874","caption":"CloudVault automated email: security check passed, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

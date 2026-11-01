@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n286","caption":"Product Notes newsletter, 'behind the scenes', received 2026-05-09.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1238","caption":"Ivy swimming, Sat 9 May 2026 at 09:00, Riverside Pool, confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1479","caption":"Chat with Marcus, 2026-05-09: Nia says lol yes.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1480","caption":"Chat with Marcus, 2026-05-09: Nia says ha, classic.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n289","caption":"CloudVault 'your week ahead' notification, 2026-05-10. No action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n288","caption":"Parenting Today newsletter, the autumn issue, received 2026-05-10.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n291","caption":"Yoga Loft welcome email 2026-05-10: plan costs £28.00 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1009","relation":"is raised by","weight":0.9}]},
+{"id":"n290","caption":"Pet Pantry receipt 2026-05-10: total paid £17.50.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n240","caption":"Recipe note 'lentil soup', 2026-05-10: add lemon at the end, freezes well.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n249","caption":"Red Lentil Dal recipe, 2026-05-10: red lentils, tomatoes, coconut milk; Ivy approved, no chilli.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n117","relation":"is cooked again in","weight":0.5},{"to":"n157","relation":"is cooked again in","weight":0.4}]},
+{"id":"n294","caption":"Parenting Today newsletter, the autumn issue, received 2026-05-11.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n295","caption":"Design Weekly #202 newsletter, 'designing for offline-first apps', received 2026-05-11.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n293","caption":"Harbour Life newsletter, the long read, received 2026-05-11.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n292","caption":"Bristol Eats newsletter, 'events near you', received 2026-05-11.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n54","caption":"Journal entry 2026-05-11: bike ride, knee felt OK.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n27","caption":"Idea note 'a zine about Bristol', 2026-05-11: ask Lena, maybe later.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n202","caption":"Vik Abara contact note, 2026-05-11: friend from uni, lives in Clifton, birthday 10 April.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n297","caption":"Calendar 'backup complete' notification, 2026-05-12. No action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n296","caption":"Design Weekly newsletter, 'reader questions', received 2026-05-12.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1239","caption":"Physio with Helen Marsh, Tue 12 May 2026 at 08:15, Northgate Physio, confirmed.","topics":["a5.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1243","relation":"is followed by","weight":0.3},{"to":"n1324","relation":"is followed by review in","weight":0.4}]}
+]}

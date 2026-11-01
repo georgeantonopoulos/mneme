@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n498","caption":"Bristol Eats 'the long read' newsletter received 2026-06-27.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n499","caption":"Harbour Life 'our favourite links' newsletter received 2026-06-27.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1247","caption":"Ivy swimming Sat 27 June 2026 at 09:00, Riverside Pool, status confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1516","caption":"Chat with Marcus 2026-06-27: Marcus says can't do this weekend, sorry.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n18","caption":"Paper Press client note: Pia Jansen, annual report, £625 a day, deadline 2 Oct, invoices net 30.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1042","relation":"deadline moved by","weight":0.9}]},
+{"id":"n230","caption":"Reading notes on tomato tart, 2026-06-27: chapter thoughts and a quote worth keeping.","topics":["a10.t1","a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n502","caption":"TeaClub welcome email dated 2026-06-27: plan costs £14.00 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n699","relation":"price rise on this plan","weight":0.9}]},
+{"id":"n501","caption":"Fuel Stop receipt dated 2026-06-27, total paid £17.21.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n497","caption":"Pia Jansen offers annual report work at £625 a day, starting Sat 4 July 2026.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1517","caption":"Chat with Marcus 2026-06-27: Marcus asks about coffee next week.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n505","caption":"'Your parcel is on its way' notice dated 2026-06-28 sent from a calendar address; sender and subject mismatch.","topics":["a12.t2"],"trust":"suspicious","trust_reason":"Sender is the Calendar service but the subject is a parcel delivery notice; sender and subject do not match.","synapses":[]},
+{"id":"n504","caption":"Parenting Today 'a quick update' newsletter received 2026-06-28.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n503","caption":"Clay Times 'what's new this week' newsletter received 2026-06-28.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1608","caption":"Chat with Mum 2026-06-28: Grace asks about coffee next week.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1361","caption":"Nia asks Kitstore support to return damaged plant pots from order ORD-SYZHE, 2026-06-28.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1362","relation":"support reply to this request","weight":0.9}]},
+{"id":"n1848","caption":"Task: chase Kitstore refund of £22 for plant pots; open; Admin; dated 2026-06-28.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n506","caption":"Pet Pantry receipt dated 2026-06-28, total paid £28.14.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1609","caption":"Chat with Mum 2026-06-28: Grace says just got home.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1401","caption":"Chat with Lena 2026-06-28: Lena says that's brilliant news.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n507","caption":"LearnLang welcome email dated 2026-06-28: plan costs £8.99 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

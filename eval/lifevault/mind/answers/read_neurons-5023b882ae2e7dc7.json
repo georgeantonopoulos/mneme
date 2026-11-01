@@ -1,0 +1,1 @@
+{"evidence":["n7","n244","n103","n392"],"note":"INV-2026-017 (6000 GBP, due 30 Oct 2026) has no payment recorded as of 29 Oct; the 22 Oct check-in expected it in the next payment run, and the check-payment task is still open."}

@@ -1,0 +1,78 @@
+{"neurons": [
+{"id": "email:hl-011", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-010", "relation": "contradicts day rate (GBP 450 vs GBP 500)", "weight": 0.6},
+  {"to": "email:hl-007", "relation": "previous invoice in INV sequence", "weight": 0.4},
+  {"to": "email:hl-016", "relation": "next invoice in INV sequence", "weight": 0.4},
+  {"to": "note:Clients/Halcyon Labs.md#0", "relation": "billed under", "weight": 0.3}
+]},
+{"id": "email:nt-bank-123", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:tx-002", "topics": ["a8.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Rhea Kapoor.md#0", "relation": "announces handover to", "weight": 0.9},
+  {"to": "email:tx-003", "relation": "handover followed by", "weight": 0.6},
+  {"to": "note:People/Felix Grant.md#0", "relation": "same person as", "weight": 0.5},
+  {"to": "note:Finance/Tax 2025-26.md#0", "relation": "changed accountant recorded in", "weight": 0.4}
+]},
+{"id": "event:ev-mv-move", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-mv-move2", "relation": "cancelled and replaced by", "weight": 0.9}
+]},
+{"id": "chat:Mum@2026-09-01T20:13", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-05-14T14:04", "relation": "already answered by", "weight": 0.3}
+]},
+{"id": "email:hl-012", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-013", "relation": "answered by", "weight": 0.9},
+  {"to": "email:hl-007", "relation": "chases payment of", "weight": 0.8},
+  {"to": "email:hl-008", "relation": "payment stalled after approver left", "weight": 0.3}
+]},
+{"id": "task:t-hl-1", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-007", "relation": "is the chase for", "weight": 0.8},
+  {"to": "task:t-hl-4", "relation": "parallel follow-up on next invoice", "weight": 0.4}
+]},
+{"id": "task:t-x-4", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:br-004", "topics": ["a1.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Josie Bramble.md#0", "relation": "paid by same client contact as", "weight": 0.4}
+]},
+{"id": "event:ev-hl-checkin-2", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-checkin-1", "relation": "earlier check-in in same weekly series", "weight": 0.2}
+]},
+{"id": "note:Clients/Bramble and Co.md#0", "topics": ["a1.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:br-003", "relation": "kill fee invoiced in", "weight": 0.8},
+  {"to": "email:br-002", "relation": "cancellation recorded in", "weight": 0.8},
+  {"to": "email:br-001", "relation": "original enquiry in", "weight": 0.6},
+  {"to": "journal:2026-08-20", "relation": "reflects on cancellation in", "weight": 0.3}
+]},
+{"id": "note:People/Kemi Adeyemi.md#0", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:iv-002", "relation": "sent by same teacher as", "weight": 0.7},
+  {"to": "event:ev-iv-pe", "relation": "meets at parents' evening", "weight": 0.5},
+  {"to": "note:Areas/Larkfield Primary.md#0", "relation": "school context for", "weight": 0.5},
+  {"to": "email:iv-003", "relation": "parents' evening booking with", "weight": 0.4}
+]},
+{"id": "email:hl-013", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-012", "relation": "answers", "weight": 0.9},
+  {"to": "email:hl-007", "relation": "payment run for", "weight": 0.6},
+  {"to": "task:t-hl-1", "relation": "closes chase task for", "weight": 0.5},
+  {"to": "note:Meetings/2026-08-18 Daniel intro.md#0", "relation": "explained by approval change in", "weight": 0.4}
+]},
+{"id": "email:iv-002", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Kemi Adeyemi.md#0", "relation": "sent by same teacher as", "weight": 0.7},
+  {"to": "email:iv-003", "relation": "introduces parents' evening booked in", "weight": 0.5},
+  {"to": "event:ev-iv-pe", "relation": "introduces parents' evening held at", "weight": 0.4}
+]},
+{"id": "event:ev-swim-2026-09-05", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-06-13", "relation": "earlier Saturday session in series", "weight": 0.2}
+]},
+{"id": "journal:2026-09-05", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Mum@2026-09-05T13:53", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-19", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:iv-001", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-09-13", "relation": "first session under new timetable", "weight": 0.8},
+  {"to": "task:t-iv-1", "relation": "fee payable in", "weight": 0.7},
+  {"to": "note:People/Ivy.md#0", "relation": "schedule change updates", "weight": 0.6},
+  {"to": "event:ev-swim-2026-09-20", "relation": "later session in new slot", "weight": 0.3}
+]},
+{"id": "note:People/Ivy.md#0", "topics": ["a3.t1", "a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Kemi Adeyemi.md#0", "relation": "names class teacher", "weight": 0.6},
+  {"to": "email:iv-001", "relation": "schedule change captured in", "weight": 0.6},
+  {"to": "event:ev-swim-2026-09-13", "relation": "confirms new Sunday slot", "weight": 0.5},
+  {"to": "note:Areas/Larkfield Primary.md#0", "relation": "school named in", "weight": 0.4}
+]}
+]}

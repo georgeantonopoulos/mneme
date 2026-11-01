@@ -1,0 +1,33 @@
+{"neurons": [
+{"id": "email:nt-bank-0", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-be-2026-05-01", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-01", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Archive/Old flat hunt 2024.md#0", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:Projects/Flat Move.md#2", "relation": "earlier flat search, later superseded by", "weight": 0.3}
+]},
+{"id": "note:People/Grace Okafor.md#0", "topics": ["a3.t4", "a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-09-28T20:00", "relation": "later gives the specific hip date", "weight": 0.7}
+]},
+{"id": "event:ev-swim-2026-05-02", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Lena@2026-05-02T10:14", "topics": ["a6.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-02", "topics": ["a4.t2", "a4.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nt-cal-2", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-1", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-04", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:hl-001", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-009", "relation": "superseded by later rate change", "weight": 0.8},
+  {"to": "event:ev-hl-kickoff", "relation": "sets up kickoff date", "weight": 0.6}
+]},
+{"id": "journal:2026-05-05", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-hl-kickoff", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-review", "relation": "same project, comes after", "weight": 0.3}
+]},
+{"id": "journal:2026-05-06", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-05-07", "topics": ["a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-6", "topics": ["a5.t2", "a9.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-swim-2026-05-09", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Resources/Recipe - Red Lentil Dal.md#0", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "journal:2026-08-19", "relation": "is cooked in", "weight": 0.4}
+]},
+{"id": "email:nl-dw-2", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []}
+]}

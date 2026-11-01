@@ -1,0 +1,15 @@
+Message-ID: <kn-001@lifevault.example>
+Date: Thu, 01 Oct 2026 12:00:00 +0100
+From: Northgate Physio <bookings@northgatephysio.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Appointment confirmation
+X-LifeVault-Id: kn-001
+X-LifeVault-Thread: kn-nov
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Your appointment with Helen Marsh is confirmed:
+Thursday 5 November 2026, 08:15
+Northgate Physio, Gloucester Road

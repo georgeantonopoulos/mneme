@@ -1,0 +1,17 @@
+Message-ID: <ls-003@lifevault.example>
+Date: Mon, 14 Sep 2026 06:00:00 +0100
+From: Aerolis Airways <bookings@aerolis.example>
+To: Nia Okafor <nia@okafor.example>
+In-Reply-To: <ls-001@lifevault.example>
+References: <ls-001@lifevault.example>
+Subject: Important: change to your booking AE7QK2
+X-LifeVault-Id: ls-003
+X-LifeVault-Thread: ls-flight
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Unfortunately your flight on Thu 8 Oct has been cancelled.
+You have been rebooked on: Fri 9 Oct 2026, BRS 06:40 -> LIS 09:35.
+Your return flight is unchanged.

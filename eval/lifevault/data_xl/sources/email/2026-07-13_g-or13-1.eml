@@ -1,0 +1,14 @@
+Message-ID: <g-or13-1@lifevault.example>
+Date: Mon, 13 Jul 2026 20:04:00 +0100
+From: Kitstore <orders@kitstore.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Order confirmed ORD-X58M8
+X-LifeVault-Id: g-or13-1
+X-LifeVault-Thread: g-or13-1
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your order ORD-X58M8: kettle, £35.

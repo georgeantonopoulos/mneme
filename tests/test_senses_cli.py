@@ -37,7 +37,7 @@ class FakeRunner:
 def test_gws_sense_parses_email_calendar_and_task_fixture_output(tmp_path: Path):
     runner = FakeRunner(
         [
-            json.dumps({"messages": [{"id": "m1", "threadId": "thread-1", "subject": "ARRI feedback", "snippet": "Need reply about Sequency ARRI feedback", "from": "Casey"}]}),
+            json.dumps({"messages": [{"id": "m1", "threadId": "thread-1", "subject": "Vantage feedback", "snippet": "Need reply about Lumora Vantage feedback", "from": "Casey"}]}),
             json.dumps({
                 "id": "m1",
                 "threadId": "thread-1",
@@ -45,7 +45,7 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output(tmp_path: Path)
                 "payload": {
                     "mimeType": "multipart/mixed",
                     "headers": [
-                        {"name": "Subject", "value": "ARRI feedback"},
+                        {"name": "Subject", "value": "Vantage feedback"},
                         {"name": "From", "value": "Casey (test sender)"},
                         {"name": "To", "value": "George (test recipient)"},
                         {"name": "Date", "value": "Fri, 08 May 2026 10:00:00 +0000"},
@@ -56,8 +56,8 @@ def test_gws_sense_parses_email_calendar_and_task_fixture_output(tmp_path: Path)
                     ],
                 },
             }),
-            json.dumps({"events": [{"id": "e1", "summary": "ARRI review", "start": "2026-05-08", "description": "Deadline risk for feedback"}]}),
-            json.dumps({"tasks": [{"id": "t1", "title": "Send ARRI reply", "notes": "Follow up today"}]}),
+            json.dumps({"events": [{"id": "e1", "summary": "Vantage review", "start": "2026-05-08", "description": "Deadline risk for feedback"}]}),
+            json.dumps({"tasks": [{"id": "t1", "title": "Send Vantage reply", "notes": "Follow up today"}]}),
         ]
     )
 
@@ -138,8 +138,8 @@ def test_tick_surface_feedback_and_explain_are_source_agnostic(tmp_path: Path):
             source_id="project.md",
             source_uri=None,
             observed_at="2026-05-07T00:00:00+00:00",
-            title="Sequency",
-            text="- [ ] Need Sequency ARRI feedback reply by 2026-05-10",
+            title="Lumora",
+            text="- [ ] Need Lumora Vantage feedback reply by 2026-05-10",
             event_type="document",
             metadata={"path": "project.md"},
         ),
@@ -150,8 +150,8 @@ def test_tick_surface_feedback_and_explain_are_source_agnostic(tmp_path: Path):
             source_id="email_message:m1",
             source_uri="gws://mail/m1",
             observed_at="2026-05-07T00:00:00+00:00",
-            title="ARRI feedback",
-            text="Need Sequency ARRI feedback reply soon",
+            title="Vantage feedback",
+            text="Need Lumora Vantage feedback reply soon",
             event_type="email_message",
         ),
     ]

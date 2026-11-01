@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1891","caption":"Task: check invoice INV-2026-017 (Halcyon) is paid; due Sat 31 Oct 2026; still open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1318","caption":"Ivy swimming Sun 1 Nov 2026 at 10:00, Riverside Pool, status confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1894","caption":"Task: check invoice INV-G013 (Lantern Press) is paid; due Sun 1 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1895","caption":"Task: check invoice INV-G043 (Kestrel & Sons) is paid; due Mon 2 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1892","caption":"Task: accessibility audit of Kestrel colour tokens for Halcyon; due Mon 2 Nov 2026; open.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n213","relation":"project context for","weight":0.4}]},
+{"id":"n1319","caption":"Blood test at Harbour Health Centre, Tue 3 Nov 2026 11:00, was cancelled; rebooked for 17 Nov.","topics":["a5.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1330","relation":"rescheduled as","weight":0.9},{"to":"n1016","relation":"booking confirmation for the cancelled slot","weight":0.5}]},
+{"id":"n1912","caption":"Task: sign museum permission slip and pay £12 on ParentPay, due Tue 3 Nov 2026; open.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1187","relation":"action required by","weight":0.9},{"to":"n1328","relation":"pays for trip on","weight":0.6},{"to":"n4","relation":"school details for","weight":0.5}]},
+{"id":"n1320","caption":"Kestrel final prototype review, Tue 3 Nov 2026 at 14:00 at Halcyon Labs, status confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1897","caption":"Task: check invoice INV-G114 (Signal Works) is paid; due Wed 4 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1321","caption":"Physio review with Helen, Thu 5 Nov 2026 at 08:15, was cancelled.","topics":["a5.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1324","relation":"moved to","weight":0.9}]},
+{"id":"n1899","caption":"Task: check invoice INV-G003 (Hollow Studio) is paid; due Thu 5 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1900","caption":"Task: check invoice INV-G063 (Juniper Works) is paid; due Thu 5 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1322","caption":"Parents' evening with Ms Adeyemi, Thu 5 Nov 2026 at 16:30, Larkfield Primary, status confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1141","relation":"booking confirmation for","weight":0.8},{"to":"n4","relation":"school note gives the same 16:30 slot","weight":0.5}]},
+{"id":"n1324","caption":"Physio review with Helen, Fri 6 Nov 2026 at 08:15, Northgate Physio, confirmed; asks about returning to running.","topics":["a5.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1321","relation":"replaces cancelled Thu 5 Nov slot","weight":0.8}]},
+{"id":"n1323","caption":"Kestrel dev handoff set for Fri 6 Nov 2026 was cancelled; moved to Fri 20 Nov.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1332","relation":"rescheduled to 20 Nov","weight":0.9},{"to":"n1152","relation":"reason: offline mode work pushed handoff","weight":0.8}]},
+{"id":"n1914","caption":"Task: pay £45 Christmas market stall fee for Ember and Clay; due Fri 6 Nov 2026; open.","topics":["a2.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1205","relation":"fee for accepted stall","weight":0.8},{"to":"n208","relation":"project background","weight":0.3}]},
+{"id":"n1325","caption":"Car service at Redcliffe Garage, Fri 6 Nov 2026 at 14:00, status confirmed.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1055","relation":"booking confirmation for","weight":0.9}]},
+{"id":"n1902","caption":"Task: check invoice INV-G154 (Copper Partners) is paid; due Sat 7 Nov 2026; open.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1903","caption":"Called Brightway to haggle and update address; marked done 2026-10-20.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1179","relation":"outcome of this call","weight":0.9}]},
+{"id":"n1326","caption":"Ivy swimming Sun 8 Nov 2026 at 10:00, Riverside Pool, status confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

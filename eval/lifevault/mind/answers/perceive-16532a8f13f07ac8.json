@@ -1,0 +1,51 @@
+{"neurons": [
+{"id": "note:Resources/Recipe - Miso Aubergine.md#0", "topics": ["a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:mv-003", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-004", "relation": "is answered by", "weight": 0.9},
+  {"to": "email:mv-002", "relation": "negotiates down from", "weight": 0.6},
+  {"to": "task:t-mv-1", "relation": "leads to signing of", "weight": 0.4}
+]},
+{"id": "journal:2026-07-23", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-be-2026-07-24", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-07-24", "topics": ["a1.t4", "a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Mum@2026-07-25T10:45", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-05-14T14:04", "relation": "same question as earlier thread", "weight": 0.3}
+]},
+{"id": "journal:2026-07-26", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-x-4", "relation": "concerns the same school shoes as", "weight": 0.4}
+]},
+{"id": "email:nl-dw-13", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:mv-004", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-003", "relation": "replies to", "weight": 0.9},
+  {"to": "task:t-mv-1", "relation": "sets signing deadline for", "weight": 0.6},
+  {"to": "email:mv-002", "relation": "revises agreed rent from", "weight": 0.5}
+]},
+{"id": "email:hl-006", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-005", "relation": "pays", "weight": 0.9},
+  {"to": "email:hl-003", "relation": "earlier payment from same client", "weight": 0.3}
+]},
+{"id": "email:rc-89", "topics": ["a5.t2", "a6.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-62", "relation": "previous firing invoice", "weight": 0.3}
+]},
+{"id": "journal:2026-07-30", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-07-31", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-x-4", "relation": "concerns the same school shoes as", "weight": 0.4}
+]},
+{"id": "task:t-mv-1", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-004", "relation": "signs agreement offered in", "weight": 0.8},
+  {"to": "email:mv-003", "relation": "negotiated before", "weight": 0.5}
+]},
+{"id": "email:hl-007", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-012", "relation": "is chased by", "weight": 0.8},
+  {"to": "email:hl-013", "relation": "resolved by", "weight": 0.7},
+  {"to": "email:hl-002", "relation": "follows earlier invoice in sequence", "weight": 0.3},
+  {"to": "note:Clients/Halcyon Labs.md#0", "relation": "billed to client in", "weight": 0.3}
+]},
+{"id": "email:nt-bank-92", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Sam@2026-08-01T11:14", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-07-19T18:55", "relation": "likely declines invitation in", "weight": 0.3}
+]},
+{"id": "task:t-x-3", "topics": ["a1.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-02", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-14", "topics": ["a9.t1", "a1.t1"], "trust": "ok", "trust_reason": "", "synapses": []}
+]}

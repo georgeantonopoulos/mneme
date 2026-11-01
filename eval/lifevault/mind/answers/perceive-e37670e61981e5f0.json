@@ -1,0 +1,21 @@
+{"neurons":[
+{"id":"n1138","caption":"Payment of £4,400.00 from Kestrel & Sons credited to account 4471 on 12 Oct 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n898","relation":"same payer, earlier payment","weight":0.4}]},
+{"id":"n1140","caption":"Parenting Today newsletter with reader questions, received 12 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1139","caption":"Harbour Life 'what's new this week' newsletter received 12 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n149","caption":"Journal 12 Oct 2026: swapped weekends with Marcus, Nia has Ivy all half term, needs plan for 26-29 Oct.","topics":["a11.t1","a3.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1569","relation":"same swap, agreed in chat","weight":0.9},{"to":"n1317","relation":"confirmed by calendar event","weight":0.7},{"to":"n1906","relation":"follows up on","weight":0.5},{"to":"n187","relation":"same swap as contact note","weight":0.4}]},
+{"id":"n1569","caption":"Chat with Marcus agreeing Ivy spends 30 Oct-1 Nov with him for Halloween; Nia keeps 23-25 Oct.","topics":["a3.t3","a8.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n149","relation":"same swap as journal entry","weight":0.6},{"to":"n1317","relation":"confirmed by calendar event","weight":0.8},{"to":"n187","relation":"same swap as contact note","weight":0.4}]},
+{"id":"n187","caption":"Contact note: Marcus Hale, Ivy's dad, co-parent; alternate weekends plus Wednesday tea; swapped 30 Oct-1 Nov.","topics":["a8.t1","a3.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1569","relation":"same swap as chat","weight":0.5},{"to":"n149","relation":"same swap as journal entry","weight":0.4}]},
+{"id":"n1460","caption":"Chat with Lena, 12 Oct 2026: Lena replies 'sounds good'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1141","caption":"Parents' evening confirmed: Ivy, Ms Adeyemi, Thursday 5 November 2026, 16:30-16:40, Larkfield Primary.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1322","relation":"confirmed by calendar event","weight":0.9}]},
+{"id":"n1144","caption":"Automated 'security check passed' notice from Calendar on 13 Oct 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1147","caption":"Deposit return of £1,360.00 from DepositGuard Scheme credited to account 4471 on 13 Oct 2026.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1143","caption":"Design Weekly 'behind the scenes' newsletter received 13 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n150","caption":"Journal 13 Oct 2026: home, Ivy loved the tiles; back to Kestrel work the next day.","topics":["a11.t1","a6.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1907","caption":"Open task: book window cleaner (Home project), status open as of 13 Oct 2026.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1888","relation":"earlier done instance of same task","weight":0.5},{"to":"n1869","relation":"earlier open instance of same task","weight":0.3}]},
+{"id":"n1145","caption":"Kitstore order ORD-JMY9K confirmed 13 Oct 2026: desk lamp, £42.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n974","relation":"same item, earlier order","weight":0.4}]},
+{"id":"n1146","caption":"City Pharmacy receipt, 13 Oct 2026: total paid £40.34.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1150","caption":"Automated 'Your week ahead' calendar digest received 14 Oct 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1149","caption":"Parenting Today 'tools and tips' newsletter received 14 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1148","caption":"Product Notes 'the autumn issue' newsletter received 14 Oct 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1151","caption":"Parcelpost Home order ORD-ZGRFC confirmed 14 Oct 2026: toolkit, £55.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n811","relation":"same item, earlier order","weight":0.3}]}
+]}

@@ -3,6 +3,7 @@
 
 This script is intentionally generic. Projects can add comma-separated custom
 terms via MNEME_FORBIDDEN_TERMS without storing those private terms in the repo.
+Custom terms match whole words, case-insensitively.
 """
 from __future__ import annotations
 
@@ -77,11 +78,21 @@ def scan_artifacts() -> list[str]:
     return failures
 
 
+RESERVED_EMAIL_TLDS = (".example", ".test", ".invalid", ".localhost")
+RESERVED_EMAIL_DOMAINS = {"example.com", "example.net", "example.org"}
+
+
+def _is_reserved_email(address: str) -> bool:
+    """RFC 2606 / 6761 reserved domains can never belong to a real person."""
+    domain = address.rsplit("@", 1)[-1].lower()
+    return domain.endswith(RESERVED_EMAIL_TLDS) or domain in RESERVED_EMAIL_DOMAINS
+
+
 def scan_text() -> list[str]:
     patterns = list(BASE_PATTERNS)
     custom = [term.strip() for term in os.environ.get("MNEME_FORBIDDEN_TERMS", "").split(",") if term.strip()]
     for term in custom:
-        patterns.append(("custom_forbidden_term", re.compile(re.escape(term), re.I)))
+        patterns.append(("custom_forbidden_term", re.compile(rf"\b{re.escape(term)}\b", re.I)))
 
     failures: list[str] = []
     for path in iter_files():
@@ -101,6 +112,8 @@ def scan_text() -> list[str]:
                     "private_key_block",
                     "common_token_prefix",
                 }:
+                    continue
+                if label == "email" and _is_reserved_email(match.group(0)):
                     continue
                 failures.append(f"{label}: {rel}: {snippet}")
     return failures

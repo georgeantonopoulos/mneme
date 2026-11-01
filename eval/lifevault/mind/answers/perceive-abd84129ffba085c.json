@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n377","caption":"Parenting Today newsletter, 2026-06-01, 'a quick update'. No action needed.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n376","caption":"Harbour Life newsletter, the autumn issue, received 2026-06-01.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n374","caption":"Clay Times newsletter, 'our favourite links', received 2026-06-01.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1713","caption":"Chat with Sam, 2026-06-01: Sam says all good here, x.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n379","caption":"Fuel Stop receipt dated 2026-06-01: total paid £4.05.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1593","caption":"Chat with Mum, 2026-06-01: Nia says she is running late, 10 mins.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n66","caption":"Journal entry 2026-06-01: too much coffee.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1381","caption":"Chat with Lena, 2026-06-01: Lena says she has just got home.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1360","caption":"Chat with Jonah Oduya, 2026-06-01: tent returned to Nia's doorstep; Jonah thanks her.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1359","relation":"follows up on","weight":0.7},{"to":"n1358","relation":"follows up on","weight":0.6}]},
+{"id":"n1594","caption":"Chat with Mum, 2026-06-01: Grace says sounds good.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n378","caption":"Greenbox Garden order ORD-FFWYA confirmed 2026-06-01: rain jacket, £89.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1382","caption":"Chat with Lena, 2026-06-01: Nia says she can't do this weekend, sorry.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n385","caption":"CloudVault backup complete notification, 2026-06-02. No action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n383","caption":"Product Notes newsletter, 'events near you', received 2026-06-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n384","caption":"Parenting Today newsletter, 'behind the scenes', received 2026-06-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n382","caption":"Design Weekly newsletter, 'our favourite links', received 2026-06-02.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1829","caption":"Chat with Vik Abara, 2026-06-02: Vik asks to borrow Nia's slow cooker this weekend.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1830","relation":"is answered by","weight":0.7},{"to":"n1831","relation":"is returned in","weight":0.8}]},
+{"id":"n67","caption":"Journal entry 2026-06-02: too much coffee.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n243","caption":"Note 'Recipe: slow travel', 2026-06-02: serves four, add lemon at the end.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n247","caption":"Thinking in Systems reading notes, 2026-06-02: pledge-to-payment delay in the Kestrel donation flow.","topics":["a10.t1","a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n213","relation":"applies to project","weight":0.6}]}
+]}

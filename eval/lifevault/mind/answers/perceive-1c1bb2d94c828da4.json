@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n491","caption":"Parcelpost Home order ORD-4P8RF confirmed 25 June: standing desk mat, £39.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1686","relation":"follows up on","weight":0.6},{"to":"n1853","relation":"led to refund chase","weight":0.5}]},
+{"id":"n1513","caption":"Chat with Marcus, 25 June: asks about coffee next week, says all good.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n490","caption":"Tidy Living order ORD-DYXES confirmed 25 June: travel mug, £18.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n38","caption":"Idea for lentil soup: needs a weekend, ask Lena first.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n37","relation":"earlier version of","weight":0.6},{"to":"n40","relation":"later version of","weight":0.5}]},
+{"id":"n246","caption":"Glaze notes: tenmoku needs thick coats, wipe bisque before shino, Lena's speckled oatmeal best at cone 6.","topics":["a2.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n57","relation":"related to","weight":0.4}]},
+{"id":"n1846","caption":"Open home task to book the window cleaner, created 25 June 2026.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1839","relation":"same task as","weight":0.5},{"to":"n1869","relation":"same task as","weight":0.4},{"to":"n1888","relation":"completed by","weight":0.6}]},
+{"id":"n492","caption":"VeggieBox delivery welcome: plan is £24.00 a month, as of 25 June 2026.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n741","relation":"price raised by","weight":0.7}]},
+{"id":"n1399","caption":"Chat with Lena, 25 June: says all good here, with a kiss.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n489","caption":"Invoice INV-G101 to Bluefin Trust: 11 days at £525, £5,775, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1400","caption":"Chat with Lena, 25 June: both ask each other to send the recipe.","topics":["a8.t3","a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1514","caption":"Chat with Marcus, 25 June: Nia replies sounds good.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n494","caption":"Automated notice that a parcel is on its way, 26 June 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1684","caption":"Nia tells Parcelpost Home support 26 June that air purifier order ORD-WVGXW arrived damaged.","topics":["a12.t3","a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1685","relation":"is answered by","weight":0.9}]},
+{"id":"n496","caption":"Bristol Eats newsletter: autumn menus are here, 26 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n82","caption":"Journal 26 June: tired, bed early, and Ivy read to me tonight.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n493","caption":"Josie Bramble emails 26 June: brand refresh for tea shops, third shop, budget about £2.5k.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n7","relation":"same client as","weight":0.8}]},
+{"id":"n1515","caption":"Chat with Marcus, 26 June: Marcus replies lol yes.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n495","caption":"Pet Pantry receipt: total paid £5.37 on 26 June 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1685","caption":"Parcelpost Home support: return label sent, £149 refund once the item is back.","topics":["a7.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1684","relation":"replies to","weight":0.9}]},
+{"id":"n500","caption":"Automated 'security check passed' email, 27 June 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

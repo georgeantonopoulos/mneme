@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n223","caption":"Reading notes on mug handles, 2026-09-06: chapter thoughts and a quote worth keeping.","topics":["a10.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1548","caption":"Chat with Marcus 2026-09-06: Nia and Marcus each ask the other to send the recipe.","topics":["a10.t2","a8.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1549","relation":"same exchange as","weight":0.6}]},
+{"id":"n915","caption":"Ivy's GP appointment moved from Fri 11 Sept to Wed 9 Sept 2026 at 11:00, Harbour Health Centre.","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1277","relation":"confirmed as the moved appointment","weight":0.9},{"to":"n765","relation":"moves the original booking","weight":0.7}]},
+{"id":"n917","caption":"Invoice INV-G062 to Juniper Works: 9 days at £425 = £3,825, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n916","caption":"Invoice INV-G002 to Hollow Studio: 8 days at £550 = £4,400, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1651","caption":"Chat with Mum 2026-09-06: Nia replies 'ha, classic'.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1549","caption":"Chat with Marcus 2026-09-06: Marcus asks Nia to send the recipe.","topics":["a10.t2","a8.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1548","relation":"same exchange as","weight":0.6}]},
+{"id":"n923","caption":"CloudVault 'security check passed' automated notice dated 2026-09-07; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n926","caption":"Design Weekly #219 on design tokens at scale, received 2026-09-07.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n922","caption":"Parenting Today 'behind the scenes' newsletter received 2026-09-07.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n921","caption":"Product Notes 'tools and tips' newsletter received 2026-09-07.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n127","caption":"Journal 2026-09-07: admin, admin, admin.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1878","caption":"Task: get copy of The Dispossessed back from Sam; open; Personal; dated 2026-09-07.","topics":["a10.t1","a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n924","caption":"Pet Pantry receipt dated 2026-09-07, total paid £22.55.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n925","caption":"Riverside Swim: Stage 5 moves to Sun 13 Sept 10:00; autumn term fee £96 payable by 11 Sept.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1282","relation":"schedule change for","weight":0.9},{"to":"n1880","relation":"fee paid for","weight":0.8}]},
+{"id":"n930","caption":"Clay Times 'five things we loved' newsletter received 2026-09-08.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n931","caption":"Product Notes 'our favourite links' newsletter received 2026-09-08.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n929","caption":"Design Weekly 'events near you' newsletter received 2026-09-08.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n928","caption":"Northmoor Bank: £6,600.00 from Paper Health credited to account ending 4471, 2026-09-08.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1780","caption":"Chat with Sam 2026-09-08: Nia says 'sounds good' and 'did you see the rain?!'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n799","caption":"Product Notes newsletter, the autumn issue, received 2026-08-20.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n798","caption":"Design Weekly newsletter, 'reader questions', received 2026-08-20.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1266","caption":"Kestrel check-in with Daniel, Thu 20 Aug 2026 at 10:00, confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1267","relation":"is followed by","weight":0.3}]},
+{"id":"n801","caption":"Bristol Man & Van booking BMV-4471: Tue 15 Sep 2026 at 08:00, 14 Cotham Rise to 22 Alder Street, £280.","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1283","relation":"is confirmed by","weight":0.9},{"to":"n1272","relation":"reschedules cancelled","weight":0.8},{"to":"n1864","relation":"prepared by task","weight":0.6}]},
+{"id":"n118","caption":"Journal entry 2026-08-20: Bramble cancelled, kill fee clause applied; idea to pitch Lena's studio.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n797","relation":"is confirmed by","weight":0.9},{"to":"n827","relation":"is invoiced in","weight":0.8},{"to":"n7","relation":"is about","weight":0.6}]},
+{"id":"n797","caption":"Josie Bramble email 2026-08-20: investor pulled out, rebrand paused; asks Nia to invoice the kill fee.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n827","relation":"is followed by invoice","weight":0.9},{"to":"n7","relation":"same client as","weight":0.5},{"to":"n493","relation":"originated from enquiry","weight":0.4}]},
+{"id":"n807","caption":"CloudVault 'your week ahead' notification, 2026-08-21. No action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n806","caption":"Parenting Today newsletter, 'behind the scenes', received 2026-08-21.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n805","caption":"Product Notes newsletter, 'tools and tips', received 2026-08-21.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n804","caption":"Design Weekly newsletter, 'our favourite links', received 2026-08-21.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1541","caption":"Chat with Marcus, 2026-08-21: Marcus says running late, 10 mins.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1436","caption":"Chat with Lena, 2026-08-21: Lena asks did you see the rain; says Ivy says hi.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1771","caption":"Chat with Sam, 2026-08-21: Nia asks how Sam's week is going.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n809","caption":"Bristol Eats newsletter, 'best Sunday roasts', received 2026-08-21.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n119","caption":"Journal entry 2026-08-21: cooked the red lentil dal again, Ivy ate it; rainy, cosy evening.","topics":["a11.t1","a10.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n249","relation":"cooks recipe in","weight":0.6},{"to":"n117","relation":"repeats cooking in","weight":0.3}]},
+{"id":"n235","caption":"Recipe note 'garden boxes', 2026-08-21: add lemon at the end, freezes well.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n802","caption":"Ivy's osteopath booked Thu 3 Sep 2026 at 15:00 at Back in Line.","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1275","relation":"is confirmed by","weight":0.9}]},
+{"id":"n808","caption":"Fresh & Co receipt 2026-08-21: total paid £33.49.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1772","caption":"Chat with Sam, 2026-08-21: Nia says just got home; Sam says that's brilliant news.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n803","caption":"Invoice INV-G051 sent to Lantern Collective 2026-08-21: 8 days at £400 = £3,200, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1004","relation":"later invoice to same client","weight":0.4}]}
+]}

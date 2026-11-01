@@ -1,0 +1,47 @@
+{"neurons": [
+{"id": "event:ev-hl-checkin-3", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-checkin-2", "relation": "previous session in same series", "weight": 0.4},
+  {"to": "event:ev-hl-checkin-4", "relation": "next session in same series", "weight": 0.4}]},
+{"id": "email:rc-132", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-102", "relation": "earlier payment of same subscription", "weight": 0.5}]},
+{"id": "journal:2026-09-10", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "task:t-mv-2", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-007", "relation": "confirmed by", "weight": 0.9}]},
+{"id": "email:nl-be-2026-09-11", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "task:t-iv-1", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:iv-001", "relation": "context for", "weight": 0.3}]},
+{"id": "email:hl-014", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-012", "relation": "settles overdue invoice in", "weight": 0.9}]},
+{"id": "journal:2026-09-12", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-swim-2026-09-13", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-09-20", "relation": "next session in same series", "weight": 0.3}]},
+{"id": "journal:2026-09-13", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:ls-003", "topics": ["a7.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:ls-001", "relation": "replaces flight times in", "weight": 0.9},
+  {"to": "note:Travel/Lisbon October.md#0", "relation": "context for trip plan", "weight": 0.5}]},
+{"id": "email:nl-dw-20", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:ls-004", "topics": ["a7.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:ls-002", "relation": "asks to change reservation in", "weight": 0.9},
+  {"to": "email:ls-003", "relation": "prompted by flight change in", "weight": 0.8},
+  {"to": "email:ls-005", "relation": "answered by", "weight": 1.0}]},
+{"id": "journal:2026-09-14", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-mv-move2", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-mv-move", "relation": "rescheduled from", "weight": 1.0},
+  {"to": "email:mv-007", "relation": "same day as van booking", "weight": 0.8}]},
+{"id": "email:ls-005", "topics": ["a7.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:ls-004", "relation": "replies to", "weight": 1.0},
+  {"to": "email:ls-002", "relation": "changes reservation in", "weight": 0.7}]},
+{"id": "journal:2026-09-15", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-mv-2", "relation": "van arrived as booked in", "weight": 0.6},
+  {"to": "email:mv-005", "relation": "move date set by", "weight": 0.6},
+  {"to": "note:Projects/Flat Move.md#2", "relation": "logged in", "weight": 0.4}]},
+{"id": "note:People/Tomasz Wren.md#0", "topics": ["a2.t1", "a2.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-002", "relation": "landlord agreed offer in", "weight": 0.5},
+  {"to": "email:mv-001", "relation": "showed flat in", "weight": 0.3},
+  {"to": "event:ev-mv-move2", "relation": "landlord present on move day", "weight": 0.4}]},
+{"id": "email:nl-ct-2026-09-15", "topics": ["a9.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Sam@2026-09-15T21:40", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-06-14T22:10", "relation": "same borrowed book as", "weight": 0.8},
+  {"to": "chat:Sam@2026-09-20T09:00", "relation": "book return promised, later missed", "weight": 0.7},
+  {"to": "note:People/Sam Petrov.md#0", "relation": "person note for", "weight": 0.3}]}
+]}

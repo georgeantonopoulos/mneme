@@ -1,0 +1,15 @@
+Message-ID: <rc-24@lifevault.example>
+Date: Mon, 25 May 2026 21:38:00 +0100
+From: StreamBox <billing@streambox.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your monthly subscription
+X-LifeVault-Id: rc-24
+X-LifeVault-Thread: rc-24
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your purchase. Total paid: £10.99.
+This is an automated receipt.

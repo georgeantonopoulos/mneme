@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n810","caption":"Northmoor Bank: £1,900.00 received from Signal Works on 22 August 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n814","caption":"TechMend quote JOB-32XAY: £95 for a laptop battery, parts and labour, 22 August 2026.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n903","relation":"superseded by revised quote","weight":0.9}]},
+{"id":"n813","caption":"WashWorks quote JOB-2BS4E: £280 to fix an oven door hinge, 22 August 2026.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n811","caption":"Quayside Outdoors order ORD-J7N4A confirmed 22 August 2026: toolkit, £55.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n812","caption":"Harbour Books receipt: total paid £30.43 on 22 August 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n817","caption":"Automated 'security check passed' email, 23 August 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n816","caption":"Bristol Eats newsletter: the long read, 23 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n28","caption":"Idea for colour theory: maybe later, would need a whole weekend.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n29","relation":"same idea as earlier note","weight":0.5}]},
+{"id":"n1643","caption":"Chat with Mum, 23 August: Grace asks if Nia has watched it yet.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n815","caption":"Invoice INV-G122 to Tidal Trust: 10 days at £625, £6,250, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1542","caption":"Chat with Marcus, 23 August: Nia says no worries.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n824","caption":"Parcelpost Home automated 'security check passed' email, 24 August 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n826","caption":"Design Weekly #217 newsletter on AI in design critique, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n823","caption":"Parenting Today newsletter: a quick update, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n820","caption":"Clay Times newsletter: the long read, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n819","caption":"Bristol Eats newsletter: what's new this week, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n821","caption":"Product Notes newsletter: the long read, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n822","caption":"Harbour Life newsletter: events near you, 24 August 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1437","caption":"Chat with Lena, 24 August: Nia says you're a star.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n825","caption":"Corner Cafe receipt: total paid £55.61 on 24 August 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

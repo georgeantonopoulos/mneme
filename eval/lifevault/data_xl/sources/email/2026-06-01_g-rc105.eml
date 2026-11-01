@@ -1,0 +1,14 @@
+Message-ID: <g-rc105@lifevault.example>
+Date: Mon, 01 Jun 2026 10:00:00 +0100
+From: Fuel Stop <receipts@fuelstop.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your receipt from Fuel Stop
+X-LifeVault-Id: g-rc105
+X-LifeVault-Thread: g-rc105
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Total paid: £4.05. Thanks for shopping with us.

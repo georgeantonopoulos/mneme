@@ -1,0 +1,14 @@
+Message-ID: <g-rc206@lifevault.example>
+Date: Wed, 01 Jul 2026 10:39:00 +0100
+From: City Pharmacy <receipts@citypharmacy.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your receipt from City Pharmacy
+X-LifeVault-Id: g-rc206
+X-LifeVault-Thread: g-rc206
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Total paid: £47.80. Thanks for shopping with us.

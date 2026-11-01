@@ -1,0 +1,13 @@
+{
+  "name": "lifevault-xl",
+  "persona": "Nia Okafor (fictional)",
+  "now": "2026-10-29T18:00:00+00:00",
+  "counts": {
+    "notes": 247,
+    "emails": 985,
+    "calendar_events": 98,
+    "chat_messages": 654,
+    "tasks": 81,
+    "questions": 335
+  }
+}

@@ -1,0 +1,51 @@
+{"neurons": [
+{"id": "journal:2026-08-03", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-94", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-04", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-05", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-005", "relation": "records move-in change in", "weight": 0.8},
+  {"to": "note:Projects/Flat Move.md#2", "relation": "logged in", "weight": 0.4}
+]},
+{"id": "chat:Lena@2026-08-05T15:29", "topics": ["a5.t2", "a6.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Lena Fischer.md#0", "relation": "same person as", "weight": 0.4}
+]},
+{"id": "email:mv-005", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-002", "relation": "moves move-in date set by", "weight": 0.9},
+  {"to": "email:mv-006", "relation": "gets reply", "weight": 0.7},
+  {"to": "note:Projects/Flat Move.md#2", "relation": "recorded in", "weight": 0.4}
+]},
+{"id": "email:mv-006", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-005", "relation": "replies to", "weight": 0.9},
+  {"to": "note:Projects/Flat Move.md#0", "relation": "lease context for", "weight": 0.4}
+]},
+{"id": "journal:2026-08-06", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Lena@2026-08-06T20:13", "topics": ["a5.t2", "a6.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Lena Fischer.md#0", "relation": "same person as", "weight": 0.4}
+]},
+{"id": "email:nl-be-2026-08-07", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:rc-98", "topics": ["a7.t2", "a9.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:rc-40", "relation": "same route, earlier e-ticket", "weight": 0.2}
+]},
+{"id": "journal:2026-08-08", "topics": ["a3.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Sam@2026-08-08T14:08", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-08-01T11:14", "relation": "follows up on earlier declined invite", "weight": 0.3}
+]},
+{"id": "journal:2026-08-09", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Mum@2026-08-09T18:01", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-05-14T14:04", "relation": "already answered by", "weight": 0.3}
+]},
+{"id": "email:nl-dw-15", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-10", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:hl-008", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Daniel Achterberg.md#0", "relation": "announces successor described in", "weight": 0.7},
+  {"to": "note:Meetings/2026-08-18 Daniel intro.md#0", "relation": "handover followed by", "weight": 0.5},
+  {"to": "note:People/Priya Raman.md#0", "relation": "same person as", "weight": 0.4},
+  {"to": "email:hl-012", "relation": "approval gap later affects", "weight": 0.3}
+]},
+{"id": "email:rc-102", "topics": ["a9.t4"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-11", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-008", "relation": "records news from", "weight": 0.8},
+  {"to": "note:People/Priya Raman.md#0", "relation": "same person as", "weight": 0.4},
+  {"to": "email:hl-013", "relation": "explained later by", "weight": 0.3}
+]}
+]}

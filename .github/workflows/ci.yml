@@ -44,4 +44,6 @@ jobs:
         run: mneme contract check --db /tmp/mneme_smoke.sqlite
 
       - name: Run privacy scan
+        env:
+          MNEME_FORBIDDEN_TERMS: ${{ secrets.MNEME_FORBIDDEN_TERMS }}
         run: python scripts/privacy_scan.py

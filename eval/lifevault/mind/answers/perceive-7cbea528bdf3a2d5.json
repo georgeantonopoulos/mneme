@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1261","caption":"Physio with Helen Marsh at Northgate Physio, Tuesday 18 August 2026 at 08:15, confirmed.","topics":["a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1262","caption":"Mum's GP appointment at Harbour Health Centre, Tuesday 18 August 2026 at 10:00, confirmed.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n627","relation":"confirms","weight":0.9}]},
+{"id":"n1263","caption":"Intro call with Daniel for the Kestrel handover, Tuesday 18 August 2026 at 10:00, confirmed.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1266","relation":"followed by first check-in","weight":0.4}]},
+{"id":"n116","caption":"Journal 18 Aug 2026: felt scattered with too many tabs open in my head; long walk after work.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n44","caption":"Idea note 'sourdough': maybe later, would need a weekend.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n162","caption":"Note 18 Aug 2026: Daniel takes over Kestrel from Priya; rate rise to confirm; INV-2026-014 approval may be stuck.","topics":["a1.t1","a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n908","relation":"explains","weight":0.8},{"to":"n165","relation":"describes same person as","weight":0.6},{"to":"n756","relation":"context for handover","weight":0.6},{"to":"n1263","relation":"documents intro call","weight":0.7}]},
+{"id":"n1264","caption":"Mum's osteopath at Back in Line, Tuesday 18 August 2026 at 15:00, now cancelled.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1265","relation":"rescheduled to","weight":0.9},{"to":"n580","relation":"cancels booking","weight":0.8}]},
+{"id":"n790","caption":"Fresh & Co receipt dated 18 Aug 2026: total paid £30.73, thanks for shopping.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n787","caption":"Nia invoices Copper Health INV-G143: 11 days at £450, £4,950, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n679","relation":"earlier invoice to same client","weight":0.4}]},
+{"id":"n795","caption":"Calendar 'your week ahead' notification 19 Aug 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n792","caption":"Bristol Eats 'the autumn issue' newsletter received 19 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n793","caption":"Clay Times 'our favourite links' newsletter received 19 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n794","caption":"Harbour Life 'what's new this week' newsletter received 19 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n791","caption":"Grace Castell asks to push the brand guidelines deadline from 25 Aug to 8 Sep 2026.","topics":["a1.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n117","caption":"Journal 19 Aug 2026: cooked the red lentil dal again and Ivy ate it.","topics":["a10.t2","a11.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n249","relation":"recipe for","weight":0.8}]},
+{"id":"n1867","caption":"Done home task 19 Aug 2026: order printer ink.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1896","relation":"later repeat of","weight":0.3}]},
+{"id":"n1869","caption":"Open home task dated 19 Aug 2026: book the window cleaner.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1888","relation":"later completed as","weight":0.6}]},
+{"id":"n796","caption":"Pet Pantry receipt dated 19 Aug 2026: total paid £2.55, thanks for shopping.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1265","caption":"Mum's osteopath moved to Wednesday 19 August 2026 at 15:00 at Back in Line, confirmed.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1264","relation":"replaces cancelled slot","weight":0.9},{"to":"n766","relation":"confirms move","weight":0.8}]},
+{"id":"n800","caption":"Parenting Today 'five things we loved' newsletter received 20 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

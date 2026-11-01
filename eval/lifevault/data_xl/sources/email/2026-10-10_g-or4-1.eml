@@ -1,0 +1,14 @@
+Message-ID: <g-or4-1@lifevault.example>
+Date: Sat, 10 Oct 2026 12:24:00 +0100
+From: Kitstore <orders@kitstore.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Order confirmed ORD-BFXDJ
+X-LifeVault-Id: g-or4-1
+X-LifeVault-Thread: g-or4-1
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Thanks for your order ORD-BFXDJ: rain jacket, £89.

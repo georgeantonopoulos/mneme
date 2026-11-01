@@ -1,0 +1,50 @@
+{"neurons": [
+{"id": "chat:Sam@2026-09-25T13:08", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-09-20T14:10", "relation": "repeats earlier decline", "weight": 0.3}]},
+{"id": "chat:Sam@2026-09-26T11:09", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-swim-2026-09-27", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-09-20", "relation": "previous session in same series", "weight": 0.3},
+  {"to": "event:ev-swim-2026-10-04", "relation": "next session in same series", "weight": 0.3}]},
+{"id": "journal:2026-09-27", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-22", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-09-28", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-09-28T20:00", "relation": "records news from", "weight": 0.9},
+  {"to": "note:People/Grace Okafor.md#0", "relation": "consistent with hip date in", "weight": 0.5}]},
+{"id": "chat:Sam@2026-09-28T13:44", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Mum@2026-09-28T20:00", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Grace Okafor.md#0", "relation": "background on", "weight": 0.5}]},
+{"id": "email:hl-015", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-014", "relation": "follows earlier payment from same client", "weight": 0.5}]},
+{"id": "event:ev-kn-4", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-3", "relation": "follows earlier appointment in series", "weight": 0.3},
+  {"to": "event:ev-kn-nov2", "relation": "precedes review on", "weight": 0.5}]},
+{"id": "journal:2026-09-29", "topics": ["a4.t1", "a4.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-4", "relation": "records visit at", "weight": 0.8},
+  {"to": "note:Health/Knee Rehab.md#0", "relation": "exercise changes described in", "weight": 0.7},
+  {"to": "event:ev-kn-nov2", "relation": "awaits review on", "weight": 0.5}]},
+{"id": "note:Health/Knee Rehab.md#0", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "journal:2026-09-29", "relation": "same visit as", "weight": 0.7},
+  {"to": "event:ev-kn-nov2", "relation": "sets review date for", "weight": 0.6},
+  {"to": "note:People/Helen Marsh.md#0", "relation": "physio contact for", "weight": 0.5}]},
+{"id": "event:ev-mv-checkout", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-010", "relation": "produces deposit proposal in", "weight": 0.9},
+  {"to": "note:People/Gemma Holt.md#0", "relation": "agent who ran inspection in", "weight": 0.6}]},
+{"id": "journal:2026-09-30", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Clients/Halcyon Labs.md#0", "topics": ["a1.t2", "a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-016", "relation": "tracks invoice in", "weight": 0.6},
+  {"to": "email:hl-007", "relation": "tracks invoice in", "weight": 0.6},
+  {"to": "email:hl-002", "relation": "tracks invoice in", "weight": 0.5},
+  {"to": "note:People/Daniel Achterberg.md#0", "relation": "producer contact in", "weight": 0.4}]},
+{"id": "email:hl-016", "topics": ["a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "task:t-hl-4", "relation": "followed by payment check task", "weight": 0.7},
+  {"to": "email:hl-011", "relation": "follows earlier invoice in sequence", "weight": 0.5},
+  {"to": "note:Clients/Halcyon Labs.md#0", "relation": "listed in", "weight": 0.5}]},
+{"id": "email:nt-bank-153", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-hl-checkin-6", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-checkin-7", "relation": "next session in same series", "weight": 0.3},
+  {"to": "event:ev-hl-checkin-3", "relation": "previous session in same series", "weight": 0.3}]},
+{"id": "email:kn-001", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:kn-002", "relation": "rescheduled by", "weight": 1.0},
+  {"to": "event:ev-kn-nov2", "relation": "calendar entry for moved appointment", "weight": 0.8}]},
+{"id": "email:nl-be-2026-10-02", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []}
+]}

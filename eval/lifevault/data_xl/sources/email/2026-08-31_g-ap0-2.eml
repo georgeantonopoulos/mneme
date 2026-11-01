@@ -1,0 +1,16 @@
+Message-ID: <g-ap0-2@lifevault.example>
+Date: Mon, 31 Aug 2026 16:15:00 +0100
+From: Smile Dental <bookings@smiledental.example>
+To: Nia Okafor <nia@okafor.example>
+In-Reply-To: <g-ap0-1@lifevault.example>
+References: <g-ap0-1@lifevault.example>
+Subject: Your dentist appointment has moved
+X-LifeVault-Id: g-ap0-2
+X-LifeVault-Thread: g-ap0
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+Sorry, we need to move your dentist appointment from Wednesday 2 September to=
+ Monday 31 August at 14:00.

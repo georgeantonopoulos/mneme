@@ -1,0 +1,362 @@
+{
+ "neurons": [
+  {
+   "id": "email:nt-bank-61",
+   "topics": [
+    "a9.t5"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:nt-bank-92",
+     "relation": "previous statement notice before",
+     "weight": 0.2
+    }
+   ]
+  },
+  {
+   "id": "journal:2026-07-01",
+   "topics": [
+    "a4.t2",
+    "a4.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "journal:2026-07-17",
+     "relation": "repeats knee-OK bike ride from",
+     "weight": 0.3
+    }
+   ]
+  },
+  {
+   "id": "note:People/Josie Bramble.md#0",
+   "topics": [
+    "a1.t3"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "note:Clients/Bramble and Co.md#0",
+     "relation": "owner of client",
+     "weight": 0.7
+    },
+    {
+     "to": "email:br-002",
+     "relation": "pausing project per",
+     "weight": 0.5
+    },
+    {
+     "to": "email:br-003",
+     "relation": "kill fee invoice to",
+     "weight": 0.4
+    },
+    {
+     "to": "email:br-004",
+     "relation": "payment received from her company in",
+     "weight": 0.4
+    }
+   ]
+  },
+  {
+   "id": "email:rc-62",
+   "topics": [
+    "a9.t4",
+    "a5.t2"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:rc-89",
+     "relation": "previous firing invoice before",
+     "weight": 0.4
+    }
+   ]
+  },
+  {
+   "id": "email:ls-001",
+   "topics": [
+    "a7.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:ls-003",
+     "relation": "superseded by",
+     "weight": 0.9
+    },
+    {
+     "to": "event:ev-ls-trip2",
+     "relation": "calendar entry for",
+     "weight": 0.6
+    },
+    {
+     "to": "note:Travel/Lisbon October.md#0",
+     "relation": "trip details in",
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "email:ls-002",
+   "topics": [
+    "a7.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:ls-005",
+     "relation": "superseded by",
+     "weight": 0.8
+    },
+    {
+     "to": "email:ls-004",
+     "relation": "change requested in",
+     "weight": 0.6
+    },
+    {
+     "to": "event:ev-ls-trip2",
+     "relation": "stay matches flight in",
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "email:nl-be-2026-07-03",
+   "topics": [
+    "a9.t2"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": []
+  },
+  {
+   "id": "note:Archive/Bramble moodboard draft.md#0",
+   "topics": [
+    "a1.t3"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "note:Clients/Bramble and Co.md#0",
+     "relation": "archived draft for",
+     "weight": 0.7
+    },
+    {
+     "to": "email:br-002",
+     "relation": "cancellation reflected in",
+     "weight": 0.7
+    },
+    {
+     "to": "journal:2026-08-20",
+     "relation": "cancellation recorded in",
+     "weight": 0.5
+    },
+    {
+     "to": "note:People/Josie Bramble.md#0",
+     "relation": "client contact for",
+     "weight": 0.4
+    }
+   ]
+  },
+  {
+   "id": "event:ev-swim-2026-07-04",
+   "topics": [
+    "a3.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "event:ev-swim-2026-07-11",
+     "relation": "followed by",
+     "weight": 0.3
+    }
+   ]
+  },
+  {
+   "id": "email:nt-cal-65",
+   "topics": [
+    "a9.t5"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": []
+  },
+  {
+   "id": "email:nl-dw-10",
+   "topics": [
+    "a9.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:nl-dw-22",
+     "relation": "same topic as",
+     "weight": 0.3
+    }
+   ]
+  },
+  {
+   "id": "journal:2026-07-06",
+   "topics": [
+    "a9.t7"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": []
+  },
+  {
+   "id": "journal:2026-07-07",
+   "topics": [
+    "a4.t2",
+    "a4.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "journal:2026-07-01",
+     "relation": "contrasts with knee-OK bike ride in",
+     "weight": 0.3
+    }
+   ]
+  },
+  {
+   "id": "chat:Mum@2026-07-08T11:29",
+   "topics": [
+    "a3.t4"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "chat:Mum@2026-05-14T14:04",
+     "relation": "answered earlier in",
+     "weight": 0.5
+    },
+    {
+     "to": "chat:Mum@2026-05-24T18:31",
+     "relation": "repeats question from",
+     "weight": 0.4
+    }
+   ]
+  },
+  {
+   "id": "journal:2026-07-08",
+   "topics": [
+    "a9.t7"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": []
+  },
+  {
+   "id": "journal:2026-07-09",
+   "topics": [
+    "a9.t7"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": []
+  },
+  {
+   "id": "email:nl-be-2026-07-10",
+   "topics": [
+    "a9.t2"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "email:nl-be-2026-05-15",
+     "relation": "same issue topic as",
+     "weight": 0.3
+    }
+   ]
+  },
+  {
+   "id": "email:mv-002",
+   "topics": [
+    "a2.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "note:Projects/Flat Move.md#2",
+     "relation": "log entry for",
+     "weight": 0.8
+    },
+    {
+     "to": "email:mv-005",
+     "relation": "move-in date later changed by",
+     "weight": 0.7
+    },
+    {
+     "to": "email:mv-001",
+     "relation": "follows viewing in",
+     "weight": 0.5
+    },
+    {
+     "to": "email:mv-003",
+     "relation": "follows negotiation in",
+     "weight": 0.5
+    },
+    {
+     "to": "task:t-mv-1",
+     "relation": "tenancy signing task follows",
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "chat:Mum@2026-07-10T17:02",
+   "topics": [
+    "a2.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "chat:Mum@2026-10-16T12:00",
+     "relation": "help with Ivy promise fulfilled in",
+     "weight": 0.5
+    },
+    {
+     "to": "note:People/Grace Okafor.md#0",
+     "relation": "Grace's role noted in",
+     "weight": 0.5
+    }
+   ]
+  },
+  {
+   "id": "event:ev-swim-2026-07-11",
+   "topics": [
+    "a3.t1"
+   ],
+   "trust": "ok",
+   "trust_reason": "",
+   "synapses": [
+    {
+     "to": "event:ev-swim-2026-07-04",
+     "relation": "previous week's session",
+     "weight": 0.3
+    },
+    {
+     "to": "event:ev-swim-2026-07-18",
+     "relation": "followed by",
+     "weight": 0.3
+    }
+   ]
+  }
+ ]
+}

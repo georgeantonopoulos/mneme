@@ -43,23 +43,75 @@ A memory can be related without being true. Candidate and killed synapses never 
 
 ## Quick start
 
-### Install
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash
 ```
 
-Or install from a checkout:
+The installer finishes by opening the setup wizard. It asks three things:
+
+1. **Where are your notes?** A folder of Markdown notes (any notes-app vault works), or a folder laid out
+   as `vault/` plus `sources/{email,calendar,chat,tasks}`.
+2. **Which model should Mneme think with?** Pick one:
+   - Ollama on this computer
+   - Ollama Cloud
+   - LM Studio
+   - any OpenAI-compatible API (OpenRouter, vLLM, ...)
+   - a command-line AI such as `claude -p`
+   - an agent that answers task files
+3. **Check.** It sends one test prompt and saves the setup only if the model answers.
+
+Then:
 
 ```bash
-git clone https://github.com/georgeantonopoulos/mneme.git
-cd mneme
-python -m pip install -e .
+mneme learn                          # read your notes into the brain (only new or changed notes next time)
+mneme ask "what am I waiting on?"    # an answer, plus the memories it came from
+mneme status                         # what the brain holds and which model it uses
+mneme reflect                        # think while idle: what needs attention, what connects
+mneme thoughts                       # what it raised; --dismiss ID quiets one for 14 days
 ```
 
-Requirements: Python 3.10+. Ollama is optional and only needed for semantic embeddings.
+Everything stays in `~/.mneme` (or `$MNEME_HOME`): the settings (`brain.json`), the brain (`brain.sqlite`),
+and a cache of every model answer, so re-running costs nothing.
 
-### Build a memory
+Requirements: Python 3.10+ and a model (any of the options above). No other dependencies.
+
+To install from a checkout instead:
+
+```bash
+git clone https://github.com/georgeantonopoulos/mneme.git && cd mneme
+python -m pip install -e .
+mneme setup
+```
+
+### Installing with an agent
+
+Paste this into Claude Code, Codex, Hermes or any agent with a shell:
+
+> Install Mneme from https://github.com/georgeantonopoulos/mneme and point it at my notes in `~/Notes`
+> using Ollama with the `qwen3:8b` model. Then learn the notes and show me `mneme status`.
+
+Every command takes flags instead of prompts and prints one JSON object with `--json`, so an agent can drive
+it end to end:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash -s -- --no-setup
+mneme setup --notes ~/Notes --mind ollama --model qwen3:8b --yes --json
+mneme learn --json
+mneme ask "when is the dentist?" --json      # {"answer": ..., "cites": [...], "evidence": [...]}
+mneme status --json
+```
+
+`--mind` takes `ollama`, `ollama-cloud`, `lmstudio`, `openai` (with `--url` and `--api-key-env`), `command`
+(with `--command "claude -p"`), or `file`. With `file`, the agent itself is the model: `mneme learn` writes
+tasks to `~/.mneme/mind-files/outbox/`. The agent answers each one with JSON in `answers/`, then runs the
+command again. Exit code `2` means tasks are waiting.
+
+### The graph tools
+
+The commands below are Mneme's original graph tools: embeddings, `think` and world state. They are
+separate from `setup`, `learn` and `ask`.
+
+#### Build a memory
 
 ```bash
 mneme init --vault ./examples/vault --db /tmp/mneme.sqlite --out /tmp/mneme-out
@@ -67,7 +119,7 @@ mneme doctor
 mneme update
 ```
 
-### Let it think
+#### Let it think
 
 For real semantic association:
 
@@ -215,6 +267,13 @@ cd ~/.local/share/mneme
 python scripts/sync_hermes_hook.py
 python scripts/sync_hermes_hook.py --check
 ```
+
+Upgrading an earlier install is safe. The update leaves the graph database, the vault and every graph command
+as they were. `mneme setup` then finds the earlier `mneme init`, uses its vault, and has `mneme learn` read the graph
+database read-only. World state, the action ledger, predictions, aliases, validated and killed relationships, and
+sensed email and calendar content all become memories of the new brain.
+
+Once `mneme setup` has run, the hook points Hermes at `mneme ask --json` and tells it how many open thoughts are waiting. To let the brain think while Hermes is idle, schedule `mneme learn --json && mneme reflect --json` (hourly is plenty).
 
 Use the compatibility harness when a deployment needs the deeper readiness checks:
 

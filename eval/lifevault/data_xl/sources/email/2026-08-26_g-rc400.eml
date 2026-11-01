@@ -1,0 +1,14 @@
+Message-ID: <g-rc400@lifevault.example>
+Date: Wed, 26 Aug 2026 09:10:00 +0100
+From: Fresh & Co <receipts@freshco.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your receipt from Fresh & Co
+X-LifeVault-Id: g-rc400
+X-LifeVault-Thread: g-rc400
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Total paid: £12.19. Thanks for shopping with us.

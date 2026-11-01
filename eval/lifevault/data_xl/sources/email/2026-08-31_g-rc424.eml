@@ -1,0 +1,14 @@
+Message-ID: <g-rc424@lifevault.example>
+Date: Mon, 31 Aug 2026 17:02:00 +0100
+From: Corner Cafe <receipts@cornercafe.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Your receipt from Corner Cafe
+X-LifeVault-Id: g-rc424
+X-LifeVault-Thread: g-rc424
+X-LifeVault-Folder: inbox
+X-LifeVault-Labels: receipt
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+MIME-Version: 1.0
+
+Total paid: £42.75. Thanks for shopping with us.

@@ -1,6 +1,32 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.0] — 2026-11-01
+
+### Added
+
+- `mneme setup`, `mneme learn`, `mneme ask` and `mneme status`: a front door to the LLM-driven cortex, drawn
+  in the terminal and fully scriptable with flags and `--json` for agents. `mneme` alone shows a welcome screen.
+- Setup wizard. It picks the notes folder and a model: Ollama local or cloud, LM Studio, any OpenAI-compatible
+  API, a command-line AI such as `claude -p`, or task files answered by an agent. It tests the model before
+  saving anything.
+- `OllamaMind` (native `/api/chat`, local or `https://ollama.com` with `OLLAMA_API_KEY`). Minds now answer
+  several tasks at once (`workers`) and re-ask once when a reply is not valid JSON.
+- Recall: when several topics are chosen they share the 120 skim slots fairly, so a large topic can no
+  longer hide a small one. This is how a phishing email in a small topic went missing on a 1,917-memory vault.
+- Carry-over from earlier versions. `mneme setup` finds an earlier `mneme init` and uses its vault, and `mneme learn`
+  then also reads its graph database, read-only. World-state assertions, the action ledger, predictions,
+  aliases, validated and killed relationships, and what the email and calendar senses saw all become memories.
+  Pass `--graph-db PATH` to name one, or `--no-graph` to skip it. Nothing earlier is changed or removed.
+- `mneme reflect` and `mneme thoughts` (with `--dismiss`): idle reflection from the command line, with `--json`.
+- Hermes: the `mneme` and `mneme-agent-brain` skills describe the cortex. The pre-LLM hook makes loading the
+  `mneme` skill mandatory on every turn, points at `mneme ask --json` once the cortex is set up, and adds a count
+  of open thoughts.
+- The installer opens the setup wizard when run in a terminal. `--no-setup` skips it, for agents.
+
+### Changed
+
+- A plain folder of Markdown notes (such as a notes-app vault) can be learned directly. Hidden folders like
+  `.obsidian` and `.trash` are skipped.
 
 ## [1.0.0] — 2026-08-02
 

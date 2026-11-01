@@ -20,7 +20,7 @@ Agent-facing commands should stay conceptually small (`index`, `think`, then eve
 
 ## Evaluation pattern
 
-Compare latent thought against existing lexical retrieval on prompts with intentionally different vocabulary from the target source. A successful probe used the concept “focused effort create commercial growth”: lexical retrieval returned unrelated logs and predictions, while latent activation found the Sequency marketing project and action pack despite no shared product vocabulary.
+Compare latent thought against existing lexical retrieval on prompts with intentionally different vocabulary from the target source. A successful probe used the concept “focused effort create commercial growth”: lexical retrieval returned unrelated logs and predictions, while latent activation found the Lumora marketing project and action pack despite no shared product vocabulary.
 
 Also test ordinary current-work prompts against a SQLite-consistent local-vault snapshot. Score separately:
 

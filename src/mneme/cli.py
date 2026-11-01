@@ -215,7 +215,12 @@ def _resolve_node_arg(conn, value: str) -> tuple[str, str, str]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents")
+    from .cortex import app
+    args_in = sys.argv[1:] if argv is None else argv
+    if not args_in or args_in[0] in app.COMMANDS:
+        raise SystemExit(app.run(args_in))
+    parser=argparse.ArgumentParser(prog="mneme", description="Graph-based memory paths for AI agents",
+                                   epilog="Start here: mneme setup, mneme learn, mneme ask, mneme status")
     parser.add_argument("--config", type=Path, default=default_config_path(), help="Config path (default: $MNEME_CONFIG or ~/.config/mneme/config.json)")
     sub=parser.add_subparsers(dest="cmd", required=True)
     p=sub.add_parser("init", help="Create a Mneme config file")

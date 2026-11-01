@@ -1,0 +1,13 @@
+Message-ID: <ls-002@lifevault.example>
+Date: Thu, 02 Jul 2026 21:30:00 +0100
+From: Casa do Rio Lisbon <reservas@casadorio.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Reserva confirmada
+X-LifeVault-Id: ls-002
+X-LifeVault-Thread: ls-hotel
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+Reservation confirmed: 8-13 October 2026, 5 nights, Double room. Ref CDR-2219.

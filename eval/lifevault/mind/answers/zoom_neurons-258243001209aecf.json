@@ -1,0 +1,10 @@
+{
+ "evidence": [
+  "event:ev-hl-handoff2",
+  "email:hl-017",
+  "event:ev-hl-handoff",
+  "note:Projects/Kestrel Redesign.md#0",
+  "task:t-hl-3"
+ ],
+ "note": "The Kestrel dev handoff is now Friday 20 November 2026, moved from 6 November by Daniel's email because of the offline mode work; the final prototype review stays on 3 November."
+}

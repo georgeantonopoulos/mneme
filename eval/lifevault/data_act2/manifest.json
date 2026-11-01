@@ -1,0 +1,17 @@
+{
+  "name": "lifevault-act2",
+  "persona": "Nia Okafor (fictional)",
+  "now": "2026-11-12T18:00:00+00:00",
+  "counts": {
+    "notes": 129,
+    "emails": 153,
+    "calendar_events": 60,
+    "chat_messages": 68,
+    "tasks": 24,
+    "questions": 26
+  },
+  "changed_notes": [
+    "Health/Knee Rehab.md",
+    "Projects/Flat Move.md"
+  ]
+}

@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n217","caption":"Reading notes on garden boxes, 17 May 2026: disagreed with the ending; chapter thoughts.","topics":["a10.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1368","caption":"Chat with Lena, 17 May 2026: can't do this weekend, sorry; Ivy says hi.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1369","relation":"follows up on","weight":0.3}]},
+{"id":"n319","caption":"Harbour Books receipt, 17 May 2026: total paid £21.12.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n322","caption":"Design Weekly #203, 18 May 2026: newsletter on skeuomorphism, jobs and tools.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n320","caption":"Parenting Today newsletter, 18 May 2026: reader questions and picks.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1369","caption":"Chat with Lena, 18 May 2026: can't do this weekend, sorry.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n57","caption":"Journal 18 May 2026: first evening at Lena's wheel in months; hands knew what to do.","topics":["a11.t1","a2.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n185","caption":"Lena Fischer contact: runs Kiln House, fires Nia's pots, lena@kilnhouse.example; walls still too thick.","topics":["a2.t3","a2.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1424","relation":"relates to","weight":0.2}]},
+{"id":"n1580","caption":"Chat with Mum, 18 May 2026: Nia says she has read it twice already.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1579","relation":"repeats","weight":0.4}]},
+{"id":"n1483","caption":"Chat with Marcus, 18 May 2026: Marcus says he just got home.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n321","caption":"City Pharmacy receipt, 18 May 2026: total paid £29.42.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n323","caption":"Parcelpost Home automated week-ahead notice, 19 May 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1705","caption":"Chat with Sam, 19 May 2026: Nia replies lol yes.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1484","caption":"Chat with Marcus, 19 May 2026: Nia asks if he has watched it; Marcus just got home.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n58","caption":"Journal 19 May 2026: slow morning, coffee and emails; Ivy read to Nia that night.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n173","caption":"Hugo Farrow contact: friend from Ivy's school gate, lives in Kingsdown, birthday 24 December.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n180","caption":"Jonah Oduya contact: pottery class friend, lives in Totterdown, birthday 16 November.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n197","caption":"Rosa Rasmussen contact: pottery class friend, lives in Clifton, birthday 2 October.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n238","caption":"Recipe note 19 May 2026, habit loops: freezes well, add lemon at the end.","topics":["a10.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n236","relation":"same recipe as","weight":0.5},{"to":"n237","relation":"same recipe as","weight":0.4}]},
+{"id":"n1706","caption":"Chat with Sam, 19 May 2026: Nia says Ivy says hi.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

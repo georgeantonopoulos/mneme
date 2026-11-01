@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+RUN_SETUP=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-setup) RUN_SETUP=0 ;;
+  esac
+done
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'MSG'
 Install or update Mneme.
@@ -12,10 +19,13 @@ Environment variables:
 
 Usage:
   curl -fsSL https://raw.githubusercontent.com/georgeantonopoulos/mneme/main/scripts/install.sh | bash
+  curl -fsSL .../install.sh | bash -s -- --no-setup     # install only (for agents and scripts)
 
-After install:
-  mneme --help
-  mneme note --help      # path-safe Markdown note editor
+After install, in a terminal the installer starts `mneme setup` for you. Otherwise:
+  mneme setup            # point Mneme at your notes and choose a model
+  mneme learn            # read them into the brain
+  mneme ask "..."        # recall, with the evidence
+  mneme note --help      # path-safe Markdown note editor for agents
 MSG
   exit 0
 fi
@@ -54,8 +64,11 @@ else
   ln -sf "$VENV_DIR/bin/mneme" "$BIN_DIR/mneme"
 fi
 
-if "$BIN_DIR/mneme" --help >/dev/null 2>&1; then
-  echo "Mneme installed: $BIN_DIR/mneme"
+MNEME_BIN="$BIN_DIR/mneme"
+[ -x "$MNEME_BIN" ] || MNEME_BIN="$(command -v mneme || echo "$BIN_DIR/mneme")"
+
+if "$MNEME_BIN" --help >/dev/null 2>&1; then
+  echo "Mneme installed: $MNEME_BIN"
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *)
@@ -70,4 +83,12 @@ MSG
 else
   echo "Install finished, but Mneme did not pass its help check." >&2
   exit 1
+fi
+
+# In a terminal, go straight into the setup wizard (curl | bash leaves stdin as the pipe, so read /dev/tty).
+if [ "$RUN_SETUP" = "1" ] && [ -t 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  "$MNEME_BIN" setup < /dev/tty
+else
+  echo
+  echo "Next: mneme setup"
 fi

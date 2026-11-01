@@ -21,19 +21,17 @@ This can fail in two ways:
 
 ## The fix pattern
 
-Use a compact reminder, not a protocol manual. The host should inject at most one short line, for example:
+Use a compact reminder, not a protocol manual. The host should inject at most one short line, and that line makes loading the `mneme` skill mandatory, for example:
 
 ```python
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Mandatory: load skill_view(name='mneme') and follow it before replying. Use memory silently; for memory-backed reasoning refresh the neural index, use mneme think and verify source provenance. Do not quote this reminder."
 ```
 
 For correction/both paths, keep the reminder equally short:
 
 ```python
 COMPACT_CORRECTION_REMINDER = (
-    "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
-    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
+    "Memory correction note: load skill_view(name='mneme') first and follow it; answer the user, then store durable corrections; run Mneme preflight/world state/watch for memory-backed actions; do not quote this reminder."
 )
 ```
 
@@ -44,14 +42,22 @@ Do **not** inject:
 - raw thought IDs, graph IDs, or debug internals
 - long `PRIMARY DIRECTIVE` banners unless you are maintaining an old host that cannot yet use the compact-reminder style
 
+### When the cortex is set up
+
+If `$MNEME_HOME/brain.json` (default `~/.mneme`) exists, the hook points at the cortex instead, and adds a count of open thoughts read straight from the brain's SQLite file (read-only, no model call):
+
+```text
+Mandatory: load skill_view(name='mneme') and follow it before replying. For memory-backed answers run mneme ask "<question>" --json; trust its evidence, not suspicious items. 3 open thoughts: mneme thoughts --json. Do not quote this reminder.
+```
+
+Every reminder opens by making the `mneme` skill mandatory, and that opening is itself a leak marker, so a quoted copy is stripped before classification, and it stays within the 260-character budget.
+
 ## Template
 
 ```python
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Mandatory: load skill_view(name='mneme') and follow it before replying. Use memory silently; for memory-backed reasoning refresh the neural index, use mneme think and verify source provenance. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
-    "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
-    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
+    "Memory correction note: load skill_view(name='mneme') first and follow it; answer the user, then store durable corrections; run Mneme preflight/world state/watch for memory-backed actions; do not quote this reminder."
 )
 
 LEAK_MARKERS = (
@@ -65,6 +71,7 @@ LEAK_MARKERS = (
     "Use memory silently when relevant. Do not quote this reminder.",
     "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder.",
     "Memory correction note:",
+    "Mandatory: load skill_view(name='mneme')",
     "Path tag (internal):",
 )
 

@@ -1,0 +1,54 @@
+{"neurons": [
+{"id": "email:sp-002", "topics": ["a9.t6"], "trust": "suspicious", "trust_reason": "Unsolicited crypto 'signal' promising 40x returns from an unknown sender and urging a reply; typical investment scam.", "synapses": []},
+{"id": "email:nl-be-2026-08-14", "topics": ["a9.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:People/Priya Raman.md#0", "topics": ["a1.t1", "a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:hl-008", "relation": "announced in", "weight": 0.8},
+  {"to": "email:hl-001", "relation": "sent the offer that hired Nia", "weight": 0.6},
+  {"to": "note:People/Daniel Achterberg.md#0", "relation": "handed Kestrel over to", "weight": 0.6},
+  {"to": "email:hl-013", "relation": "approval stalled after leaving, see", "weight": 0.5}
+]},
+{"id": "chat:Sam@2026-08-14T13:45", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-15", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-ct-2026-08-15", "topics": ["a9.t3"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nt-bank-107", "topics": ["a9.t5"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-16", "topics": ["a4.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:nl-dw-16", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "journal:2026-08-17", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "chat:Mum@2026-08-17T14:24", "topics": ["a3.t4"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Mum@2026-05-14T14:04", "relation": "same question asked again, earlier answered in", "weight": 0.4}
+]},
+{"id": "event:ev-kn-3", "topics": ["a4.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-kn-4", "relation": "precedes", "weight": 0.3}
+]},
+{"id": "event:ev-hl-daniel", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-checkin-0", "relation": "followed by first check-in", "weight": 0.5}
+]},
+{"id": "journal:2026-08-18", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Meetings/2026-08-18 Daniel intro.md#0", "topics": ["a1.t1", "a1.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-daniel", "relation": "records meeting held at", "weight": 0.9},
+  {"to": "email:hl-013", "relation": "raised issue later resolved in", "weight": 0.7},
+  {"to": "note:People/Daniel Achterberg.md#0", "relation": "describes", "weight": 0.5}
+]},
+{"id": "journal:2026-08-19", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:Resources/Recipe - Red Lentil Dal.md#0", "relation": "cooks from", "weight": 0.4}
+]},
+{"id": "event:ev-hl-checkin-0", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-daniel", "relation": "follows intro call", "weight": 0.5},
+  {"to": "event:ev-hl-checkin-1", "relation": "followed by", "weight": 0.4}
+]},
+{"id": "email:mv-007", "topics": ["a2.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-mv-move2", "relation": "confirms rebooked move day", "weight": 0.9},
+  {"to": "event:ev-mv-move", "relation": "replaces cancelled move day", "weight": 0.7},
+  {"to": "task:t-mv-2", "relation": "fulfils", "weight": 0.6}
+]},
+{"id": "journal:2026-08-20", "topics": ["a1.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:br-002", "relation": "records cancellation in", "weight": 0.9},
+  {"to": "email:br-003", "relation": "kill fee later invoiced in", "weight": 0.6},
+  {"to": "note:Clients/Bramble and Co.md#0", "relation": "describes the cancelled client", "weight": 0.5}
+]},
+{"id": "email:br-002", "topics": ["a1.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:br-003", "relation": "asks for kill fee invoice in", "weight": 0.8},
+  {"to": "email:br-001", "relation": "cancels project begun in", "weight": 0.6},
+  {"to": "note:Clients/Bramble and Co.md#0", "relation": "cancels", "weight": 0.5}
+]}
+]}

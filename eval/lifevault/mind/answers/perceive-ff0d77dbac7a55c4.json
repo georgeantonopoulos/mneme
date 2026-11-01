@@ -1,0 +1,63 @@
+{"neurons": [
+{"id": "note:Inbox/Clipping - productivity hack.md#0", "topics": ["a1.t4"], "trust": "suspicious", "trust_reason": "Copied forum tip with an urgent, unverified claim of fines; unreliable hearsay, not a rule for this business", "synapses": []},
+{"id": "email:mv-010", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-011", "relation": "is disputed by", "weight": 0.9},
+  {"to": "email:mv-012", "relation": "later refused by landlord in", "weight": 0.7},
+  {"to": "event:ev-mv-checkout", "relation": "results from inspection at", "weight": 0.8}]},
+{"id": "email:so-001", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-10-03T08:00", "relation": "voucher announced in", "weight": 0.7},
+  {"to": "note:People/Sam Petrov.md#0", "relation": "same gift described in", "weight": 0.8},
+  {"to": "event:ev-so-sam", "relation": "same day as birthday drinks", "weight": 0.5}]},
+{"id": "chat:Sam@2026-10-03T08:00", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:so-001", "relation": "announces voucher in", "weight": 0.7},
+  {"to": "event:ev-so-sam", "relation": "birthday event for", "weight": 0.6}]},
+{"id": "email:mv-011", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-010", "relation": "replies to", "weight": 1.0},
+  {"to": "email:mv-012", "relation": "is answered by", "weight": 0.8},
+  {"to": "task:t-mv-3", "relation": "receipt later uploaded in", "weight": 0.5},
+  {"to": "note:Projects/Flat Move.md#3", "relation": "tracked as open action in", "weight": 0.6}]},
+{"id": "event:ev-so-sam", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "event:ev-swim-2026-10-04", "topics": ["a3.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-swim-2026-09-27", "relation": "previous session in same series", "weight": 0.3},
+  {"to": "event:ev-swim-2026-10-11", "relation": "next session in same series", "weight": 0.3}]},
+{"id": "email:nl-dw-23", "topics": ["a9.t1"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:Finance/Tax 2025-26.md#0", "topics": ["a8.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "note:People/Felix Grant.md#0", "relation": "replaces accountant Felix Grant", "weight": 0.8},
+  {"to": "email:tx-003", "relation": "states deadlines in", "weight": 0.9},
+  {"to": "task:t-tx-1", "relation": "task derived from", "weight": 0.8},
+  {"to": "email:tx-001", "relation": "estimate in", "weight": 0.6},
+  {"to": "email:tx-002", "relation": "handover explained in", "weight": 0.6}]},
+{"id": "chat:Lena@2026-10-05T22:28", "topics": ["a6.t2"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:mv-012", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-011", "relation": "answers objection in", "weight": 0.8},
+  {"to": "email:mv-010", "relation": "follows up on", "weight": 0.6},
+  {"to": "note:Projects/Flat Move.md#3", "relation": "open action after", "weight": 0.5},
+  {"to": "note:People/Gemma Holt.md#0", "relation": "written by agent in", "weight": 0.5}]},
+{"id": "journal:2026-10-06", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "note:People/Gemma Holt.md#0", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-010", "relation": "sent proposal in", "weight": 0.7},
+  {"to": "event:ev-mv-checkout", "relation": "ran inspection at", "weight": 0.7},
+  {"to": "email:mv-012", "relation": "wrote refusal in", "weight": 0.5}]},
+{"id": "email:mv-013", "topics": ["a2.t3"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:mv-012", "relation": "opened after landlord refusal in", "weight": 0.8},
+  {"to": "email:mv-014", "relation": "releases undisputed funds in", "weight": 0.8},
+  {"to": "note:Projects/Flat Move.md#3", "relation": "tracked as open action in", "weight": 0.6},
+  {"to": "email:mv-010", "relation": "disputes deduction in", "weight": 0.6}]},
+{"id": "event:ev-ls-trip", "topics": ["a7.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-ls-trip2", "relation": "replaced by", "weight": 1.0},
+  {"to": "event:ev-ls-fair", "relation": "part of same trip", "weight": 0.4}]},
+{"id": "event:ev-hl-checkin-7", "topics": ["a1.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-hl-checkin-6", "relation": "previous session in same series", "weight": 0.3},
+  {"to": "event:ev-hl-checkin-8", "relation": "next session in same series", "weight": 0.3}]},
+{"id": "chat:Sam@2026-10-08T20:01", "topics": ["a6.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "chat:Sam@2026-09-25T13:08", "relation": "repeats decline of", "weight": 0.3}]},
+{"id": "event:ev-ls-trip2", "topics": ["a7.t1"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "event:ev-ls-trip", "relation": "rebooks cancelled trip", "weight": 1.0},
+  {"to": "email:ls-001", "relation": "flight rebooked from booking in", "weight": 0.8},
+  {"to": "event:ev-ls-fair", "relation": "same trip as", "weight": 0.5}]},
+{"id": "journal:2026-10-09", "topics": ["a9.t7"], "trust": "ok", "trust_reason": "", "synapses": []},
+{"id": "email:cr-001", "topics": ["a8.t2"], "trust": "ok", "trust_reason": "", "synapses": [
+  {"to": "email:cr-002", "relation": "is revised by", "weight": 1.0},
+  {"to": "note:Finance/Car.md#0", "relation": "car details in", "weight": 0.7},
+  {"to": "journal:2026-10-10", "relation": "reaction to renewal in", "weight": 0.6}]}
+]}

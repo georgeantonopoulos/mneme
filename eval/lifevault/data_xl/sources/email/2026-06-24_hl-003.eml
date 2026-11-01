@@ -1,0 +1,14 @@
+Message-ID: <hl-003@lifevault.example>
+Date: Wed, 24 Jun 2026 09:00:00 +0100
+From: Northmoor Bank <alerts@northmoorbank.example>
+To: Nia Okafor <nia@okafor.example>
+Subject: Payment received: =?utf-8?q?=C2=A33=2C600=2E00?=
+X-LifeVault-Id: hl-003
+X-LifeVault-Thread: hl-003
+X-LifeVault-Folder: inbox
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+A payment of =C2=A33,600.00 from HALCYON LABS LTD has been credited to your a=
+ccount ending 4471.

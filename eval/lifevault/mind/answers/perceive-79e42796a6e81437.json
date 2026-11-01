@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1624","caption":"Nia tells Mum she is running late, 10 mins, in chat on 19 July 2026.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n622","caption":"Nia's invoice INV-G142 to Copper Health: 12 days at £450, £5,400, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n985","relation":"later invoice to same client","weight":0.4}]},
+{"id":"n1754","caption":"Sam asks Nia about pub quiz on Thursday, in chat on 19 July 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n625","caption":"Calendar 'your week ahead' notification on 19 July 2026; events are only in the calendar app.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1625","caption":"Nia replies 'lol yes' to Mum in chat on 19 July 2026.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n624","caption":"Harbour Books receipt dated 19 July 2026: total paid £53.83, thanks for shopping.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n629","caption":"Calendar 'your week ahead' automated notification on 20 July 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n632","caption":"Design Weekly #212 on variable fonts in product UI, received 20 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n628","caption":"Design Weekly 'what's new this week' newsletter received 20 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1755","caption":"Nia replies 'sounds good' to Sam in chat on 20 July 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1527","caption":"Marcus replies 'lol yes' to Nia in chat on 20 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n626","caption":"ClearView Opticians: Nia's optician appointment booked Friday 7 August 2026 at 16:00.","topics":["a5.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1254","relation":"confirms","weight":0.9}]},
+{"id":"n627","caption":"Harbour Health Centre: Mum's GP appointment booked Tuesday 18 August 2026 at 10:00.","topics":["a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1262","relation":"confirms","weight":0.9}]},
+{"id":"n631","caption":"Podcast Plus price rising from next month, £4.49 to £5.84 a month; notice 20 July 2026.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1626","caption":"Grace asks Nia whether Ivy liked the book she sent, in chat on 20 July 2026.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n630","caption":"Pet Pantry receipt dated 20 July 2026: total paid £29.26, thanks for shopping.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n633","caption":"Train e-ticket Bristol Temple Meads to Cheltenham Spa, 20 July 2026: £22.10 paid.","topics":["a9.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n636","caption":"Calendar 'security check passed' automated notice on 21 July 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n635","caption":"Product Notes 'behind the scenes' newsletter received 21 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n634","caption":"Clay Times 'what's new this week' newsletter received 21 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

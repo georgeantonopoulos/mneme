@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n64","caption":"Journal 30 May: bike ride, knee felt OK; Ivy read to Nia that night.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1380","caption":"Chat with Lena, 30 May: Nia running late by 10 mins; Lena asks about coffee next week.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n370","caption":"Parcelpost Home automated notice: parcel is on its way, 31 May 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n368","caption":"Product Notes newsletter with tools and tips, 31 May 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n369","caption":"Parenting Today newsletter: five things the team loved, 31 May 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n372","caption":"MapPro welcome email: plan is £3.99 a month, from 31 May 2026.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n665","relation":"price raised by","weight":0.7}]},
+{"id":"n1591","caption":"Chat with Mum, 31 May: Nia replies that's brilliant news.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1680","caption":"Omar Nakata asks in chat if he can borrow Nia's drill this weekend (31 May 2026).","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1681","relation":"is answered by","weight":0.9}]},
+{"id":"n1493","caption":"Chat with Marcus, 31 May: Marcus replies ha, classic.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n65","caption":"Journal 31 May: too much coffee.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n37","caption":"Idea for lentil soup: ask Lena, and it would need a whole weekend.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n38","relation":"same idea as later note","weight":0.5},{"to":"n40","relation":"same idea as later note","weight":0.4}]},
+{"id":"n1494","caption":"Chat with Marcus, 31 May: Nia says just got home and Ivy says hi.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n371","caption":"Harbour Books receipt: total paid £25.66 on 31 May 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n367","caption":"Invoice INV-G031 to Quarry & Sons: 4 days at £450, £1,800, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n373","caption":"Automated calendar email says events are coming up this week; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1592","caption":"Chat with Mum, 31 May: Nia says Ivy says hi.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1681","caption":"Nia tells Omar in chat, 31 May: of course, grab the drill whenever.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1680","relation":"replies to","weight":0.9}]},
+{"id":"n381","caption":"Northmoor Bank: statement for account ending 4471 is ready, 1 June 2026.","topics":["a7.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n380","caption":"Design Weekly #205 newsletter on AI in design critique, 1 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n375","caption":"Product Notes newsletter with reader questions, 1 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}
