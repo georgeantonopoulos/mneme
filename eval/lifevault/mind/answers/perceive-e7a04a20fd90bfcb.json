@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n779","caption":"Corner Cafe receipt, 16 Aug 2026: total paid £22.11.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1641","caption":"Chat with Mum, 16 Aug 2026: Nia writes 'all good here x'.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1539","caption":"Chat with Marcus, 16 Aug 2026: Marcus replies 'that's brilliant news' twice.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1540","caption":"Chat with Marcus, 16 Aug 2026: Nia asks Marcus how his week is going.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1434","caption":"Chat with Lena, 16 Aug 2026: Nia replies 'sounds good'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n114","caption":"Journal 16 Aug 2026: bike ride, knee felt OK.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1868","caption":"Open task: get camping stove back from Maya (Personal project), status open as of 16 Aug 2026.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1854","relation":"same item, different lender","weight":0.4}]},
+{"id":"n784","caption":"Automated 'Backup complete' notice from Parcelpost Home, 17 Aug 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n786","caption":"Design Weekly #216 newsletter on accessible colour contrast tooling, received 17 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n347","relation":"same topic, earlier issue","weight":0.3}]},
+{"id":"n783","caption":"Clay Times 'our favourite links' newsletter received 17 Aug 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n781","caption":"Hearing test at SoundCare booked Friday 28 August 2026 at 09:00 (person not named).","topics":["a3.t2","a4.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1269","relation":"confirmed by calendar event","weight":0.8}]},
+{"id":"n1822","caption":"Sam Brennan asks to borrow Nia's copy of The Dispossessed this weekend, 17 Aug 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1823","relation":"answered by","weight":0.9},{"to":"n1878","relation":"follows up on, book return task","weight":0.6},{"to":"n1835","relation":"same book, other borrower","weight":0.3}]},
+{"id":"n1435","caption":"Chat with Lena, 17 Aug 2026: Nia asks whether Lena has watched it yet.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n785","caption":"Corner Cafe receipt, 17 Aug 2026: total paid £30.39.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n115","caption":"Journal 17 Aug 2026: admin day, hate admin days.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1642","caption":"Chat with Mum, 17 Aug 2026: Grace asks whether Ivy liked the book she sent.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1586","relation":"repeats earlier question","weight":0.4}]},
+{"id":"n782","caption":"Invoice INV-G132 sent to Quarry Health: 11 days at £575, total £6,325, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n616","relation":"earlier invoice, same client","weight":0.4},{"to":"n979","relation":"later invoice, same client","weight":0.4},{"to":"n1158","relation":"later invoice, same client","weight":0.3}]},
+{"id":"n1823","caption":"Nia replies to Sam Brennan: of course, grab The Dispossessed whenever, 17 Aug 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1822","relation":"replies to","weight":1.0}]},
+{"id":"n789","caption":"Payment of £2,550.00 from Kestrel Foods credited to account 4471 on 18 Aug 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n880","relation":"same payer, later payment","weight":0.3},{"to":"n1127","relation":"same payer, later payment","weight":0.3}]},
+{"id":"n788","caption":"Payment of £5,400.00 from Copper Health credited to account 4471 on 18 Aug 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1215","relation":"same amount and payer, later payment","weight":0.3}]}
+]}

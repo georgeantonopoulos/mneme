@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n942","caption":"StreamBox monthly subscription receipt, 10 Sep 2026: £10.99 paid.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n757","relation":"previous monthly charge","weight":0.3}]},
+{"id":"n1782","caption":"Chat with Sam, 10 Sep 2026: Nia writes 'all good here x'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n128","caption":"Journal 10 Sep 2026: bike ride, knee felt OK.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1864","caption":"Task done 20 Aug 2026: booked Bristol Man & Van for 15 Sep 2026 at 8am, £280 (Flat Move).","topics":["a6.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n801","relation":"confirmed by booking email","weight":0.9}]},
+{"id":"n941","caption":"Corner Cafe receipt, 10 Sep 2026: total paid £4.64.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1783","caption":"Chat with Sam, 10 Sep 2026: Nia again writes 'all good here x'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n948","caption":"Automated 'Backup complete' notice from Calendar sender, 11 Sep 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n946","caption":"Design Weekly 'the autumn issue' newsletter received 11 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n944","caption":"Payment of £2,600.00 from Willow Health credited to account 4471 on 11 Sep 2026.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1134","relation":"same payer and amount, later payment","weight":0.3}]},
+{"id":"n947","caption":"Bristol Eats 'behind the scenes' newsletter received 11 Sep 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n945","caption":"Nate Hartley moves Donor Portal deadline from Thu 24 Sep to Thu 1 Oct 2026.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1221","relation":"later push, dates conflict","weight":0.5}]},
+{"id":"n949","caption":"Corner Cafe receipt, 11 Sep 2026: total paid £37.01.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1784","caption":"Chat with Sam, 11 Sep 2026: Nia asks 'coffee next week?'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1281","caption":"Ivy's GP appointment at Harbour Health Centre, Fri 11 Sep 2026 11:00, cancelled.","topics":["a3.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1277","relation":"rescheduled to","weight":0.8}]},
+{"id":"n950","caption":"Bristol Eats newsletter 11 Sep 2026: new ramen spot on Stokes Croft pick of the week.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n129","caption":"Journal 11 Sep 2026: good chat with Mum.","topics":["a11.t1","a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1881","caption":"Task done 11 Sep 2026: return library book (Home project).","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1887","relation":"later open instance of same chore","weight":0.4},{"to":"n1882","relation":"later completed instance of same chore","weight":0.3}]},
+{"id":"n1880","caption":"Task done 8 Sep 2026: paid autumn swim fee £96 for Ivy (due 11 Sep).","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1653","caption":"Chat with Mum, 11 Sep 2026: Grace asks whether Nia has watched it yet.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n943","caption":"Invoice INV-G082 sent to Willow Health: 4 days at £650, total £2,600, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n760","relation":"earlier invoice, same client","weight":0.3},{"to":"n927","relation":"earlier invoice, same client","weight":0.3}]}
+]}
