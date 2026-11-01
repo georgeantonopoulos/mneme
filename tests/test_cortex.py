@@ -221,3 +221,49 @@ def test_incremental_perception_only_touches_what_changed(tmp_path: Path):
     old = brain.recall("mooring", as_of="2026-06-01T00:00:00+00:00")
     assert all("2027" not in h.text for h in old)  # the past still answers as it was
 
+
+
+class ReflectingMind(ScriptedMind):
+    def reflect(self, payload):
+        self.last_reflect = payload
+        neurons = [c["id"] for c in payload["recent"]] or ["n1"]
+        return {"thoughts": [{"text": "Mooring renewal is due soon", "why_now": "date close", "kind": "deadline",
+                              "cites": neurons[:1], "urgency": 0.9},
+                             {"text": "Unsupported idea", "cites": ["n999"]},
+                             {"text": "Rejected by verify", "cites": neurons[:1]}],
+                "retire": [o["id"] for o in payload["open"]],
+                "bridges": [{"a": "a1.t1", "b": "a1.t2", "why": "test"}, {"a": "a1.t1", "b": "nope"}]}
+
+    def verify_thought(self, payload):
+        assert payload["memories"] and all("text" in m or "caption" in m for m in payload["memories"])
+        return {"keep": payload["thought"] != "Rejected by verify", "text": payload["thought"], "reason": ""}
+
+    def connect(self, payload):
+        return {"links": [{"from": payload["left"][0]["id"], "to": payload["right"][0]["id"], "relation": "same harbour", "weight": 0.6},
+                          {"from": payload["left"][0]["id"], "to": "n999", "relation": "invented"}]}
+
+
+def test_reflection_raises_verified_thoughts_retires_and_dreams(tmp_path: Path):
+    mind = ReflectingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain.perceive()
+    stats = brain.reflect(now="2026-07-02T00:00:00+00:00")
+    assert stats == {"proposed": 2, "raised": 1, "retired": 0, "links": 1}  # unsupported cite dropped, verify rejected one
+    (thought,) = brain.thoughts()
+    assert thought["text"] == "Mooring renewal is due soon" and thought["evidence"]
+    made = brain.conn.execute("SELECT src, dst, relation FROM synapses WHERE made_by = 'reflect'").fetchall()
+    assert len(made) == 2 and {r["relation"] for r in made} == {"same harbour"}  # one link, both directions
+
+    # Next pass: only new memories are "recent", the open thought is offered for retirement.
+    stats = brain.reflect(now="2026-07-03T00:00:00+00:00")
+    assert mind.last_reflect["recent"] == [] and mind.last_reflect["open"] == [{"id": f"t{thought['id']}", "text": thought["text"]}]
+    assert stats["retired"] == 1 and stats["raised"] == 1 and stats["links"] == 0  # the link already exists
+
+    # Dismissing inhibits a thought: it is passed as quiet until QUIET_DAYS have passed.
+    tid = brain.thoughts()[0]["id"]
+    assert brain.dismiss(tid, now="2026-07-03T00:00:00+00:00")
+    brain.reflect(now="2026-07-04T00:00:00+00:00")
+    assert "Mooring renewal is due soon" in mind.last_reflect["quiet"]
+    brain.reflect(now="2026-08-01T00:00:00+00:00")
+    assert mind.last_reflect["quiet"] == []
