@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1741","caption":"Nia replies 'ha, classic' to Sam in chat on 6 July 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1404","caption":"Lena asks Nia how her week is going, in chat on 6 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1520","caption":"Marcus asks Nia if she saw the rain, in chat on 6 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1405","caption":"Lena replies 'lol yes' in chat on 6 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1742","caption":"Sam asks Nia about coffee next week, in chat on 7 July 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n571","caption":"City Pharmacy receipt dated 7 July 2026: total paid £2.40, thanks for shopping.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n570","caption":"Tidy Living order ORD-EVN9C on 7 July 2026: standing desk mat for £39.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n87","caption":"Journal entry 7 July 2026: gym, upper body only because of the knee.","topics":["a11.t1","a5.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1854","caption":"Open personal task dated 7 July 2026: get the camping stove back from Elif.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1868","relation":"same item, different borrower","weight":0.4}]},
+{"id":"n1406","caption":"Lena asks Nia how her week is going, in chat on 7 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n568","caption":"Back in Line confirms osteopath appointment Wednesday 12 August 2026 at 16:00.","topics":["a5.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1257","relation":"confirms","weight":0.9}]},
+{"id":"n569","caption":"Nia invoices Signal Works INV-G111: 4 days at £475, £1,900, due in 30 days.","topics":["a1.t4","a2.t3"],"trust":"ok","trust_reason":"","synapses":[{"to":"n722","relation":"later invoice to same client","weight":0.4}]},
+{"id":"n1743","caption":"Nia tells Sam she just got home, in chat on 7 July 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1339","caption":"Elif says the projector is back on Nia's doorstep and thanks her, 7 July 2026.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1337","relation":"returns item from request","weight":0.9},{"to":"n1338","relation":"follows up on lending agreed earlier","weight":0.6}]},
+{"id":"n1407","caption":"Nia tells Lena she just got home, in chat on 7 July 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n578","caption":"Parcelpost Home automated 'Backup complete' notice on 8 July 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n575","caption":"Product Notes newsletter 'the long read' received 8 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n574","caption":"Clay Times newsletter 'reader questions' received 8 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n577","caption":"Parenting Today newsletter 'five things we loved' received 8 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n576","caption":"Harbour Life newsletter 'a quick update' received 8 July 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1601","caption":"Chat with Mum on 15 June: Nia asks if Grace saw the rain.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n443","caption":"Clay Times newsletter on trimming foot rings cleanly, 15 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n441","caption":"City Pharmacy receipt: total paid £53.07 on 15 June 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n449","caption":"Northmoor Bank: statement for account ending 4471 is ready to view in the app.","topics":["a7.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n447","caption":"Parcelpost Home automated notice: parcel is on its way, no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n445","caption":"Clay Times newsletter with reader questions, 16 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n446","caption":"Product Notes newsletter with reader questions, 16 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1340","caption":"Elif asks if she can borrow Nia's camping stove this weekend (16 June 2026).","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1341","relation":"is answered by","weight":0.9},{"to":"n1854","relation":"led to task to get stove back","weight":0.5}]},
+{"id":"n1724","caption":"Chat with Sam, 16 June: Nia proposes coffee next week and says Ivy says hi.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n75","caption":"Journal 16 June: admin day, hates admin days, long walk after work.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n448","caption":"Fresh & Co receipt: total paid £20.28 on 16 June 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1725","caption":"Sam asks Nia for coffee next week in chat, 16 June 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1602","caption":"Chat with Mum, 16 June: Nia asks about coffee next week.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1341","caption":"Nia replies to Elif: of course, she can grab the camping stove whenever.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1340","relation":"replies to","weight":0.9},{"to":"n1854","relation":"led to task to get stove back","weight":0.5}]},
+{"id":"n451","caption":"CloudVault automated email: security check passed, 17 June 2026.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n450","caption":"Harbour Life newsletter: events near you, 17 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n453","caption":"Corner Cafe receipt: total paid £2.88 on 17 June 2026.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1603","caption":"Chat with Mum, 17 June: Nia replies lol yes.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1392","caption":"Lena asks Nia about coffee next week in chat, 17 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1604","caption":"Chat with Mum, 17 June: Nia says sounds good, Grace says she just got home.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}
