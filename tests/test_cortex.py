@@ -383,3 +383,32 @@ def test_undated_files_in_the_journal_folder_are_ordinary_notes(tmp_path: Path):
     (journal / "Templates" / "Daily.md").write_text("# Daily\n\n- mood\n", encoding="utf-8")
     sources = {e.title: e.source for e in read_sources(tmp_path / "notes")}
     assert sources == {"Friday": "journal", "Index": "note", "Daily": "note"}
+
+
+def test_lookup_applies_the_time_cutoff_before_the_limit(tmp_path: Path):
+    from mneme.cortex.senses import Episode
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    old = Episode(id="note:Old.md#0", source="note", doc="Old.md", refs=["note:Old.md"], title="Gym",
+                  text="The locker code is 4417. " + "Plenty of other words about the gym and the pool. " * 20,
+                  known_at="2026-01-01T00:00:00+00:00")
+    newer = [Episode(id=f"note:N{i}.md#0", source="note", doc=f"N{i}.md", refs=[f"note:N{i}.md"], title=f"N{i}",
+                     text="locker code", known_at="2026-06-01T00:00:00+00:00") for i in range(11)]
+    brain.ingest([old, *newer])
+    assert brain.phrase_lookup("locker code", as_of="2026-02-01T00:00:00+00:00") == ["note:Old.md#0"]
+    assert brain.lookup("locker code", as_of="2026-02-01T00:00:00+00:00") == ["note:Old.md#0"]
+    assert "note:Old.md#0" not in brain.lookup("locker code", exclude="note:Old.md#0")
+
+
+def test_calendar_times_follow_their_tzid(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_text("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:e1@x\nSUMMARY:Call\n"
+                   "DTSTART;TZID=America/New_York:20260701T090000\nCREATED:20260601T120000Z\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:e2@x\nSUMMARY:Lunch\nDTSTART;TZID=Europe/London:20260701T130000\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:e3@x\nSUMMARY:Odd\nDTSTART;TZID=Not/AZone:20260701T130000\nEND:VEVENT\nEND:VCALENDAR\n",
+                   encoding="utf-8")
+    times = {e.title: e.event_time for e in read_ics(ics)}
+    assert times["Call"].startswith("2026-07-01T13:00:00") and times["Lunch"].startswith("2026-07-01T12:00:00")
+    assert times["Odd"].startswith("2026-07-01T12:00:00")  # unknown zone names fall back to London time

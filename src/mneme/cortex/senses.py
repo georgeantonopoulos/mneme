@@ -149,11 +149,16 @@ def read_email_dir(directory: Path) -> Iterator[Episode]:
 # Calendar
 # ---------------------------------------------------------------------------
 def _ics_value(raw: str) -> dt.datetime:
-    value = raw.split(":", 1)[1] if ":" in raw else raw
-    if "VALUE=DATE" in raw.split(":", 1)[0] or len(value) == 8:
-        return dt.datetime.strptime(value[:8], "%Y%m%d").replace(hour=9, tzinfo=LONDON)
+    params, value = raw.split(":", 1) if ":" in raw else ("", raw)
+    tzid = next((p.split("=", 1)[1].strip('"') for p in params.split(";") if p.upper().startswith("TZID=")), None)
+    try:
+        zone = ZoneInfo(tzid) if tzid else LONDON
+    except (ValueError, KeyError, OSError):  # an unknown or Windows-style zone name
+        zone = LONDON
+    if "VALUE=DATE" in params or len(value) == 8:
+        return dt.datetime.strptime(value[:8], "%Y%m%d").replace(hour=9, tzinfo=zone)
     stamp = dt.datetime.strptime(value.rstrip("Z"), "%Y%m%dT%H%M%S")
-    return stamp.replace(tzinfo=dt.timezone.utc if value.endswith("Z") else LONDON)
+    return stamp.replace(tzinfo=dt.timezone.utc if value.endswith("Z") else zone)
 
 
 def read_ics(path: Path) -> Iterator[Episode]:

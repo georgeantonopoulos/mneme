@@ -286,22 +286,24 @@ class Brain:
         if not tokens:
             return []
         query = " OR ".join(f'"{t}"' for t in sorted(tokens))
-        rows = self.conn.execute(
-            "SELECT n.id, n.known_at FROM neuron_text f JOIN neurons n ON n.n = f.rowid WHERE neuron_text MATCH ? ORDER BY bm25(neuron_text) LIMIT ?",
-            (query, limit + 5),
-        ).fetchall()
-        return [r["id"] for r in rows if r["id"] != exclude and (as_of is None or r["known_at"] <= as_of)][:limit]
+        return self._match(query, limit, exclude=exclude, as_of=as_of)
 
     def phrase_lookup(self, phrase: str, *, limit: int = 5, as_of: str | None = None) -> list[str]:
         """Exact phrase sense, for strings the mind asks to look up verbatim."""
         words = re.findall(r"\w+", phrase.lower())
         if not words:
             return []
+        return self._match('"' + " ".join(words) + '"', limit, as_of=as_of)
+
+    def _match(self, query: str, limit: int, *, exclude: str | None = None, as_of: str | None = None) -> list[str]:
+        # The time cutoff and the exclusion are applied before the limit, so later memories cannot crowd out
+        # the ones that were known at the moment asked about.
         rows = self.conn.execute(
-            "SELECT n.id, n.known_at FROM neuron_text f JOIN neurons n ON n.n = f.rowid WHERE neuron_text MATCH ? ORDER BY bm25(neuron_text) LIMIT ?",
-            ('"' + " ".join(words) + '"', limit + 5),
+            "SELECT n.id FROM neuron_text f JOIN neurons n ON n.n = f.rowid WHERE neuron_text MATCH ? "
+            "AND (? IS NULL OR n.id != ?) AND (? IS NULL OR n.known_at <= ?) ORDER BY bm25(neuron_text) LIMIT ?",
+            (query, exclude, exclude, as_of, as_of, limit),
         ).fetchall()
-        return [r["id"] for r in rows if as_of is None or r["known_at"] <= as_of][:limit]
+        return [r["id"] for r in rows]
 
     # ------------------------------------------------------------------ perception (LLM)
     def perceive(self, *, batch_size: int = 20, map_sample: int = 800) -> dict:
