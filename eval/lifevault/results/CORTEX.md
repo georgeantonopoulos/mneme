@@ -183,6 +183,13 @@ The incremental update and the stale-vs-learning comparison are in `LEARNING.md`
 - dividing large topics raised XL dev to 0.88, only 2 questions, and was removed; chosen topics now
   share the candidate slots fairly (small vault 0.90 / 0.96).
 
+## Against Mneme on `main`
+
+`MAIN_VS_CORTEX.md` runs `main`'s own retrieval, from a checkout of `main`, on the same questions:
+- small vault: 0.31 / 0.08 for `main` vs 0.90 / 0.96 for the cortex (dev / held-out);
+- XL vault: 0.31 / 0.08 vs 0.84 / 0.92;
+- `main` wins only the two safety questions, where the cortex distrusted the right memory but did not report it.
+
 ## Cost and caveats
 
 - **LLM calls.** Perception is about 60 calls for 402 neurons (one map, 21 batches, 37 gists) and is paid
