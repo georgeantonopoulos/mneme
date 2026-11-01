@@ -314,6 +314,9 @@ def read_graph_db(path: Path) -> Iterator[Episode]:
     def rows(sql: str):
         return conn.execute(sql).fetchall()
 
+    # Anything from a mneme:// source can be forgotten in the graph as one unit, so none of it is copied here.
+    kept = "COALESCE({}, '') NOT LIKE 'mneme://%'"
+
     def episode(kind: str, rid: str, title: str, lines: list[str], known: str | None, *, event: str | None = None,
                 meta: dict | None = None) -> Episode | None:
         known_at = _stamp(known)
@@ -325,7 +328,7 @@ def read_graph_db(path: Path) -> Iterator[Episode]:
 
     found: list[Episode | None] = []
     if "world_state_assertions" in tables:
-        for r in rows("SELECT * FROM world_state_assertions ORDER BY created_at, id"):
+        for r in rows(f"SELECT * FROM world_state_assertions WHERE {kept.format('source_path')} ORDER BY created_at, id"):
             value = r["object_name"] or r["object_value"]
             found.append(episode("state", r["id"], f"{r['subject_name']} {r['predicate']} {value}", [
                 f"Recorded state ({r['state_type']}, {r['status']}): {r['subject_name']} {r['predicate']} {value}.",
@@ -333,13 +336,19 @@ def read_graph_db(path: Path) -> Iterator[Episode]:
                 f"Evidence: {r['evidence_text']}", f"Source: {r['source_path']}"], r["updated_at"] or r["created_at"],
                 event=r["valid_from"], meta={"status": r["status"]}))
     if "world_actions" in tables:
-        for r in rows("SELECT * FROM world_actions ORDER BY created_at, id"):
+        for r in rows(f"SELECT * FROM world_actions WHERE {kept.format('source_path')} ORDER BY created_at, id"):
             found.append(episode("action", r["id"], r["title"], [
                 f"Action by {r['actor']}: {r['title']} ({r['action_type']}, status {r['status']}).",
                 f"Side effects: {r['side_effect_level']}, reversibility: {r['reversibility']}.",
                 f"Reference: {r['external_ref']}" if r["external_ref"] else ""], r["created_at"], event=r["created_at"]))
     if "world_predictions" in tables:
-        for r in rows("SELECT * FROM world_predictions ORDER BY created_at, id"):
+        temporary = []  # a prediction goes with the temporary assertion or action it hangs off
+        if "world_state_assertions" in tables:
+            temporary.append("COALESCE(subject_assertion_id, '') IN (SELECT id FROM world_state_assertions WHERE source_path LIKE 'mneme://%')")
+        if "world_actions" in tables:
+            temporary.append("COALESCE(source_action_id, '') IN (SELECT id FROM world_actions WHERE source_path LIKE 'mneme://%')")
+        where = f"WHERE NOT ({' OR '.join(temporary)})" if temporary else ""
+        for r in rows(f"SELECT * FROM world_predictions {where} ORDER BY created_at, id"):
             found.append(episode("prediction", r["id"], r["title"], [
                 f"Expected: {r['title']} (status {r['status']}).",
                 f"Check after {r['check_after']}, expires {r['expires_at']}.",
@@ -353,7 +362,8 @@ def read_graph_db(path: Path) -> Iterator[Episode]:
     if {"edges", "nodes"} <= tables:
         for r in rows("SELECT e.*, a.name AS src_name, b.name AS dst_name FROM edges e JOIN nodes a ON a.id = e.src_id "
                       "JOIN nodes b ON b.id = e.dst_id WHERE e.status IN ('active', 'killed') "
-                      "AND COALESCE(e.source_type, 'vault') != 'vault' ORDER BY e.created_at, e.id"):
+                      f"AND COALESCE(e.source_type, 'vault') != 'vault' AND {kept.format('e.source_path')} "
+                      f"AND {kept.format('a.source_path')} AND {kept.format('b.source_path')} ORDER BY e.created_at, e.id"):
             relation = r["relation"].replace("_", " ")
             claim = (f"{r['src_name']} {relation} {r['dst_name']}" if r["status"] == "active"
                      else f"It is false that {r['src_name']} {relation} {r['dst_name']}: this relationship was marked wrong.")
@@ -364,7 +374,8 @@ def read_graph_db(path: Path) -> Iterator[Episode]:
     if {"observations", "nodes"} <= tables:
         sensed: dict[str, list[sqlite3.Row]] = {}
         for r in rows("SELECT o.*, n.name AS node_name FROM observations o JOIN nodes n ON n.id = o.note_id "
-                      "WHERE o.sense_event_id IS NOT NULL AND o.source_path NOT LIKE 'mneme://%' ORDER BY o.created_at, o.id"):
+                      f"WHERE o.sense_event_id IS NOT NULL AND {kept.format('o.source_path')} AND {kept.format('n.source_path')} "
+                      "ORDER BY o.created_at, o.id"):
             sensed.setdefault(r["note_id"], []).append(r)
         for note_id, obs in sensed.items():
             found.append(episode("sensed", note_id, obs[0]["node_name"], [f"- {o['text']}" for o in obs],

@@ -264,6 +264,15 @@ def _earlier_graph(tmp_path: Path) -> Path:
                      [("o1", "n3", "fact", "Invoice for mooring, £320, due 15 June", "gmail:abc", at, "se1"),
                       ("o2", "n4", "fact", "temporary agent note", "mneme://test/x", at, "se2"),
                       ("o3", "n1", "fact", "from a note", "Projects/Boat.md", at, None)])
+    # Temporary memory from `mneme remember`, which must stay removable as one unit: none of it is imported.
+    conn.execute("INSERT INTO world_state_assertions(id,subject_name,predicate,object_value,status,evidence_text,source_path,"
+                 "created_at,updated_at) VALUES ('s2','Probe','is','temporary','current','test','mneme://test/x',?,?)", (at, at))
+    conn.execute("INSERT INTO world_actions(id,actor,action_type,title,source_path,created_at) VALUES "
+                 "('a2','hermes','note','Temporary action','mneme://test/x',?)", (at,))
+    conn.execute("INSERT INTO world_predictions(id,title,subject_assertion_id,match_json,check_after,expires_at,created_at,updated_at) "
+                 "VALUES ('p2','Temporary expectation','s2','{}','2026-06-16','2026-07-01',?,?)", (at, at))
+    conn.executemany(edge, [("e5", "n1", "n2", "knows", "mneme://test/x", "", at, at, "active", "research"),
+                            ("e6", "n1", "n4", "owns", "research:3", "", at, at, "active", "research")])
     conn.commit()
     conn.close()
     return db
