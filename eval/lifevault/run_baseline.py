@@ -57,7 +57,7 @@ def _strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
-def load_documents() -> list[dict]:
+def load_documents(DATA: Path = DATA) -> list[dict]:  # noqa: N803 - defaults to the module's data folder
     """One document per source item: {path, refs, title, text}.
 
     ``path`` is the Markdown path used when the item is rendered for Mneme.

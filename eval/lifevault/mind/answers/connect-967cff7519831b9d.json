@@ -1,0 +1,1 @@
+{"links":[{"from":"n273","to":"n5","relation":"impersonates the user's real bank, Northmoor, whose account is in the admin note","weight":0.6},{"from":"n273","to":"n130","relation":"fake bank email mimics the genuine Northmoor statement notices","weight":0.5}]}

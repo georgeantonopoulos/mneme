@@ -292,22 +292,28 @@ class Brain:
         return [r["id"] for r in rows if as_of is None or r["known_at"] <= as_of][:limit]
 
     # ------------------------------------------------------------------ perception (LLM)
-    def perceive(self, *, batch_size: int = 20) -> dict:
+    def perceive(self, *, batch_size: int = 20, map_sample: int = 800) -> dict:
         """Run the three perception phases on whatever is new. Resumable: with a deferred mind, rerun after
         answers arrive. The region map is formed once; later runs perceive only unperceived neurons and
         rewrite only the gists of regions that gained members (reorganising the map is left to sleep)."""
-        stats = {"regions": self._form_regions()}
+        stats = {"regions": self._form_regions(map_sample)}
         stats["perceived"] = self._perceive_neurons(batch_size)
         stats["gists"] = self._consolidate()
         return stats
 
-    def _form_regions(self) -> int:
+    def _form_regions(self, sample: int) -> int:
         existing = self.conn.execute("SELECT count(*) FROM regions WHERE level = 1").fetchone()[0]
         if existing:
             return existing
         rows = self._neurons()
+        payload: dict = {}
+        if len(rows) > sample:
+            # A large brain is mapped from an even sample across time; perception then places every neuron.
+            step = len(rows) / sample
+            payload["sampled"] = f"{sample} of {len(rows)} neurons, evenly spread over time"
+            rows = [rows[int(i * step)] for i in range(sample)]
         view = [f"{self._sid(r)} | {r['source']} | {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 60)} | {_clip(r['text'], 70)}" for r in rows]
-        (answer,) = self.mind.ask_many([Task("regions", REGIONS_INSTRUCTIONS, {"neurons": view}, REGIONS_SHAPE)])
+        (answer,) = self.mind.ask_many([Task("regions", REGIONS_INSTRUCTIONS, {**payload, "neurons": view}, REGIONS_SHAPE)])
         self.conn.execute("DELETE FROM regions")
         for area in answer.get("areas", []):
             self.conn.execute("INSERT OR REPLACE INTO regions(id,parent,level,title,description) VALUES (?,?,?,?,?)",
