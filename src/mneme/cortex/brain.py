@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS regions (
     dirty INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS perceived (neuron TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS perceive_misses (neuron TEXT PRIMARY KEY, attempts INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS membership (neuron TEXT NOT NULL, region TEXT NOT NULL, PRIMARY KEY (neuron, region));
 CREATE TABLE IF NOT EXISTS synapses (
     src TEXT NOT NULL, dst TEXT NOT NULL, relation TEXT NOT NULL, weight REAL NOT NULL, made_by TEXT NOT NULL,
@@ -171,6 +172,7 @@ or consequence), never because they merely sound alike. Name the relation in a f
 CONNECT_SHAPE = {"links": [{"from": "n1", "to": "n9", "relation": "...", "weight": 0.7}]}
 
 QUIET_DAYS = 14
+PERCEIVE_ATTEMPTS = 2  # a memory the mind skips is asked about once more, then left to word lookup
 
 
 @dataclass
@@ -346,7 +348,11 @@ class Brain:
     def _perceive_neurons(self, batch_size: int) -> int:
         rows = self._neurons()
         done = {r[0] for r in self.conn.execute("SELECT neuron FROM perceived")}
-        pending = [r for r in rows if r["id"] not in done]
+        misses = dict(self.conn.execute("SELECT neuron, attempts FROM perceive_misses").fetchall())
+        # Memories the mind skipped last time are retried once, in batches of their own after the new ones.
+        fresh = [r for r in rows if r["id"] not in done and r["id"] not in misses]
+        retry = [r for r in rows if r["id"] not in done and r["id"] in misses]
+        pending = fresh + retry
         if not pending:
             return 0
         topics = [{"id": r["id"], "title": r["title"], "description": r["description"]}
@@ -358,7 +364,7 @@ class Brain:
         short = {r["id"]: f"{r['source']} {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 50)} | {_clip(r['text'], 110)}" for r in rows}
         sid = {r["id"]: self._sid(r) for r in rows}
         tasks = []
-        for batch in _batches(pending, batch_size):
+        for batch in _batches(fresh, batch_size) + _batches(retry, batch_size):
             neurons = []
             for r in batch:
                 view = self._neuron_view(r, 600)
@@ -371,12 +377,14 @@ class Brain:
         known = {sid[r["id"]]: r["id"] for r in rows}
         valid_topics = {t["id"] for t in topics}
         conn = self.conn
-        conn.executemany("INSERT OR IGNORE INTO perceived VALUES (?)", [(r["id"],) for r in pending])
+        answered: set[str] = set()
+        asked = {r["id"] for r in pending}
         for answer in answers:
             for item in answer.get("neurons", []):
                 nid = known.get(item.get("id"))
-                if nid is None:
+                if nid is None or nid not in asked:
                     continue
+                answered.add(nid)
                 for topic in item.get("topics", [])[:2]:
                     if topic in valid_topics:
                         conn.execute("INSERT OR IGNORE INTO membership VALUES (?,?)", (nid, topic))
@@ -389,8 +397,18 @@ class Brain:
                     if target and target != nid:
                         weight = max(0.1, min(1.0, float(syn.get("weight", 0.5))))
                         conn.execute("INSERT OR REPLACE INTO synapses VALUES (?,?,?,?,?)", (nid, target, str(syn.get("relation", "related"))[:80], weight, "mind"))
+        for r in pending:
+            if r["id"] in answered:
+                conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (r["id"],))
+                conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (r["id"],))
+            elif misses.get(r["id"], 0) + 1 >= PERCEIVE_ATTEMPTS:
+                # Skipped twice: stop asking. It stays findable by its words, without a topic or caption.
+                conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (r["id"],))
+                conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (r["id"],))
+            else:
+                conn.execute("INSERT OR REPLACE INTO perceive_misses VALUES (?, ?)", (r["id"], misses.get(r["id"], 0) + 1))
         conn.commit()
-        return sum(len(a.get("neurons", [])) for a in answers)
+        return len(answered)
 
     def _consolidate(self) -> int:
         now = max(r["known_at"] for r in self.conn.execute("SELECT known_at FROM neurons"))

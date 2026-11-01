@@ -16,7 +16,7 @@ import email
 import json
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email import policy
 from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
@@ -29,6 +29,8 @@ LONDON = ZoneInfo("Europe/London")
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.S)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
 SHORT_NOTE_CHARS = 900
+MAX_EPISODE_CHARS = 900  # longer memories are split into parts, so reading and answering always see all of them
+DATED_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 @dataclass
@@ -99,7 +101,7 @@ def read_vault(vault: Path, *, journal_dir: str = "Journal") -> Iterator[Episode
             body = body[title_match.end():]
         updated = meta.get("updated") or meta.get("created") or dt.date.fromtimestamp(path.stat().st_mtime).isoformat()
         known_at = _day_iso(updated)
-        if rel.startswith(journal_dir + "/"):
+        if rel.startswith(journal_dir + "/") and DATED_RE.fullmatch(path.stem):
             yield Episode(id=f"journal:{path.stem}", source="journal", doc=rel, refs=[f"journal:{path.stem}"], title=title,
                           text=body.strip(), known_at=known_at, event_time=_day_iso(path.stem))
             continue
@@ -224,9 +226,44 @@ def read_tasks_json(path: Path) -> Iterator[Episode]:
                       meta={"status": "done" if done else "open"})
 
 
+def _parts(text: str, limit: int) -> list[str]:
+    """Split text at paragraph, then line, then word boundaries into pieces of at most `limit` characters."""
+    if len(text) <= limit:
+        return [text]
+    for sep in ("\n\n", "\n", " "):
+        pieces, current = [], ""
+        for chunk in text.split(sep):
+            candidate = f"{current}{sep}{chunk}" if current else chunk
+            if len(candidate) <= limit:
+                current = candidate
+                continue
+            if current:
+                pieces.append(current)
+            current = chunk
+        pieces.append(current)
+        if all(len(p) <= limit for p in pieces):
+            return [p.strip() for p in pieces if p.strip()]
+    return [text[i:i + limit] for i in range(0, len(text), limit)]
+
+
+def bounded(episodes: Iterable[Episode], limit: int = MAX_EPISODE_CHARS) -> Iterator[Episode]:
+    for ep in episodes:
+        parts = _parts(ep.text, limit)
+        if len(parts) == 1:
+            yield ep
+            continue
+        for k, text in enumerate(parts, 1):
+            yield replace(ep, id=f"{ep.id}/{k}", title=f"{ep.title} (part {k} of {len(parts)})", text=text)
+
+
 def read_sources(root: Path) -> Iterable[Episode]:
     """Read a directory laid out like LifeVault (vault/ plus sources/{email,calendar,chat,tasks}), or, when it has
-    neither, treat the directory itself as a Markdown vault (a notes-app vault, a notes folder)."""
+    neither, treat the directory itself as a Markdown vault (a notes-app vault, a notes folder). Memories longer
+    than MAX_EPISODE_CHARS come out as several parts."""
+    yield from bounded(_read_sources(root))
+
+
+def _read_sources(root: Path) -> Iterable[Episode]:
     if not (root / "vault").is_dir() and not (root / "sources").is_dir():
         yield from read_vault(root)
         return

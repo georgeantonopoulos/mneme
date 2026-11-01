@@ -316,3 +316,70 @@ def test_every_distinct_revision_is_kept_even_on_the_same_day(tmp_path: Path):
     texts = [r["text"] for r in brain.conn.execute("SELECT text FROM neurons ORDER BY n")]
     assert texts == ["original", "edit one", "edit two", "original"]  # repeats skipped, a revert is the newest again
     assert brain.ingest([ep("original")], incremental=True)["added"] == 0
+
+
+class SkippingMind(ScriptedMind):
+    """Answers every neuron except one whose text contains "skip me", until told otherwise."""
+
+    def __init__(self):
+        super().__init__()
+        self.skip = True
+
+    def perceive(self, payload):
+        out = super().perceive(payload)
+        out["neurons"] = [n for n, v in zip(out["neurons"], payload["neurons"]) if not (self.skip and "skip me" in v["text"])]
+        return out
+
+
+def test_a_memory_the_mind_skips_is_asked_about_again(tmp_path: Path):
+    root = _vault(tmp_path)
+    (root / "vault" / "Projects" / "Odd.md").write_text("# Odd\n\nskip me, please\n", encoding="utf-8")
+    mind = SkippingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    assert brain.perceive()["perceived"] == 4  # one of five skipped
+    odd = brain.conn.execute("SELECT id FROM neurons WHERE title = 'Odd'").fetchone()[0]
+    assert not brain.conn.execute("SELECT 1 FROM perceived WHERE neuron = ?", (odd,)).fetchone()
+
+    mind.skip = False
+    assert brain.perceive()["perceived"] == 1  # retried on its own, and answered
+    assert brain.conn.execute("SELECT 1 FROM membership WHERE neuron = ?", (odd,)).fetchone()
+    assert brain.perceive()["perceived"] == 0
+
+
+def test_a_memory_skipped_twice_is_left_to_word_lookup(tmp_path: Path):
+    root = _vault(tmp_path)
+    (root / "vault" / "Projects" / "Odd.md").write_text("# Odd\n\nskip me, please\n", encoding="utf-8")
+    mind = SkippingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(root)
+    brain.perceive()
+    brain.perceive()
+    asked = sum(t.kind == "perceive" for t in mind.seen)
+    assert brain.perceive()["perceived"] == 0 and sum(t.kind == "perceive" for t in mind.seen) == asked  # no third ask
+    assert brain.lookup("skip me")  # still findable by its words
+
+
+def test_long_memories_are_split_so_reading_sees_all_of_them(tmp_path: Path):
+    from mneme.cortex.senses import MAX_EPISODE_CHARS, read_sources
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    paragraphs = [f"Paragraph {i}: " + "words " * 40 for i in range(12)] + ["The locker code is 4417."]
+    (notes / "Long.md").write_text("# Long\n\n" + "\n\n".join(paragraphs), encoding="utf-8")
+    parts = list(read_sources(notes))
+    assert len(parts) > 1 and all(len(p.text) <= MAX_EPISODE_CHARS for p in parts)
+    assert "4417" in parts[-1].text and parts[-1].title.startswith("Long (part")
+    assert len({p.id for p in parts}) == len(parts) and {tuple(p.refs) for p in parts} == {("note:Long.md",)}
+
+
+def test_undated_files_in_the_journal_folder_are_ordinary_notes(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    journal = tmp_path / "notes" / "Journal"
+    (journal / "Templates").mkdir(parents=True)
+    (journal / "2026-05-01.md").write_text("# Friday\n\nRan 5k.\n", encoding="utf-8")
+    (journal / "Index.md").write_text("# Index\n\nAll entries.\n", encoding="utf-8")
+    (journal / "Templates" / "Daily.md").write_text("# Daily\n\n- mood\n", encoding="utf-8")
+    sources = {e.title: e.source for e in read_sources(tmp_path / "notes")}
+    assert sources == {"Friday": "journal", "Index": "note", "Daily": "note"}
