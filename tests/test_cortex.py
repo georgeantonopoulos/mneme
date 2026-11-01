@@ -303,3 +303,16 @@ def test_chosen_topics_share_the_candidate_cap(tmp_path: Path):
     skim = [t for t in mind.seen if t.kind == "skim_neurons"][-1].payload["candidates"]
     assert len(skim) == 120  # the long topic is capped...
     assert any(c.get("trust", "").startswith("suspicious") for c in skim)  # ...but cannot push the small one out
+
+
+def test_every_distinct_revision_is_kept_even_on_the_same_day(tmp_path: Path):
+    from mneme.cortex.senses import Episode
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    ep = lambda text: Episode(id="note:Plan.md#0", source="note", doc="Plan.md", refs=["note:Plan.md"],  # noqa: E731
+                              title="Plan", text=text, known_at="2026-05-01T00:00:00+00:00")
+    for text in ("original", "edit one", "edit two", "edit two", "original"):
+        brain.ingest([ep(text)], incremental=True)
+    texts = [r["text"] for r in brain.conn.execute("SELECT text FROM neurons ORDER BY n")]
+    assert texts == ["original", "edit one", "edit two", "original"]  # repeats skipped, a revert is the newest again
+    assert brain.ingest([ep("original")], incremental=True)["added"] == 0

@@ -29,6 +29,7 @@ Dismissed thoughts are inhibited for a while, then fade.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import re
 import sqlite3
@@ -241,19 +242,28 @@ class Brain:
         conn = self.conn
         if not incremental:
             conn.executescript("DELETE FROM neurons; DELETE FROM neuron_text;")
-        known = {r["id"]: r for r in conn.execute("SELECT id, title, text, meta, known_at FROM neurons")}
+        known = {r["id"]: r for r in conn.execute("SELECT id, title, text, meta, known_at FROM neurons ORDER BY n")}
+        latest: dict[str, sqlite3.Row | dict] = {}  # each episode's newest stored version
+        for nid, row in known.items():
+            base = nid
+            while "~" in base and base.rsplit("~", 1)[0] in known:
+                base = base.rsplit("~", 1)[0]
+            latest[base] = row
         n = conn.execute("SELECT COALESCE(MAX(n), 0) FROM neurons").fetchone()[0]
         added = versions = 0
         for ep in episodes:
             meta_json = json.dumps(dict(ep.meta), ensure_ascii=False)
+            content = (ep.title, ep.text, meta_json, ep.known_at)
             neuron_id = ep.id
-            old = known.get(neuron_id)
-            if old is not None:
-                if (old["title"], old["text"], old["meta"], old["known_at"]) == (ep.title, ep.text, meta_json, ep.known_at):
+            newest = latest.get(ep.id)
+            if newest is not None:
+                if (newest["title"], newest["text"], newest["meta"], newest["known_at"]) == content:
                     continue
-                neuron_id = f"{ep.id}~{ep.known_at[:10]}"
-                if neuron_id in known:
-                    continue
+                # A changed episode becomes a new version, named by its content so every distinct revision is kept.
+                digest = hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()[:12]
+                neuron_id = f"{ep.id}~{digest}"
+                if neuron_id in known:  # reverted to an older text: store it again as the newest version
+                    neuron_id = f"{neuron_id}~{n + 1}"
                 versions += 1
             n += 1
             added += 1
@@ -261,7 +271,7 @@ class Brain:
                          (neuron_id, n, ep.source, ep.doc, json.dumps(ep.refs), ep.title, ep.text, meta_json,
                           ep.known_at, ep.event_time, ep.thread))
             conn.execute("INSERT INTO neuron_text(rowid, title, text) VALUES (?,?,?)", (n, ep.title, f"{ep.meta.get('header', '')}\n{ep.text}"))
-            known[neuron_id] = {"title": ep.title, "text": ep.text, "meta": meta_json, "known_at": ep.known_at}
+            known[neuron_id] = latest[ep.id] = {"title": ep.title, "text": ep.text, "meta": meta_json, "known_at": ep.known_at}
         conn.commit()
         return {"neurons": len(known), "added": added, "new_versions": versions}
 

@@ -138,3 +138,68 @@ def test_reflect_and_thoughts_from_the_command_line(tmp_path: Path, capsys, monk
     assert _run(capsys, "thoughts", "--home", str(home), "--dismiss", "999", "--json")[0] == 1
     app.run(["thoughts", "--home", str(home)])  # the drawn view renders without error
     assert "Nothing needs your attention" in capsys.readouterr().out
+
+
+def test_learn_json_prints_one_json_object(tmp_path: Path, capsys, monkeypatch):
+    root = _vault(tmp_path)
+    home = tmp_path / "home"
+    assert _run(capsys, "setup", "--home", str(home), "--notes", str(root), "--mind", "command", "--command", "true",
+                "--skip-test", "--yes", "--json")[0] == 0
+    monkeypatch.setattr(app, "build_mind", lambda config, home: AnsweringMind())
+    assert app.run(["learn", "--home", str(home), "--json"]) == 0
+    out = capsys.readouterr().out
+    assert json.loads(out)["perceived"] == 4  # the whole of stdout parses: progress went to stderr
+
+
+def test_two_notes_folders_with_the_same_file_stay_separate(tmp_path: Path, capsys, monkeypatch):
+    for name, text in (("work", "Quarterly plan for the studio"), ("home", "Garden plan for spring")):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "Plan.md").write_text(f"# Plan\n\n{text}\n", encoding="utf-8")
+    home = tmp_path / "mneme"
+    assert _run(capsys, "setup", "--home", str(home), "--notes", str(tmp_path / "work"), "--notes", str(tmp_path / "home"),
+                "--mind", "command", "--command", "true", "--skip-test", "--yes", "--json")[0] == 0
+    monkeypatch.setattr(app, "build_mind", lambda config, home: AnsweringMind())
+    assert _run(capsys, "learn", "--home", str(home), "--json")[1]["new"] == 2
+    assert _run(capsys, "learn", "--home", str(home), "--json")[1]["new"] == 0  # and nothing is mistaken for an edit
+
+
+def test_a_file_mind_resumes_the_same_question_after_the_clock_moves(tmp_path: Path, capsys, monkeypatch):
+    import datetime as real_dt
+
+    root = _vault(tmp_path)
+    home = tmp_path / "home"
+    assert _run(capsys, "setup", "--home", str(home), "--notes", str(root), "--mind", "file", "--skip-test", "--yes", "--json")[0] == 0
+    config = json.loads((home / "brain.json").read_text())
+    outbox, answers = Path(config["mind"]["path"]) / "outbox", Path(config["mind"]["path"]) / "answers"
+    mind = AnsweringMind()
+
+    def answer_all():
+        for task in outbox.glob("*.json"):
+            prompt = json.loads(task.read_text())["prompt"]
+            payload = json.loads(prompt.split("INPUT (JSON):\n", 1)[1].strip())
+            (answers / task.name).write_text(json.dumps(getattr(mind, task.name.rsplit("-", 1)[0])(payload)))
+            task.unlink()
+
+    for _ in range(6):  # learn takes a few rounds of answering
+        if _run(capsys, "learn", "--home", str(home), "--json")[0] == 0:
+            break
+        answer_all()
+
+    clock = {"now": real_dt.datetime(2026, 6, 1, 9, 0, tzinfo=real_dt.timezone.utc)}
+
+    class FakeDateTime(real_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    monkeypatch.setattr(app.dt, "datetime", FakeDateTime)
+    asked = ["ask", "--home", str(home), "When is the mooring renewal due?", "--json"]
+    code = _run(capsys, *asked)[0]
+    rounds = 0
+    while code == 2 and rounds < 6:
+        answer_all()
+        clock["now"] += real_dt.timedelta(minutes=7)  # the agent takes a while to answer
+        code, out = _run(capsys, *asked)
+        rounds += 1
+    assert code == 0 and out["as_of"] == "2026-06-01T09:00:00+00:00" and out["evidence"]
+    assert json.loads((home / "pending.json").read_text()) == {}  # settled once answered

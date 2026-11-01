@@ -11,7 +11,9 @@ Each command works interactively for a person and with flags (and ``--json``) fo
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
+import hashlib
 import itertools
 import json
 import os
@@ -327,17 +329,59 @@ def _configure_mind(preset: str, args, ui: UI, interactive: bool, home: Path) ->
     return preset_mind(preset, model=model, url=url, api_key_env=key_env, command=command, home=home)
 
 
+def _namespaces(roots: list[str]) -> list[tuple[str, str]]:
+    """One stable prefix per notes folder, so two folders holding the same file name stay separate memories.
+    The folder's name is used, made unique with a hash of its path when two folders share a name."""
+    names = [Path(r).expanduser().name or "notes" for r in roots]
+    return [(r, name if names.count(name) == 1 else f"{name}-{hashlib.sha256(str(Path(r).expanduser().resolve()).encode()).hexdigest()[:6]}")
+            for r, name in zip(roots, names)]
+
+
+def _namespaced(episodes, ns: str):
+    for ep in episodes:
+        yield dataclasses.replace(ep, id=f"{ns}/{ep.id}", doc=f"{ns}/{ep.doc}", thread=f"{ns}/{ep.thread}" if ep.thread else None)
+
+
+def _stable_now(home: Path, config: dict, key: str, as_of: str | None) -> str:
+    """The moment a question is asked. A file mind answers across several runs, and the moment is part of each
+    task's identity, so the first run's moment is kept until the command completes."""
+    if as_of:
+        return as_of
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    if config["mind"].get("provider") != "file":
+        return now
+    path = home / "pending.json"
+    try:
+        pending = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pending = {}
+    if key not in pending:
+        pending[key] = now
+        path.write_text(json.dumps(pending, indent=1), encoding="utf-8")
+    return pending[key]
+
+
+def _settled(home: Path, key: str) -> None:
+    path = home / "pending.json"
+    try:
+        pending = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if pending.pop(key, None) is not None:
+        path.write_text(json.dumps(pending, indent=1), encoding="utf-8")
+
+
 def cmd_learn(args, ui: UI) -> int:
     home = home_dir(args.home)
     config = load(home)
     if not config:
         return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
-    mind = ProgressMind(build_mind(config, home), ui)
+    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui)
     brain = Brain(config["db"], mind)
     started = time.time()
     if not args.json:
         ui.banner("mneme learn", ", ".join(Path(p).name for p in config["notes"]))
-    episodes = itertools.chain.from_iterable(read_sources(Path(root)) for root in config["notes"])
+    episodes = itertools.chain.from_iterable(_namespaced(read_sources(Path(root)), ns) for root, ns in _namespaces(config["notes"]))
     added = brain.ingest(episodes, incremental=True)
     if not args.json:
         ui.ok(f"{added['neurons']} memories ({added['added']} new, {added['new_versions']} changed)")
@@ -378,10 +422,10 @@ def cmd_ask(args, ui: UI) -> int:
     brain = Brain(config["db"], mind)
     if not brain.conn.execute("SELECT 1 FROM regions LIMIT 1").fetchone():
         return _fail(ui, args, "The brain is empty. Run: mneme learn")
-    as_of = args.as_of
-    now = as_of or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    key = f"ask:{question}"
+    now = _stable_now(home, config, key, args.as_of)
     try:
-        hits = brain.recall(question, k=args.k, as_of=as_of)
+        hits = brain.recall(question, k=args.k, as_of=now)
         answer = None
         if not args.no_answer and hits:
             memories = [{"id": f"m{i}", "source": h.source, "date": (h.when or "")[:10], "title": h.title,
@@ -392,6 +436,7 @@ def cmd_ask(args, ui: UI) -> int:
         return _awaiting(ui, args, waiting, config)
     except Exception as error:  # noqa: BLE001
         return _fail(ui, args, friendly_error(error, config["mind"]))
+    _settled(home, key)
     evidence = [{"id": f"m{i}", "source": h.source, "when": h.when, "title": h.title, "refs": h.refs,
                  "trust": h.trust, "trust_reason": h.trust_reason, "text": h.text} for i, h in enumerate(hits, 1)]
     if args.json:
@@ -498,11 +543,12 @@ def cmd_reflect(args, ui: UI) -> int:
     if not args.json:
         ui.banner("mneme reflect", "what needs attention, and what connects")
     try:
-        stats = brain.reflect(now=args.as_of)
+        stats = brain.reflect(now=_stable_now(home, config, "reflect", args.as_of))
     except AwaitingMind as waiting:
         return _awaiting(ui, args, waiting, config)
     except Exception as error:  # noqa: BLE001
         return _fail(ui, args, friendly_error(error, config["mind"]))
+    _settled(home, "reflect")
     thoughts = [_thought_view(t) for t in brain.thoughts()]
     if args.json:
         print(json.dumps({"ok": True, **stats, "calls": mind.calls, "thoughts": thoughts}, ensure_ascii=False))
