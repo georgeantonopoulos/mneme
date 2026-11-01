@@ -267,3 +267,73 @@ def test_reflection_raises_verified_thoughts_retires_and_dreams(tmp_path: Path):
     assert "Mooring renewal is due soon" in mind.last_reflect["quiet"]
     brain.reflect(now="2026-08-01T00:00:00+00:00")
     assert mind.last_reflect["quiet"] == []
+
+
+class DividingMind(ScriptedMind):
+    """One big stream of bank alerts and a small spam topic, as in the 5x vault."""
+
+    def regions(self, payload):
+        return {"areas": [{"id": "a1", "title": "Inbox", "description": "", "topics": [
+            {"id": "a1.t1", "title": "Bank alerts", "description": ""}, {"id": "a1.t2", "title": "Spam", "description": ""}]}]}
+
+    def perceive(self, payload):
+        return {"neurons": [{"id": n["id"], "topics": ["a1.t2" if "verify" in n["text"] else "a1.t1"],
+                             "trust": "suspicious" if "verify" in n["text"] else "ok", "trust_reason": "phishing" if "verify" in n["text"] else "",
+                             "caption": n["text"][:60], "synapses": []} for n in payload["neurons"]]}
+
+    def divide(self, payload):
+        refunds = [line.split(" | ")[0] for line in payload["neurons"] if "Refund" in line]
+        statements = [line.split(" | ")[0] for line in payload["neurons"] if "Refund" not in line]
+        return {"subtopics": [{"title": "Refunds", "description": "", "neurons": refunds},
+                              {"title": "Statements", "description": "", "neurons": statements}]}
+
+    def zoom_areas(self, payload):
+        return {"areas": ["a1"], "lookups": []}
+
+    def zoom_topics(self, payload):
+        return {"topics": ["a1.t1", "a1.t2"]}
+
+    def zoom_deeper(self, payload):
+        return {"topics": [s["id"] for s in payload["subtopics"] if s["title"] == "Statements"]}
+
+
+def _bank(root: Path, alerts: int) -> Path:
+    chat = root / "sources" / "chat"
+    chat.mkdir(parents=True)
+    lines = [{"ts": f"2026-0{1 + i // 28}-{1 + i % 28:02d}T09:00", "chat": "Bank", "from": "Bank",
+              "text": f"Refund received: £{i}" if i % 2 else f"Statement {i} is ready"} for i in range(alerts)]
+    lines.append({"ts": "2026-01-15T12:00", "chat": "Fake bank", "from": "Fake bank", "text": "Action needed: verify your account now"})
+    (chat / "messages.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    return root
+
+
+def test_large_topics_divide_and_recall_zooms_into_them(tmp_path: Path):
+    mind = DividingMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_bank(tmp_path, 120))
+    assert brain.perceive()["divided"] == 1  # the 120 alerts split; the one-memory spam topic does not
+    subs = {r["title"]: r for r in brain.conn.execute("SELECT * FROM regions WHERE parent = 'a1.t1'")}
+    assert set(subs) == {"Refunds", "Statements"} and all(r["gist"] and r["level"] == 3 for r in subs.values())
+    inside = lambda region: {r[0] for r in brain.conn.execute("SELECT neuron FROM membership WHERE region = ?", (region,))}  # noqa: E731
+    assert inside(subs["Refunds"]["id"]) | inside(subs["Statements"]["id"]) == inside("a1.t1")  # a sub-topic's members stay in the topic
+
+    hits = brain.recall("Did my bank ask me to do anything?", as_of="2026-12-01T00:00:00+00:00", k=200)
+    skim = [t for t in mind.seen if t.kind == "skim_neurons"][-1].payload["candidates"]
+    assert all("Refund" not in c["caption"] for c in skim)  # zoomed into Statements only
+    assert any(c.get("trust", "").startswith("suspicious") for c in skim)  # the small spam topic kept its share
+    assert any("verify" in h.text for h in hits)
+    assert brain.perceive()["divided"] == 0  # already divided: sleep does not divide again
+
+
+def test_chosen_topics_share_the_candidate_cap(tmp_path: Path):
+    mind = DividingMind()
+    mind.divide = lambda payload: {"subtopics": []}  # declines: the alerts stay one long topic
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_bank(tmp_path, 150))
+    assert brain.perceive()["divided"] == 0
+    brain.recall("Did my bank ask me to do anything?", as_of="2026-12-01T00:00:00+00:00")
+    skim = [t for t in mind.seen if t.kind == "skim_neurons"][-1].payload["candidates"]
+    assert len(skim) == 120 and any(c.get("trust", "").startswith("suspicious") for c in skim)
+    asked = sum(t.kind == "divide" for t in mind.seen)
+    brain.perceive()
+    assert sum(t.kind == "divide" for t in mind.seen) == asked  # declined, and not asked again until it doubles
