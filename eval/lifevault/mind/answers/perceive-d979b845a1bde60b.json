@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n50","caption":"Journal 2026-05-04: tired, bed early.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n14","caption":"Kestrel Foods client note: Nate Hartley, donor portal, £425 a day, deadline 24 Sept, invoices net 30.","topics":["a1.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n945","relation":"deadline moved by","weight":0.9},{"to":"n267","relation":"offer from this client","weight":0.6}]},
+{"id":"n42","caption":"Idea note 'night photography': maybe later, ask Lena.","topics":["a10.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n167","caption":"Elif Tamsin: friend from Ivy's school gate, lives in Southville, birthday 20 January.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n184","caption":"Kit Pereira: friend from the old job, lives in Totterdown, birthday 26 October.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n189","caption":"Maya Lindqvist: friend from uni, lives in Easton, birthday 18 April.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n200","caption":"Theo Castell: friend from pottery class, lives in Totterdown, birthday 14 October.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n273","caption":"Parcelpost Home 'your parcel is on its way' automated notice dated 2026-05-05; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n272","caption":"Design Weekly 'five things we loved' newsletter received 2026-05-05.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n274","caption":"Pet Pantry receipt dated 2026-05-05, total paid £59.52.","topics":["a12.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n276","caption":"Priya Raman (Halcyon) asks Nia to lead the Kestrel redesign at £450 a day; kickoff Wed 6 May.","topics":["a1.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n51","caption":"Journal 2026-05-05: walked along the harbour at lunch.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n175","caption":"Isla Ekwueme: friend from uni, lives in Totterdown, birthday 16 February.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n179","caption":"Jonah Abara: friend from Ivy's school gate, lives in Totterdown, birthday 7 October.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n183","caption":"Kira Ekwueme: friend from uni, lives in Clifton, birthday 24 September.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1701","caption":"Chat with Sam 2026-05-05: Sam says Ivy says hi.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1477","caption":"Chat with Marcus 2026-05-05: Nia says she just got home; Marcus asks about her week.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n275","caption":"StreamBox welcome email dated 2026-05-05: plan costs £9.99 a month.","topics":["a7.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1364","caption":"Chat with Lena 2026-05-05: Nia replies 'lol yes'.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1702","caption":"Chat with Sam 2026-05-05: Sam writes 'ugh mondays'.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]}
+]}

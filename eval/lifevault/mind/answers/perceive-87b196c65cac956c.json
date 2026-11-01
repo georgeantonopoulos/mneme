@@ -1,0 +1,22 @@
+{"neurons":[
+{"id":"n1395","caption":"Lena says all good and asks if Nia has watched it yet, in chat on 19 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n462","caption":"Nia invoices Copper Health INV-G141: 7 days at £450, £3,150, due in 30 days.","topics":["a1.t4"],"trust":"ok","trust_reason":"","synapses":[{"to":"n517","relation":"same client and rate, later invoice","weight":0.3}]},
+{"id":"n466","caption":"AirFlow Electrics revised quote JOB-UBH25: bathroom extractor fan needs extra part, total £405.","topics":["a6.t2"],"trust":"ok","trust_reason":"","synapses":[{"to":"n422","relation":"revises","weight":0.9}]},
+{"id":"n1506","caption":"Marcus says all good and Nia replies 'that's brilliant news', chat 19 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n467","caption":"Clay Times 'behind the scenes' newsletter received 20 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n468","caption":"Parenting Today 'the long read' newsletter received 20 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1246","caption":"Ivy swimming at Riverside Pool, Saturday 20 June 2026 at 09:00, confirmed.","topics":["a3.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n78","caption":"Journal 20 June 2026: tired, bed early; rainy, cosy evening.","topics":["a11.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1507","caption":"Marcus replies 'that's brilliant news' to Nia in chat on 20 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1727","caption":"Sam says he is running late, 10 mins, in chat on 20 June 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1508","caption":"Nia replies 'sounds good' to Marcus in chat on 20 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1605","caption":"Grace replies 'that's brilliant news' to Nia in chat on 20 June 2026.","topics":["a4.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1728","caption":"Sam asks Nia if she saw the rain and Nia replies 'sounds good', chat 20 June 2026.","topics":["a8.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1509","caption":"Nia replies 'ugh mondays' to Marcus in chat on 20 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n470","caption":"Calendar 'your week ahead' automated notification on 21 June 2026; no action needed.","topics":["a12.t2"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n469","caption":"Design Weekly 'reader questions' newsletter received 21 June 2026.","topics":["a12.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1832","caption":"Wren Ekwueme asks to borrow Nia's slow cooker for the weekend, chat on 21 June 2026.","topics":["a8.t1"],"trust":"ok","trust_reason":"","synapses":[{"to":"n1834","relation":"later returned as","weight":0.8},{"to":"n1833","relation":"answered by Nia agreeing to lend","weight":0.6}]},
+{"id":"n79","caption":"Journal 21 June 2026: threw six bowls, two survived trimming; long walk after work.","topics":["a11.t1","a2.t1"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1844","caption":"Open personal task dated 21 June 2026: get the drill back from Omar.","topics":["a6.t3"],"trust":"ok","trust_reason":"","synapses":[]},
+{"id":"n1396","caption":"Nia tells Lena she just got home, in chat on 21 June 2026.","topics":["a8.t3"],"trust":"ok","trust_reason":"","synapses":[]}
+]}
