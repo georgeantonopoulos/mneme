@@ -90,6 +90,8 @@ def _sections(body: str) -> list[tuple[str, str]]:
 def read_vault(vault: Path, *, journal_dir: str = "Journal") -> Iterator[Episode]:
     for path in sorted(vault.rglob("*.md")):
         rel = path.relative_to(vault).as_posix()
+        if any(part.startswith(".") for part in path.relative_to(vault).parts):
+            continue  # .obsidian, .trash and other hidden folders
         meta, body = _frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         title_match = re.match(r"\s*#\s+(.+)", body)
         title = title_match.group(1).strip() if title_match else path.stem
@@ -223,7 +225,11 @@ def read_tasks_json(path: Path) -> Iterator[Episode]:
 
 
 def read_sources(root: Path) -> Iterable[Episode]:
-    """Read a directory laid out like LifeVault: vault/ plus sources/{email,calendar,chat,tasks}."""
+    """Read a directory laid out like LifeVault (vault/ plus sources/{email,calendar,chat,tasks}), or, when it has
+    neither, treat the directory itself as a Markdown vault (a notes-app vault, a notes folder)."""
+    if not (root / "vault").is_dir() and not (root / "sources").is_dir():
+        yield from read_vault(root)
+        return
     if (root / "vault").is_dir():
         yield from read_vault(root / "vault")
     sources = root / "sources"

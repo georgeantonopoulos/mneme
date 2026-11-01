@@ -8,9 +8,11 @@ be a mind:
     FileMind      writes tasks to an outbox folder and reads answers from an answers
                   folder. An outside worker (a person, a script, a sub-agent) fills it.
                   Raises ``AwaitingMind`` listing what is still unanswered; rerun after.
-    FunctionMind  wraps any ``prompt -> text`` callable.
-    OpenAICompatibleMind  any OpenAI-compatible chat endpoint: Ollama (local or cloud),
-                  LM Studio, vLLM, OpenRouter, Anthropic's compatibility endpoint...
+    FunctionMind  wraps any ``prompt -> text`` callable (answers several tasks at once).
+    OllamaMind    Ollama's own chat API, local (http://localhost:11434) or Ollama Cloud
+                  (https://ollama.com with OLLAMA_API_KEY).
+    OpenAICompatibleMind  any OpenAI-compatible chat endpoint: LM Studio, vLLM, OpenRouter,
+                  Ollama's /v1, Anthropic's compatibility endpoint...
     CommandMind   pipes each prompt through a shell command (e.g. ``claude -p``, ``llm``).
     RoleMind      routes task kinds to different minds (a cheap model for bulk perception,
                   a stronger one for recall).
@@ -28,6 +30,7 @@ import shlex
 import subprocess
 import urllib.request
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
@@ -120,37 +123,49 @@ class FileMind:
         return results  # type: ignore[return-value]
 
 
-class FunctionMind:
-    """Immediate mind around any ``prompt -> reply text`` callable, with an optional answer cache."""
+RETRY_NOTE = "\n\nYour previous reply was not a single valid JSON object. Reply with only the JSON object."
 
-    def __init__(self, complete: Callable[[str], str], cache: FileMind | None = None):
+
+class FunctionMind:
+    """Immediate mind around any ``prompt -> reply text`` callable, with an optional answer cache.
+
+    Up to ``workers`` tasks are answered at once. A reply that is not valid JSON is asked again once."""
+
+    def __init__(self, complete: Callable[[str], str], cache: FileMind | None = None, *, workers: int = 1):
         self.complete = complete
         self.cache = cache
+        self.workers = max(1, workers)
+
+    def _answer(self, task: Task) -> dict:
+        cached = self.cache.answer_for(task) if self.cache else None
+        if cached is not None:
+            return cached
+        try:
+            answer = parse_json_reply(self.complete(task.prompt()))
+        except (ValueError, json.JSONDecodeError):
+            answer = parse_json_reply(self.complete(task.prompt() + RETRY_NOTE))
+        if self.cache:
+            (self.cache.answers / f"{task.id}.json").write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+        return answer
 
     def ask_many(self, tasks: list[Task]) -> list[dict]:
-        out = []
-        for task in tasks:
-            cached = self.cache.answer_for(task) if self.cache else None
-            if cached is None:
-                reply = self.complete(task.prompt())
-                cached = parse_json_reply(reply)
-                if self.cache:
-                    (self.cache.answers / f"{task.id}.json").write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
-            out.append(cached)
-        return out
+        if self.workers == 1 or len(tasks) < 2:
+            return [self._answer(task) for task in tasks]
+        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+            return list(pool.map(self._answer, tasks))
 
 
 class OpenAICompatibleMind:
     """Any OpenAI-compatible ``/chat/completions`` endpoint, with JSON output requested."""
 
     def __init__(self, base_url: str, model: str, *, api_key_env: str | None = None, timeout: int = 300,
-                 temperature: float = 0.0, cache: FileMind | None = None):
+                 temperature: float = 0.0, cache: FileMind | None = None, workers: int = 4):
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model
         self._bearer = os.environ.get(api_key_env, "") if api_key_env else ""
         self.timeout = timeout
         self.temperature = temperature
-        self._inner = FunctionMind(self.complete, cache=cache)
+        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
 
     def complete(self, prompt: str) -> str:
         body = {"model": self.model, "messages": [{"role": "user", "content": prompt}],
@@ -166,13 +181,46 @@ class OpenAICompatibleMind:
         return self._inner.ask_many(tasks)
 
 
+class OllamaMind:
+    """Ollama's native ``/api/chat`` with JSON output: a local server or Ollama Cloud (``https://ollama.com``)."""
+
+    def __init__(self, model: str, *, host: str = "http://localhost:11434", api_key_env: str | None = None,
+                 timeout: int = 300, cache: FileMind | None = None, workers: int = 2):
+        self.host = host.rstrip("/")
+        self.model = model
+        self._bearer = os.environ.get(api_key_env, "") if api_key_env else ""
+        self.timeout = timeout
+        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
+
+    def _post(self, path: str, body: dict | None) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self._bearer:
+            headers["Authorization"] = f"Bearer {self._bearer}"
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(self.host + path, data=data, headers=headers)
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            return json.loads(response.read())
+
+    def complete(self, prompt: str) -> str:
+        body = {"model": self.model, "messages": [{"role": "user", "content": prompt}], "stream": False,
+                "format": "json", "options": {"temperature": 0}}
+        return self._post("/api/chat", body)["message"]["content"]
+
+    def models(self) -> list[str]:
+        """Names of the models this server offers (``/api/tags``)."""
+        return [m["name"] for m in self._post("/api/tags", None).get("models", [])]
+
+    def ask_many(self, tasks: list[Task]) -> list[dict]:
+        return self._inner.ask_many(tasks)
+
+
 class CommandMind:
     """Pipe each prompt to a shell command on stdin and read the reply from stdout."""
 
-    def __init__(self, command: str, *, timeout: int = 600, cache: FileMind | None = None):
+    def __init__(self, command: str, *, timeout: int = 600, cache: FileMind | None = None, workers: int = 1):
         self.argv = shlex.split(command)
         self.timeout = timeout
-        self._inner = FunctionMind(self.complete, cache=cache)
+        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
 
     def complete(self, prompt: str) -> str:
         done = subprocess.run(self.argv, input=prompt, capture_output=True, text=True, timeout=self.timeout, check=True)
@@ -224,18 +272,23 @@ def mind_from_config(config: dict, *, cache_dir: Path | str | None = None) -> Mi
         {"provider": "openai-compatible", "base_url": "http://localhost:11434/v1", "model": "qwen3:8b",
          "roles": {"zoom_neurons": {"model": "qwen3:30b"}}}
 
-    Providers: "openai-compatible", "command" (``"command": "claude -p"``) and "file" (``"path": ...``).
+    Providers: "ollama" (``"host"``, ``"model"``), "openai-compatible" (``"base_url"``, ``"model"``),
+    "command" (``"command": "claude -p"``) and "file" (``"path": ...``). Each may set ``"workers"``.
     A role entry overrides any keys of the default block for those task kinds.
     """
     cache = FileMind(cache_dir) if cache_dir else None
 
     def build(block: dict) -> Mind:
         provider = block.get("provider", "openai-compatible")
+        if provider == "ollama":
+            return OllamaMind(block["model"], host=block.get("host", "http://localhost:11434"), api_key_env=block.get("api_key_env"),
+                              timeout=int(block.get("timeout", 300)), cache=cache, workers=int(block.get("workers", 2)))
         if provider == "openai-compatible":
             return OpenAICompatibleMind(block["base_url"], block["model"], api_key_env=block.get("api_key_env"),
-                                        timeout=int(block.get("timeout", 300)), cache=cache)
+                                        timeout=int(block.get("timeout", 300)), cache=cache, workers=int(block.get("workers", 4)))
         if provider == "command":
-            return CommandMind(block["command"], timeout=int(block.get("timeout", 600)), cache=cache)
+            return CommandMind(block["command"], timeout=int(block.get("timeout", 600)), cache=cache,
+                               workers=int(block.get("workers", 1)))
         if provider == "file":
             return FileMind(block["path"])
         raise ValueError(f"unknown mind provider: {provider}")

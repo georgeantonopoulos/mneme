@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- `mneme setup`, `mneme learn`, `mneme ask` and `mneme status`: a front door to the LLM-driven cortex, drawn
+  in the terminal and fully scriptable with flags and `--json` for agents. `mneme` alone shows a welcome screen.
+- Setup wizard. It picks the notes folder and a model: Ollama local or cloud, LM Studio, any OpenAI-compatible
+  API, a command-line AI such as `claude -p`, or task files answered by an agent. It tests the model before
+  saving anything.
+- `OllamaMind` (native `/api/chat`, local or `https://ollama.com` with `OLLAMA_API_KEY`). Minds now answer
+  several tasks at once (`workers`) and re-ask once when a reply is not valid JSON.
+- The installer opens the setup wizard when run in a terminal. `--no-setup` skips it, for agents.
+
+### Changed
+
+- A plain folder of Markdown notes (such as a notes-app vault) can be learned directly. Hidden folders like
+  `.obsidian` and `.trash` are skipped.
+
 ## [1.0.0] — 2026-08-02
 
 Mneme becomes a local nervous system for agents: perception, activation, trusted propagation, evidence, and feedback in one auditable loop.
