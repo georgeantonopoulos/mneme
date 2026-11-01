@@ -171,7 +171,12 @@ def test_a_file_mind_resumes_the_same_question_after_the_clock_moves(tmp_path: P
     assert _run(capsys, "setup", "--home", str(home), "--notes", str(root), "--mind", "file", "--skip-test", "--yes", "--json")[0] == 0
     config = json.loads((home / "brain.json").read_text())
     outbox, answers = Path(config["mind"]["path"]) / "outbox", Path(config["mind"]["path"]) / "answers"
-    mind = AnsweringMind()
+    from test_cortex import ReflectingMind
+
+    class Mind(ReflectingMind, AnsweringMind):
+        pass
+
+    mind = Mind()
 
     def answer_all():
         for task in outbox.glob("*.json"):
@@ -202,4 +207,16 @@ def test_a_file_mind_resumes_the_same_question_after_the_clock_moves(tmp_path: P
         code, out = _run(capsys, *asked)
         rounds += 1
     assert code == 0 and out["as_of"] == "2026-06-01T09:00:00+00:00" and out["evidence"]
-    assert json.loads((home / "pending.json").read_text()) == {}  # settled once answered
+    import sqlite3
+
+    pinned = sqlite3.connect(config["db"]).execute("SELECT value FROM meta WHERE key LIKE 'pending:%'").fetchall()
+    assert pinned == [("",)]  # settled once answered
+
+    reflect = ["reflect", "--home", str(home), "--json"]  # a reflection resumes the same way
+    code, rounds = _run(capsys, *reflect)[0], 0
+    while code == 2 and rounds < 6:
+        answer_all()
+        clock["now"] += real_dt.timedelta(minutes=7)
+        code, out = _run(capsys, *reflect)
+        rounds += 1
+    assert code == 0 and out["raised"] >= 1

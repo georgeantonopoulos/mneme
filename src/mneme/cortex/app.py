@@ -22,8 +22,8 @@ import time
 import urllib.error
 from pathlib import Path
 
-from .brain import QUIET_DAYS, Brain
-from .mind import AwaitingMind, FileMind, OllamaMind, Task, mind_from_config
+from .brain import QUIET_DAYS, Brain, utc_now
+from .mind import AwaitingMind, FileMind, MeteredMind, OllamaMind, Task, is_deferred, mind_from_config
 from .senses import read_sources
 from .ui import UI
 
@@ -157,30 +157,42 @@ def count_sources(root: Path) -> dict:
 
 
 # --------------------------------------------------------------------------- progress
-class ProgressMind:
-    """Passes tasks through in small groups so the UI can show progress per task kind."""
+class ProgressMind(MeteredMind):
+    """Counts calls and prompt size, and passes tasks through in groups so the UI can show progress per task kind.
+    A deferred mind's pending tasks are gathered from every group, so one run queues all of them."""
 
-    def __init__(self, inner, ui: UI, *, group: int = 4, quiet: bool = False):
-        self.inner, self.ui, self.group, self.quiet = inner, ui, group, quiet
-        self.calls = 0
-        self.chars = 0
+    def __init__(self, inner, ui: UI, *, quiet: bool = False):
+        super().__init__(inner)
+        self.ui, self.quiet = ui, quiet
+        self.group = max(4, getattr(inner, "workers", 4))
+
+    @property
+    def total_calls(self) -> int:
+        return sum(self.calls.values())
+
+    @property
+    def total_tokens(self) -> int:
+        return sum(self.chars.values()) // 4
 
     def ask_many(self, tasks: list[Task]) -> list[dict]:
         if not tasks:
             return []
+        self.measure(tasks)
         label = LABELS.get(tasks[0].kind, tasks[0].kind)
-        self.calls += len(tasks)
-        self.chars += sum(len(t.prompt()) for t in tasks)
-        if isinstance(self.inner, FileMind):
-            return self.inner.ask_many(tasks)
-        out: list[dict] = []
-        show = not self.quiet or self.ui.interactive
+        show = not is_deferred(self.inner) and (not self.quiet or self.ui.interactive)
         if show:
             self.ui.progress(label, 0, len(tasks))
+        out: list[dict] = []
+        waiting: list[AwaitingMind] = []
         for start in range(0, len(tasks), self.group):
-            out += self.inner.ask_many(tasks[start : start + self.group])
+            try:
+                out += self.inner.ask_many(tasks[start : start + self.group])
+            except AwaitingMind as error:
+                waiting.append(error)
             if show:
-                self.ui.progress(label, len(out), len(tasks))
+                self.ui.progress(label, start + len(tasks[start : start + self.group]), len(tasks))
+        if waiting:
+            raise AwaitingMind([tid for w in waiting for tid in w.pending], waiting[0].outbox)
         return out
 
 
@@ -342,42 +354,54 @@ def _namespaced(episodes, ns: str):
         yield dataclasses.replace(ep, id=f"{ns}/{ep.id}", doc=f"{ns}/{ep.doc}", thread=f"{ns}/{ep.thread}" if ep.thread else None)
 
 
-def _stable_now(home: Path, config: dict, key: str, as_of: str | None) -> str:
-    """The moment a question is asked. A file mind answers across several runs, and the moment is part of each
-    task's identity, so the first run's moment is kept until the command completes."""
-    if as_of:
-        return as_of
-    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    if config["mind"].get("provider") != "file":
-        return now
-    path = home / "pending.json"
-    try:
-        pending = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        pending = {}
-    if key not in pending:
-        pending[key] = now
-        path.write_text(json.dumps(pending, indent=1), encoding="utf-8")
-    return pending[key]
-
-
-def _settled(home: Path, key: str) -> None:
-    path = home / "pending.json"
-    try:
-        pending = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return
-    if pending.pop(key, None) is not None:
-        path.write_text(json.dumps(pending, indent=1), encoding="utf-8")
-
-
-def cmd_learn(args, ui: UI) -> int:
+def _open(args, ui: UI, *, need_map: bool = False, quiet: bool = False, think: bool = True):
+    """The config, mind and brain a command works with, or an exit code when Mneme is not ready."""
     home = home_dir(args.home)
     config = load(home)
     if not config:
         return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
-    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui)
+    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui, quiet=quiet) if think else FileMind(home / "mind-cache")
     brain = Brain(config["db"], mind)
+    if need_map and not brain.conn.execute("SELECT 1 FROM regions LIMIT 1").fetchone():
+        return _fail(ui, args, "The brain is empty. Run: mneme learn")
+    return home, config, mind, brain
+
+
+def _think(ui: UI, args, config: dict, work, *, hint: str = ""):
+    """Run work that asks the mind. Returns (result, None), or (None, exit code) when it is waiting or failed."""
+    try:
+        return work(), None
+    except AwaitingMind as waiting:
+        return None, _awaiting(ui, args, waiting)
+    except Exception as error:  # noqa: BLE001
+        return None, _fail(ui, args, friendly_error(error, config["mind"]) + hint)
+
+
+def _stable_now(brain: Brain, key: str, as_of: str | None) -> str:
+    """The moment a question is asked. A deferred mind answers across several runs, and the moment is part of
+    each task's identity, so the first run's moment is kept (in the brain) until the command completes."""
+    if as_of:
+        return as_of
+    if not is_deferred(brain.mind):
+        return utc_now()
+    pinned = brain._meta(f"pending:{key}", "")
+    if not pinned:
+        pinned = utc_now()
+        brain._set_meta(f"pending:{key}", pinned)
+        brain.conn.commit()
+    return pinned
+
+
+def _settled(brain: Brain, key: str) -> None:
+    brain._set_meta(f"pending:{key}", "")
+    brain.conn.commit()
+
+
+def cmd_learn(args, ui: UI) -> int:
+    opened = _open(args, ui)
+    if isinstance(opened, int):
+        return opened
+    home, config, mind, brain = opened
     started = time.time()
     if not args.json:
         ui.banner("mneme learn", ", ".join(Path(p).name for p in config["notes"]))
@@ -385,16 +409,13 @@ def cmd_learn(args, ui: UI) -> int:
     added = brain.ingest(episodes, incremental=True)
     if not args.json:
         ui.ok(f"{added['neurons']} memories ({added['added']} new, {added['new_versions']} changed)")
-    try:
-        stats = brain.perceive()
-    except AwaitingMind as waiting:
-        return _awaiting(ui, args, waiting, config)
-    except Exception as error:  # noqa: BLE001
-        return _fail(ui, args, friendly_error(error, config["mind"]) + " Progress is saved; run `mneme learn` again.")
+    stats, code = _think(ui, args, config, brain.perceive, hint=" Progress is saved; run `mneme learn` again.")
+    if code is not None:
+        return code
     seconds = time.time() - started
     summary = {"ok": True, "memories": added["neurons"], "new": added["added"], "changed": added["new_versions"],
-               "perceived": stats["perceived"], "gists": stats["gists"], "calls": mind.calls,
-               "prompt_tokens_estimate": mind.chars // 4, "seconds": round(seconds, 1)}
+               "perceived": stats["perceived"], "gists": stats["gists"], "calls": mind.total_calls,
+               "prompt_tokens_estimate": mind.total_tokens, "seconds": round(seconds, 1)}
     if args.json:
         print(json.dumps(summary))
         return 0
@@ -402,7 +423,7 @@ def cmd_learn(args, ui: UI) -> int:
         ui.ok(f"Perceived {stats['perceived']} memories and rewrote {stats['gists']} summaries")
     else:
         ui.ok("Already up to date")
-    ui.note(f"{mind.calls} mind calls, about {mind.chars // 4:,} prompt tokens, {seconds:.0f}s")
+    ui.note(f"{mind.total_calls} mind calls, about {mind.total_tokens:,} prompt tokens, {seconds:.0f}s")
     example = 'mneme ask "what is due this week?"'
     ui.say()
     ui.say(f"  Ask away: {ui.style(example, 'cyan', 'bold')}")
@@ -411,32 +432,31 @@ def cmd_learn(args, ui: UI) -> int:
 
 
 def cmd_ask(args, ui: UI) -> int:
-    home = home_dir(args.home)
-    config = load(home)
-    if not config:
-        return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
     question = " ".join(args.question).strip()
     if not question:
         return _fail(ui, args, 'Ask something, e.g. mneme ask "what am I waiting on?"')
-    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui, quiet=True)
-    brain = Brain(config["db"], mind)
-    if not brain.conn.execute("SELECT 1 FROM regions LIMIT 1").fetchone():
-        return _fail(ui, args, "The brain is empty. Run: mneme learn")
+    opened = _open(args, ui, need_map=True, quiet=True)
+    if isinstance(opened, int):
+        return opened
+    home, config, mind, brain = opened
     key = f"ask:{question}"
-    now = _stable_now(home, config, key, args.as_of)
-    try:
+    now = _stable_now(brain, key, args.as_of)
+
+    def work():
         hits = brain.recall(question, k=args.k, as_of=now)
-        answer = None
-        if not args.no_answer and hits:
-            memories = [{"id": f"m{i}", "source": h.source, "date": (h.when or "")[:10], "title": h.title,
-                         "text": h.context_text()[:1200]} for i, h in enumerate(hits, 1)]
-            (answer,) = mind.ask_many([Task("answer", ANSWER_INSTRUCTIONS, {"question": question, "now": now[:16],
-                                                                             "memories": memories}, ANSWER_SHAPE)])
-    except AwaitingMind as waiting:
-        return _awaiting(ui, args, waiting, config)
-    except Exception as error:  # noqa: BLE001
-        return _fail(ui, args, friendly_error(error, config["mind"]))
-    _settled(home, key)
+        if args.no_answer or not hits:
+            return hits, None
+        memories = [{"id": f"m{i}", "source": h.source, "date": (h.when or "")[:10], "title": h.title,
+                     "text": h.context_text()[:1200]} for i, h in enumerate(hits, 1)]
+        (answer,) = mind.ask_many([Task("answer", ANSWER_INSTRUCTIONS, {"question": question, "now": now[:16],
+                                                                         "memories": memories}, ANSWER_SHAPE)])
+        return hits, answer
+
+    result, code = _think(ui, args, config, work)
+    if code is not None:
+        return code
+    hits, answer = result
+    _settled(brain, key)
     evidence = [{"id": f"m{i}", "source": h.source, "when": h.when, "title": h.title, "refs": h.refs,
                  "trust": h.trust, "trust_reason": h.trust_reason, "text": h.text} for i, h in enumerate(hits, 1)]
     if args.json:
@@ -532,26 +552,20 @@ def _show_thoughts(ui: UI, thoughts: list[dict]) -> None:
 
 
 def cmd_reflect(args, ui: UI) -> int:
-    home = home_dir(args.home)
-    config = load(home)
-    if not config:
-        return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
-    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui)
-    brain = Brain(config["db"], mind)
-    if not brain.conn.execute("SELECT 1 FROM regions LIMIT 1").fetchone():
-        return _fail(ui, args, "The brain is empty. Run: mneme learn")
+    opened = _open(args, ui, need_map=True)
+    if isinstance(opened, int):
+        return opened
+    home, config, mind, brain = opened
     if not args.json:
         ui.banner("mneme reflect", "what needs attention, and what connects")
-    try:
-        stats = brain.reflect(now=_stable_now(home, config, "reflect", args.as_of))
-    except AwaitingMind as waiting:
-        return _awaiting(ui, args, waiting, config)
-    except Exception as error:  # noqa: BLE001
-        return _fail(ui, args, friendly_error(error, config["mind"]))
-    _settled(home, "reflect")
+    now = _stable_now(brain, "reflect", args.as_of)
+    stats, code = _think(ui, args, config, lambda: brain.reflect(now=now))
+    if code is not None:
+        return code
+    _settled(brain, "reflect")
     thoughts = [_thought_view(t) for t in brain.thoughts()]
     if args.json:
-        print(json.dumps({"ok": True, **stats, "calls": mind.calls, "thoughts": thoughts}, ensure_ascii=False))
+        print(json.dumps({"ok": True, **stats, "calls": mind.total_calls, "thoughts": thoughts}, ensure_ascii=False))
         return 0
     ui.ok(f"{stats['raised']} new thought{'s' if stats['raised'] != 1 else ''}, {stats['retired']} retired, "
           f"{stats['links']} new link{'s' if stats['links'] != 1 else ''}")
@@ -562,11 +576,10 @@ def cmd_reflect(args, ui: UI) -> int:
 
 
 def cmd_thoughts(args, ui: UI) -> int:
-    home = home_dir(args.home)
-    config = load(home)
-    if not config:
-        return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
-    brain = Brain(config["db"], FileMind(home / "mind-cache"))
+    opened = _open(args, ui, think=False)
+    if isinstance(opened, int):
+        return opened
+    brain = opened[3]
     if args.dismiss is not None:
         if not brain.dismiss(args.dismiss):
             return _fail(ui, args, f"No open thought #{args.dismiss}. See: mneme thoughts")
@@ -585,14 +598,14 @@ def cmd_thoughts(args, ui: UI) -> int:
     return 0
 
 
-def _awaiting(ui: UI, args, waiting: AwaitingMind, config: dict) -> int:
-    path = config["mind"].get("path")
+def _awaiting(ui: UI, args, waiting: AwaitingMind) -> int:
+    outbox = Path(waiting.outbox) if waiting.outbox else None
     if args.json:
-        print(json.dumps({"ok": False, "awaiting": len(waiting.pending), "outbox": str(Path(path) / "outbox"),
-                          "answers": str(Path(path) / "answers")}))
+        print(json.dumps({"ok": False, "awaiting": len(waiting.pending), "outbox": str(outbox) if outbox else None,
+                          "answers": str(outbox.parent / "answers") if outbox else None}))
         return 2
     n = len(waiting.pending)
-    ui.warn(f"{n} task{'s are' if n != 1 else ' is'} waiting for the mind in {Path(path) / 'outbox'}")
+    ui.warn(f"{n} task{'s are' if n != 1 else ' is'} waiting for the mind" + (f" in {outbox}" if outbox else ""))
     ui.note("Answer each task's prompt with JSON into answers/<same name>, then run the same command again.")
     return 2
 
@@ -665,8 +678,7 @@ def run(argv: list[str]) -> int:
     if getattr(args, "as_of", None) and len(args.as_of) == 10:
         args.as_of += "T23:59:59+00:00"
     try:
-        return {"setup": cmd_setup, "learn": cmd_learn, "ask": cmd_ask, "status": cmd_status,
-                "reflect": cmd_reflect, "thoughts": cmd_thoughts}[args.cmd](args, ui)
+        return globals()[f"cmd_{args.cmd}"](args, ui)
     except KeyboardInterrupt:
         ui.say()
         ui.warn("Stopped. Anything already learned is saved.")

@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .mind import Mind, Task
-from .senses import Episode, read_sources
+from .senses import MAX_EPISODE_CHARS, Episode, read_sources
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS neurons (
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS regions (
 CREATE TABLE IF NOT EXISTS perceived (neuron TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS perceive_misses (neuron TEXT PRIMARY KEY, attempts INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS membership (neuron TEXT NOT NULL, region TEXT NOT NULL, PRIMARY KEY (neuron, region));
+CREATE INDEX IF NOT EXISTS membership_region ON membership (region, neuron);
 CREATE TABLE IF NOT EXISTS synapses (
     src TEXT NOT NULL, dst TEXT NOT NULL, relation TEXT NOT NULL, weight REAL NOT NULL, made_by TEXT NOT NULL,
     PRIMARY KEY (src, dst, made_by)
@@ -197,6 +198,17 @@ class Hit:
         return f"[{' | '.join(label)}] {self.title}{header}\n{self.text}"
 
 
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _weight(value, default: float = 0.5) -> float:
+    try:
+        return max(0.1, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _date(value: str | None) -> str:
     return value[:10] if value else ""
 
@@ -212,9 +224,8 @@ def _batches(items: list, size: int) -> list[list]:
 
 class Brain:
     def __init__(self, db_path: Path | str, mind: Mind):
-        self.db_path = Path(db_path)
         self.mind = mind
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(Path(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
 
@@ -329,19 +340,32 @@ class Brain:
         view = [f"{self._sid(r)} | {r['source']} | {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 60)} | {_clip(r['text'], 70)}" for r in rows]
         (answer,) = self.mind.ask_many([Task("regions", REGIONS_INSTRUCTIONS, {**payload, "neurons": view}, REGIONS_SHAPE)])
         self.conn.execute("DELETE FROM regions")
-        for area in answer.get("areas", []):
-            self.conn.execute("INSERT OR REPLACE INTO regions(id,parent,level,title,description) VALUES (?,?,?,?,?)",
-                              (area["id"], None, 1, area["title"], area.get("description", "")))
-            for topic in area.get("topics", []):
-                self.conn.execute("INSERT OR REPLACE INTO regions(id,parent,level,title,description) VALUES (?,?,?,?,?)",
-                                  (topic["id"], area["id"], 2, topic["title"], topic.get("description", "")))
+        rows = [(area["id"], None, 1, area["title"], area.get("description", "")) for area in answer.get("areas", [])]
+        rows += [(topic["id"], area["id"], 2, topic["title"], topic.get("description", ""))
+                 for area in answer.get("areas", []) for topic in area.get("topics", [])]
+        self.conn.executemany("INSERT OR REPLACE INTO regions(id,parent,level,title,description) VALUES (?,?,?,?,?)", rows)
         self.conn.commit()
         return len(answer.get("areas", []))
 
+    def _stub(self, row: sqlite3.Row) -> dict:
+        return {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"])}
+
+    def _neighbours(self, nid: str, n: int = 4) -> list[str]:
+        return [r["dst"] for r in self.conn.execute("SELECT dst FROM synapses WHERE src = ? ORDER BY weight DESC LIMIT ?", (nid, n))]
+
+    def _members(self, region: str, as_of: str) -> list[sqlite3.Row]:
+        return self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?) AND known_at <= ?", (region, as_of))
+
+    def _neurons_in(self, ids, as_of: str | None = None) -> list[sqlite3.Row]:
+        ids = list(ids)
+        if not ids:
+            return []
+        where = f"id IN ({','.join('?' * len(ids))})" + (" AND known_at <= ?" if as_of else "")
+        return self._neurons(where, (*ids, as_of) if as_of else tuple(ids))
+
     def _neuron_view(self, row: sqlite3.Row, limit: int) -> dict:
         meta = json.loads(row["meta"])
-        view = {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"]),
-                "title": row["title"], "text": _clip(row["text"], limit)}
+        view = {**self._stub(row), "title": row["title"], "text": _clip(row["text"], limit)}
         extra = {k: v for k, v in meta.items() if v and k in ("header", "labels", "folder", "hidden_text", "status")}
         if extra:
             view["meta"] = extra
@@ -397,14 +421,11 @@ class Brain:
                 for syn in item.get("synapses", [])[:5]:
                     target = known.get(syn.get("to"))
                     if target and target != nid:
-                        weight = max(0.1, min(1.0, float(syn.get("weight", 0.5))))
-                        conn.execute("INSERT OR REPLACE INTO synapses VALUES (?,?,?,?,?)", (nid, target, str(syn.get("relation", "related"))[:80], weight, "mind"))
+                        conn.execute("INSERT OR REPLACE INTO synapses VALUES (?,?,?,?,?)",
+                                     (nid, target, str(syn.get("relation", "related"))[:80], _weight(syn.get("weight", 0.5)), "mind"))
         for r in pending:
-            if r["id"] in answered:
-                conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (r["id"],))
-                conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (r["id"],))
-            elif misses.get(r["id"], 0) + 1 >= PERCEIVE_ATTEMPTS:
-                # Skipped twice: stop asking. It stays findable by its words, without a topic or caption.
+            # A memory skipped twice is not asked about again: it stays findable by its words, without a topic.
+            if r["id"] in answered or misses.get(r["id"], 0) + 1 >= PERCEIVE_ATTEMPTS:
                 conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (r["id"],))
                 conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (r["id"],))
             else:
@@ -413,7 +434,7 @@ class Brain:
         return len(answered)
 
     def _consolidate(self) -> int:
-        now = max(r["known_at"] for r in self.conn.execute("SELECT known_at FROM neurons"))
+        now = self.conn.execute("SELECT MAX(known_at) FROM neurons").fetchone()[0]
         topics = self.conn.execute("SELECT * FROM regions WHERE level = 2 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for topic in topics:
@@ -425,8 +446,7 @@ class Brain:
                 if judgement and judgement["trust"] != "ok":
                     # Quarantine: content the mind judged suspicious never travels up into gists,
                     # so injected text cannot reach routing prompts. The raw neuron stays recallable.
-                    view = {"id": self._sid(m), "source": m["source"], "date": _date(m["event_time"] or m["known_at"]),
-                            "suspicious": judgement["reason"] or "flagged during perception"}
+                    view = {**self._stub(m), "suspicious": judgement["reason"] or "flagged during perception"}
                 else:
                     view = self._neuron_view(m, 280)
                 links = [f"{s['relation']} {self._sid_of(s['dst'])}" for s in self.conn.execute("SELECT * FROM synapses WHERE src = ?", (m["id"],)) if s["dst"] in ids]
@@ -438,6 +458,7 @@ class Brain:
         for topic, answer in zip(topics, self.mind.ask_many(tasks)):
             self.conn.execute("UPDATE regions SET gist = ?, dirty = 0 WHERE id = ?", (answer.get("gist", ""), topic["id"]))
             self.conn.execute("UPDATE regions SET dirty = 1 WHERE id = ?", (topic["parent"],))
+        self.conn.commit()  # topic gists are kept even if the area gists have to wait for the mind
         areas = self.conn.execute("SELECT * FROM regions WHERE level = 1 AND dirty = 1 ORDER BY id").fetchall()
         tasks = []
         for area in areas:
@@ -454,7 +475,7 @@ class Brain:
 
     def recall_many(self, questions: list[tuple[str, str | None]], *, k: int = 8, max_candidates: int = 120,
                     max_open: int = 12) -> list[list[Hit]]:
-        nows = [as_of or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds") for _, as_of in questions]
+        nows = [as_of or utc_now() for _, as_of in questions]
         areas = [{"id": r["id"], "title": r["title"], "gist": r["gist"]} for r in self.conn.execute("SELECT * FROM regions WHERE level = 1 ORDER BY id")]
         level1 = self.mind.ask_many([Task("zoom_areas", ZOOM_AREAS_INSTRUCTIONS, {"areas": areas, "now": now[:16], "question": q}, ZOOM_AREAS_SHAPE)
                                      for (q, _), now in zip(questions, nows)])
@@ -470,7 +491,8 @@ class Brain:
         for (q, _), now, pick1, pick2 in zip(questions, nows, level1, level2):
             pool, verbatim = self._candidate_pool(pick2.get("topics", [])[:4], pick1.get("lookups", [])[:4], now, max_candidates)
             pools.append(pool)
-            views = [self._candidate_view(r, set(pool), full_text=r["id"] in verbatim) for r in pool.values()]
+            in_pool = set(pool)
+            views = [self._candidate_view(r, in_pool, full_text=r["id"] in verbatim) for r in pool.values()]
             tasks.append(Task("skim_neurons", SKIM_INSTRUCTIONS,
                               {"open": max_open, "candidates": views, "now": now[:16], "question": q}, SKIM_SHAPE))
         skims = self.mind.ask_many(tasks)
@@ -480,7 +502,7 @@ class Brain:
             ids = [nid for nid in dict.fromkeys(self._id_of(s) for s in skim.get("open", [])) if nid in pool][:max_open]
             opened.append(ids)
             if ids:
-                memories = [self._candidate_view(pool[nid], set(ids), full_text=True, text_limit=900, opened=True) for nid in ids]
+                memories = [self._candidate_view(pool[nid], set(ids), full_text=True, text_limit=MAX_EPISODE_CHARS, opened=True) for nid in ids]
                 tasks.append(Task("read_neurons", READ_INSTRUCTIONS, {"k": k, "memories": memories, "now": now[:16], "question": q}, READ_SHAPE))
                 asked.append(len(opened) - 1)
         reads = dict(zip(asked, self.mind.ask_many(tasks))) if tasks else {}
@@ -496,8 +518,15 @@ class Brain:
 
     # ------------------------------------------------------------------ reflection (LLM, idle)
     def reflect(self, *, now: str | None = None, max_recent: int = 40, max_link_members: int = 25) -> dict:
-        """One idle pass: raise verified thoughts, retire resolved ones, and form synapses across topics."""
-        now = now or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        """One idle pass: raise verified thoughts, retire resolved ones, and form synapses across topics.
+        Nothing is kept unless the pass completes, so a pass resumed after waiting for the mind asks the same tasks."""
+        try:
+            return self._reflect(now or utc_now(), max_recent, max_link_members)
+        except BaseException:
+            self.conn.rollback()
+            raise
+
+    def _reflect(self, now: str, max_recent: int, max_link_members: int) -> dict:
         regions = self.conn.execute("SELECT * FROM regions ORDER BY id").fetchall()
         areas = [{"id": r["id"], "title": r["title"], "gist": r["gist"]} for r in regions if r["level"] == 1]
         topics = {r["id"]: r for r in regions if r["level"] == 2}
@@ -523,15 +552,14 @@ class Brain:
             if not isinstance(item, dict) or not str(item.get("text", "")).strip():
                 continue
             cited = [nid for nid in dict.fromkeys(self._id_of(c) for c in item.get("cites", []) or []) if nid]
-            rows = self._neurons(f"id IN ({','.join('?' * len(cited))}) AND known_at <= ?", (*cited, now)) if cited else []
+            rows = self._neurons_in(cited, now)
             if rows:
                 proposals.append((item, rows))
         tasks = []
         for item, rows in proposals:
             ids = [r["id"] for r in rows]
-            linked = [r["dst"] for nid in ids for r in self.conn.execute("SELECT dst FROM synapses WHERE src = ? ORDER BY weight DESC LIMIT 4", (nid,))]
-            context = rows + [r for r in self._neurons(f"id IN ({','.join('?' * len(linked))}) AND known_at <= ?", (*linked, now))
-                              if r["id"] not in ids] if linked else rows
+            linked = [dst for nid in ids for dst in self._neighbours(nid)]
+            context = rows + [r for r in self._neurons_in(linked, now) if r["id"] not in ids]
             memories = [self._candidate_view(r, set(), full_text=True, text_limit=700) for r in context[:12]]
             tasks.append(Task("verify_thought", VERIFY_INSTRUCTIONS, {"now": now[:16], "thought": str(item["text"]), "memories": memories}, VERIFY_SHAPE))
         raised = []
@@ -559,8 +587,7 @@ class Brain:
                 pairs.append((bridge["a"], bridge["b"]))
         tasks, sides = [], []
         for a, b in pairs:
-            left = self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?) AND known_at <= ?", (a, now))[-cap:]
-            right = self._neurons("id IN (SELECT neuron FROM membership WHERE region = ?) AND known_at <= ?", (b, now))[-cap:]
+            left, right = self._members(a, now)[-cap:], self._members(b, now)[-cap:]
             if not left or not right:
                 continue
             sides.append(({r["id"] for r in left}, {r["id"] for r in right}))
@@ -574,10 +601,7 @@ class Brain:
                 src, dst = self._id_of(link.get("from")), self._id_of(link.get("to"))
                 if not ((src in left and dst in right) or (src in right and dst in left)):
                     continue
-                try:
-                    weight = max(0.1, min(1.0, float(link.get("weight", 0.5))))
-                except (TypeError, ValueError):
-                    weight = 0.5
+                weight = _weight(link.get("weight", 0.5))
                 relation = str(link.get("relation", "related"))[:80]
                 for x, y in ((src, dst), (dst, src)):
                     made += self.conn.execute("INSERT OR IGNORE INTO synapses VALUES (?,?,?,?,?)", (x, y, relation, weight, "reflect")).rowcount
@@ -588,14 +612,14 @@ class Brain:
         out = []
         for r in rows:
             neurons = json.loads(r["neurons"])
-            cited = self._neurons(f"id IN ({','.join('?' * len(neurons))})", tuple(neurons)) if neurons else []
+            cited = self._neurons_in(neurons)
             out.append({"id": r["id"], "text": r["text"], "why": r["why"], "kind": r["kind"], "urgency": r["urgency"],
                         "created_at": r["created_at"], "status": r["status"], "evidence": [self._hit(n) for n in cited]})
         return out
 
     def dismiss(self, thought_id: int, *, now: str | None = None) -> bool:
         """Inhibit a thought: it closes, and reflection is told not to raise it again for QUIET_DAYS."""
-        now = now or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        now = now or utc_now()
         done = self.conn.execute("UPDATE thoughts SET status = 'dismissed', closed_at = ? WHERE id = ? AND status = 'open'", (now, thought_id)).rowcount
         self.conn.commit()
         return bool(done)
@@ -614,18 +638,18 @@ class Brain:
                 ids += self.phrase_lookup(phrase, as_of=now)
         seeds = list(ids)
         for seed in seeds:  # one synaptic hop from verbatim matches
-            ids += [r["dst"] for r in self.conn.execute("SELECT dst FROM synapses WHERE src = ? ORDER BY weight DESC LIMIT 4", (seed,))]
+            ids += self._neighbours(seed)
         streams = []
         for topic in topics:
             if isinstance(topic, str):
                 streams.append([r["id"] for r in self.conn.execute(
                     "SELECT n.id FROM membership m JOIN neurons n ON n.id = m.neuron WHERE m.region = ? AND n.known_at <= ? "
-                    "ORDER BY COALESCE(n.event_time, n.known_at) DESC", (topic, now))])
+                    "ORDER BY COALESCE(n.event_time, n.known_at) DESC LIMIT ?", (topic, now, cap))])
         # Chosen topics take turns, newest first in each, so one large topic cannot crowd out a small one.
         for rank in range(max((len(x) for x in streams), default=0)):
             ids += [x[rank] for x in streams if rank < len(x)]
         ordered = list(dict.fromkeys(ids))[:cap]
-        rows = {r["id"]: r for r in self._neurons(f"id IN ({','.join('?' * len(ordered))}) AND known_at <= ?", (*ordered, now))} if ordered else {}
+        rows = {r["id"]: r for r in self._neurons_in(ordered, now)}
         return {i: rows[i] for i in ordered if i in rows}, set(seeds)
 
     def _candidate_view(self, row: sqlite3.Row, pool: set[str], *, full_text: bool = False, text_limit: int = 320,
@@ -633,15 +657,12 @@ class Brain:
         judgement = self.conn.execute("SELECT * FROM judgements WHERE neuron = ?", (row["id"],)).fetchone()
         caption = judgement["caption"] if judgement and judgement["caption"] else ""
         suspicious = judgement is not None and judgement["trust"] != "ok"
-        if suspicious and not opened:
-            # Quarantined like in gists: its content reaches the mind only if the mind chooses to open it.
-            view = {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"]),
-                    "caption": caption or row["title"]}
-        elif full_text or not caption:
-            view = self._neuron_view(row, text_limit)
+        # A suspicious memory is quarantined like in gists: its content reaches the mind only once it is opened.
+        if (suspicious and not opened) or (caption and not full_text):
+            view = {**self._stub(row), "caption": caption or row["title"]}
         else:
-            view = {"id": self._sid(row), "source": row["source"], "date": _date(row["event_time"] or row["known_at"]), "caption": caption}
-        if judgement and judgement["trust"] != "ok":
+            view = self._neuron_view(row, text_limit)
+        if suspicious:
             view["trust"] = f"suspicious: {judgement['reason']}"
         links = [f"{s['relation']} {self._sid_of(s['dst'])}" for s in self.conn.execute("SELECT * FROM synapses WHERE src = ? ORDER BY weight DESC", (row["id"],)) if s["dst"] in pool]
         if links:

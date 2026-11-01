@@ -28,8 +28,8 @@ from ..html_visible import extract_visible_and_hidden
 LONDON = ZoneInfo("Europe/London")
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.S)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.M)
-SHORT_NOTE_CHARS = 900
 MAX_EPISODE_CHARS = 900  # longer memories are split into parts, so reading and answering always see all of them
+SHORT_NOTE_CHARS = MAX_EPISODE_CHARS  # a note up to this long stays whole; a longer one splits at its headings
 DATED_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 

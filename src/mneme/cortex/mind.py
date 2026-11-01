@@ -32,6 +32,7 @@ import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -43,7 +44,7 @@ class Task:
     payload: dict
     reply_shape: dict = field(default_factory=dict)
 
-    @property
+    @cached_property
     def id(self) -> str:
         blob = json.dumps([self.kind, self.instructions, self.payload, self.reply_shape], sort_keys=True, ensure_ascii=False)
         return f"{self.kind}-{hashlib.sha256(blob.encode()).hexdigest()[:16]}"
@@ -131,10 +132,14 @@ class FunctionMind:
 
     Up to ``workers`` tasks are answered at once. A reply that is not valid JSON is asked again once."""
 
-    def __init__(self, complete: Callable[[str], str], cache: FileMind | None = None, *, workers: int = 1):
-        self.complete = complete
+    def __init__(self, complete: Callable[[str], str] | None = None, cache: FileMind | None = None, *, workers: int = 1):
+        if complete is not None:
+            self.complete = complete
         self.cache = cache
         self.workers = max(1, workers)
+
+    def complete(self, prompt: str) -> str:
+        raise NotImplementedError
 
     def _answer(self, task: Task) -> dict:
         cached = self.cache.answer_for(task) if self.cache else None
@@ -155,51 +160,46 @@ class FunctionMind:
             return list(pool.map(self._answer, tasks))
 
 
-class OpenAICompatibleMind:
+def _post_json(url: str, body: dict | None, *, bearer: str = "", timeout: int = 300) -> dict:
+    headers = {"Content-Type": "application/json"}
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
+    data = json.dumps(body).encode() if body is not None else None
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+class OpenAICompatibleMind(FunctionMind):
     """Any OpenAI-compatible ``/chat/completions`` endpoint, with JSON output requested."""
 
     def __init__(self, base_url: str, model: str, *, api_key_env: str | None = None, timeout: int = 300,
                  temperature: float = 0.0, cache: FileMind | None = None, workers: int = 4):
+        super().__init__(cache=cache, workers=workers)
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model
         self._bearer = os.environ.get(api_key_env, "") if api_key_env else ""
         self.timeout = timeout
         self.temperature = temperature
-        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
 
     def complete(self, prompt: str) -> str:
         body = {"model": self.model, "messages": [{"role": "user", "content": prompt}],
                 "temperature": self.temperature, "response_format": {"type": "json_object"}}
-        headers = {"Content-Type": "application/json"}
-        if self._bearer:
-            headers["Authorization"] = f"Bearer {self._bearer}"
-        request = urllib.request.Request(self.url, data=json.dumps(body).encode(), headers=headers)
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            return json.loads(response.read())["choices"][0]["message"]["content"]
-
-    def ask_many(self, tasks: list[Task]) -> list[dict]:
-        return self._inner.ask_many(tasks)
+        return _post_json(self.url, body, bearer=self._bearer, timeout=self.timeout)["choices"][0]["message"]["content"]
 
 
-class OllamaMind:
+class OllamaMind(FunctionMind):
     """Ollama's native ``/api/chat`` with JSON output: a local server or Ollama Cloud (``https://ollama.com``)."""
 
     def __init__(self, model: str, *, host: str = "http://localhost:11434", api_key_env: str | None = None,
                  timeout: int = 300, cache: FileMind | None = None, workers: int = 2):
+        super().__init__(cache=cache, workers=workers)
         self.host = host.rstrip("/")
         self.model = model
         self._bearer = os.environ.get(api_key_env, "") if api_key_env else ""
         self.timeout = timeout
-        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
 
     def _post(self, path: str, body: dict | None) -> dict:
-        headers = {"Content-Type": "application/json"}
-        if self._bearer:
-            headers["Authorization"] = f"Bearer {self._bearer}"
-        data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(self.host + path, data=data, headers=headers)
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            return json.loads(response.read())
+        return _post_json(self.host + path, body, bearer=self._bearer, timeout=self.timeout)
 
     def complete(self, prompt: str) -> str:
         body = {"model": self.model, "messages": [{"role": "user", "content": prompt}], "stream": False,
@@ -210,24 +210,18 @@ class OllamaMind:
         """Names of the models this server offers (``/api/tags``)."""
         return [m["name"] for m in self._post("/api/tags", None).get("models", [])]
 
-    def ask_many(self, tasks: list[Task]) -> list[dict]:
-        return self._inner.ask_many(tasks)
 
-
-class CommandMind:
+class CommandMind(FunctionMind):
     """Pipe each prompt to a shell command on stdin and read the reply from stdout."""
 
     def __init__(self, command: str, *, timeout: int = 600, cache: FileMind | None = None, workers: int = 1):
+        super().__init__(cache=cache, workers=workers)
         self.argv = shlex.split(command)
         self.timeout = timeout
-        self._inner = FunctionMind(self.complete, cache=cache, workers=workers)
 
     def complete(self, prompt: str) -> str:
         done = subprocess.run(self.argv, input=prompt, capture_output=True, text=True, timeout=self.timeout, check=True)
         return done.stdout
-
-    def ask_many(self, tasks: list[Task]) -> list[dict]:
-        return self._inner.ask_many(tasks)
 
 
 class RoleMind:
@@ -259,11 +253,24 @@ class MeteredMind:
         self.calls: Counter = Counter()
         self.chars: Counter = Counter()
 
-    def ask_many(self, tasks: list[Task]) -> list[dict]:
+    def measure(self, tasks: list[Task]) -> None:
         for task in tasks:
             self.calls[task.kind] += 1
             self.chars[task.kind] += len(task.prompt())
+
+    def ask_many(self, tasks: list[Task]) -> list[dict]:
+        self.measure(tasks)
         return self.inner.ask_many(tasks)
+
+
+def is_deferred(mind) -> bool:
+    """True when some answers come from task files, so a command finishes over several runs."""
+    if isinstance(mind, FileMind):
+        return True
+    if isinstance(mind, RoleMind):
+        return any(is_deferred(m) for m in (mind.default, *mind.roles.values()))
+    inner = getattr(mind, "inner", None)
+    return inner is not None and is_deferred(inner)
 
 
 def mind_from_config(config: dict, *, cache_dir: Path | str | None = None) -> Mind:
@@ -280,15 +287,15 @@ def mind_from_config(config: dict, *, cache_dir: Path | str | None = None) -> Mi
 
     def build(block: dict) -> Mind:
         provider = block.get("provider", "openai-compatible")
+        # Only the keys a block sets are passed on, so each provider's defaults live in its constructor.
+        opts = {k: int(block[k]) for k in ("timeout", "workers") if k in block}
         if provider == "ollama":
             return OllamaMind(block["model"], host=block.get("host", "http://localhost:11434"), api_key_env=block.get("api_key_env"),
-                              timeout=int(block.get("timeout", 300)), cache=cache, workers=int(block.get("workers", 2)))
+                              cache=cache, **opts)
         if provider == "openai-compatible":
-            return OpenAICompatibleMind(block["base_url"], block["model"], api_key_env=block.get("api_key_env"),
-                                        timeout=int(block.get("timeout", 300)), cache=cache, workers=int(block.get("workers", 4)))
+            return OpenAICompatibleMind(block["base_url"], block["model"], api_key_env=block.get("api_key_env"), cache=cache, **opts)
         if provider == "command":
-            return CommandMind(block["command"], timeout=int(block.get("timeout", 600)), cache=cache,
-                               workers=int(block.get("workers", 1)))
+            return CommandMind(block["command"], cache=cache, **opts)
         if provider == "file":
             return FileMind(block["path"])
         raise ValueError(f"unknown mind provider: {provider}")
