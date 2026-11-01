@@ -109,3 +109,32 @@ def test_a_plain_notes_folder_is_a_vault(tmp_path: Path):
 def test_welcome_screen_without_arguments(capsys):
     assert app.run([]) == 0
     assert "mneme setup" in capsys.readouterr().out
+
+
+def test_reflect_and_thoughts_from_the_command_line(tmp_path: Path, capsys, monkeypatch):
+    from test_cortex import ReflectingMind
+
+    class Mind(ReflectingMind, AnsweringMind):
+        pass
+
+    root = _vault(tmp_path)
+    home = tmp_path / "home"
+    assert _run(capsys, "setup", "--home", str(home), "--notes", str(root), "--mind", "command", "--command", "true",
+                "--skip-test", "--yes", "--json")[0] == 0
+    monkeypatch.setattr(app, "build_mind", lambda config, home: Mind())
+    assert _run(capsys, "reflect", "--home", str(home), "--json")[1]["ok"] is False  # nothing learned yet
+    assert _run(capsys, "learn", "--home", str(home), "--json")[0] == 0
+    code, out = _run(capsys, "reflect", "--home", str(home), "--as-of", "2026-07-02", "--json")
+    assert code == 0 and out["raised"] == 1 and out["links"] == 1
+    (thought,) = out["thoughts"]
+    assert thought["text"] == "Mooring renewal is due soon" and thought["evidence"][0]["refs"]
+    code, listed = _run(capsys, "thoughts", "--home", str(home), "--json")
+    assert code == 0 and [t["id"] for t in listed["thoughts"]] == [thought["id"]]
+    app.run(["thoughts", "--home", str(home)])
+    drawn = capsys.readouterr().out
+    assert "Mooring renewal is due soon" in drawn and f"#{thought['id']}" in drawn
+    assert _run(capsys, "thoughts", "--home", str(home), "--dismiss", str(thought["id"]), "--json")[1] == {"ok": True, "dismissed": thought["id"]}
+    assert _run(capsys, "thoughts", "--home", str(home), "--json")[1]["thoughts"] == []
+    assert _run(capsys, "thoughts", "--home", str(home), "--dismiss", "999", "--json")[0] == 1
+    app.run(["thoughts", "--home", str(home)])  # the drawn view renders without error
+    assert "Nothing needs your attention" in capsys.readouterr().out

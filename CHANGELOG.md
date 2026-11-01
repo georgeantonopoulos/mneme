@@ -13,6 +13,9 @@
   several tasks at once (`workers`) and re-ask once when a reply is not valid JSON.
 - Recall: when several topics are chosen they share the 120 skim slots fairly, so a large topic can no
   longer hide a small one. This is how a phishing email in a small topic went missing on a 1,917-memory vault.
+- `mneme reflect` and `mneme thoughts` (with `--dismiss`): idle reflection from the command line, with `--json`.
+- Hermes: the `mneme` and `mneme-agent-brain` skills describe the cortex, and the pre-LLM hook points at
+  `mneme ask --json` once the cortex is set up, with a count of open thoughts.
 - The installer opens the setup wizard when run in a terminal. `--no-setup` skips it, for agents.
 
 ### Changed

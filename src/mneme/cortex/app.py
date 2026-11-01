@@ -20,12 +20,12 @@ import time
 import urllib.error
 from pathlib import Path
 
-from .brain import Brain
+from .brain import QUIET_DAYS, Brain
 from .mind import AwaitingMind, FileMind, OllamaMind, Task, mind_from_config
 from .senses import read_sources
 from .ui import UI
 
-COMMANDS = ("setup", "learn", "ask", "status")
+COMMANDS = ("setup", "learn", "ask", "status", "reflect", "thoughts")
 
 PRESETS = {
     "ollama": ("Ollama on this computer", "private, free, needs Ollama installed"),
@@ -45,6 +45,9 @@ LABELS = {
     "skim_neurons": "Skimming memories",
     "read_neurons": "Reading closely",
     "answer": "Writing the answer",
+    "reflect": "Thinking it over",
+    "verify_thought": "Checking each thought",
+    "connect": "Connecting topics",
 }
 
 ANSWER_INSTRUCTIONS = """
@@ -467,6 +470,75 @@ def cmd_status(args, ui: UI) -> int:
     return 0
 
 
+def _thought_view(t: dict) -> dict:
+    return {"id": t["id"], "text": t["text"], "why": t["why"], "kind": t["kind"], "urgency": t["urgency"], "since": t["created_at"],
+            "evidence": [{"source": h.source, "when": h.when, "title": h.title, "refs": h.refs, "trust": h.trust} for h in t["evidence"]]}
+
+
+def _show_thoughts(ui: UI, thoughts: list[dict]) -> None:
+    if not thoughts:
+        ui.ok("Nothing needs your attention right now.")
+        return
+    for t in thoughts:
+        cites = ", ".join(f"{h['source']} {(h['when'] or '')[:10]}".strip() for h in t["evidence"][:3])
+        accent = "red" if t["kind"] == "warning" else "yellow" if t["urgency"] >= 0.7 else "cyan"
+        label = ui.style(f"#{t['id']}", "dim") + " " + ui.style(t["kind"] or "thought", "bold")
+        ui.card(label, f"{t['text']} ({cites})" if cites else t["text"], accent=accent)
+
+
+def cmd_reflect(args, ui: UI) -> int:
+    home = home_dir(args.home)
+    config = load(home)
+    if not config:
+        return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
+    mind = ProgressMind(build_mind(config, home), UI(sys.stderr) if args.json else ui)
+    brain = Brain(config["db"], mind)
+    if not brain.conn.execute("SELECT 1 FROM regions LIMIT 1").fetchone():
+        return _fail(ui, args, "The brain is empty. Run: mneme learn")
+    if not args.json:
+        ui.banner("mneme reflect", "what needs attention, and what connects")
+    try:
+        stats = brain.reflect(now=args.as_of)
+    except AwaitingMind as waiting:
+        return _awaiting(ui, args, waiting, config)
+    except Exception as error:  # noqa: BLE001
+        return _fail(ui, args, friendly_error(error, config["mind"]))
+    thoughts = [_thought_view(t) for t in brain.thoughts()]
+    if args.json:
+        print(json.dumps({"ok": True, **stats, "calls": mind.calls, "thoughts": thoughts}, ensure_ascii=False))
+        return 0
+    ui.ok(f"{stats['raised']} new thought{'s' if stats['raised'] != 1 else ''}, {stats['retired']} retired, "
+          f"{stats['links']} new link{'s' if stats['links'] != 1 else ''}")
+    ui.say()
+    _show_thoughts(ui, thoughts)
+    ui.say()
+    return 0
+
+
+def cmd_thoughts(args, ui: UI) -> int:
+    home = home_dir(args.home)
+    config = load(home)
+    if not config:
+        return _fail(ui, args, "Mneme is not set up yet. Run: mneme setup")
+    brain = Brain(config["db"], FileMind(home / "mind-cache"))
+    if args.dismiss is not None:
+        if not brain.dismiss(args.dismiss):
+            return _fail(ui, args, f"No open thought #{args.dismiss}. See: mneme thoughts")
+        if args.json:
+            print(json.dumps({"ok": True, "dismissed": args.dismiss}))
+        else:
+            ui.ok(f"Dismissed #{args.dismiss}. It stays quiet for {QUIET_DAYS} days.")
+        return 0
+    thoughts = [_thought_view(t) for t in brain.thoughts()]
+    if args.json:
+        print(json.dumps({"ok": True, "thoughts": thoughts}, ensure_ascii=False))
+        return 0
+    ui.banner("mneme thoughts", f"{len(thoughts)} open")
+    _show_thoughts(ui, thoughts)
+    ui.say()
+    return 0
+
+
 def _awaiting(ui: UI, args, waiting: AwaitingMind, config: dict) -> int:
     path = config["mind"].get("path")
     if args.json:
@@ -493,7 +565,9 @@ def welcome(ui: UI) -> int:
     rows = [("mneme setup", "point Mneme at your notes and choose a model"),
             ("mneme learn", "read new and changed notes into the brain"),
             ('mneme ask "..."', "recall what you know, with the evidence"),
-            ("mneme status", "what the brain holds and which model it uses")]
+            ("mneme status", "what the brain holds and which model it uses"),
+            ("mneme reflect", "think while idle: raise what needs attention"),
+            ("mneme thoughts", "what the brain thinks needs attention")]
     for cmd, desc in rows:
         ui.say(f"    {ui.style(cmd.ljust(17), 'cyan', 'bold')} {desc}")
     ui.say(f"\n  {ui.style('Add --json to any of these for agents. Other commands: mneme --help', 'dim')}\n")
@@ -528,6 +602,12 @@ def parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("status", parents=[common], help="What the brain holds and which model it uses")
     p.add_argument("--check", action="store_true", help="Also test the model connection")
+
+    p = sub.add_parser("reflect", parents=[common], help="Think while idle: raise what needs attention, link related topics")
+    p.add_argument("--as-of", help="Reflect as of a past moment (ISO date or time)")
+
+    p = sub.add_parser("thoughts", parents=[common], help="What the brain thinks needs your attention")
+    p.add_argument("--dismiss", type=int, metavar="ID", help="Dismiss a thought; it stays quiet for 14 days")
     return root
 
 
@@ -539,7 +619,8 @@ def run(argv: list[str]) -> int:
     if getattr(args, "as_of", None) and len(args.as_of) == 10:
         args.as_of += "T23:59:59+00:00"
     try:
-        return {"setup": cmd_setup, "learn": cmd_learn, "ask": cmd_ask, "status": cmd_status}[args.cmd](args, ui)
+        return {"setup": cmd_setup, "learn": cmd_learn, "ask": cmd_ask, "status": cmd_status,
+                "reflect": cmd_reflect, "thoughts": cmd_thoughts}[args.cmd](args, ui)
     except KeyboardInterrupt:
         ui.say()
         ui.warn("Stopped. Anything already learned is saved.")

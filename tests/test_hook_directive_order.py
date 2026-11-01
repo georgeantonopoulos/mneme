@@ -32,6 +32,12 @@ COMPACT_CORRECTION_REMINDER = (
     "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 )
 
+@pytest.fixture(autouse=True)
+def _no_cortex(tmp_path, monkeypatch):
+    """Hook subprocesses inherit this: no cortex config unless a test sets one up."""
+    monkeypatch.setenv("MNEME_HOME", str(tmp_path / "no-cortex"))
+
+
 LEAK_MARKERS = (
     "MNEME RETRIEVAL PATH",
     "MNEME CORRECTION PATH",
@@ -200,3 +206,48 @@ def test_sync_script_check_detects_synced_copy(tmp_path: Path) -> None:
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def _cortex_home(tmp_path: Path, open_thoughts: int) -> Path:
+    import sqlite3
+
+    home = tmp_path / "cortex"
+    home.mkdir()
+    db = home / "brain.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE thoughts (id INTEGER PRIMARY KEY, text TEXT, status TEXT)")
+    conn.executemany("INSERT INTO thoughts (text, status) VALUES (?, ?)",
+                     [(f"t{i}", "open") for i in range(open_thoughts)] + [("old", "dismissed")])
+    conn.commit()
+    conn.close()
+    (home / "brain.json").write_text(json.dumps({"db": str(db)}), encoding="utf-8")
+    return home
+
+
+@pytest.mark.parametrize("open_thoughts", [0, 1, 3])
+def test_hook_points_at_the_cortex_and_its_open_thoughts(tmp_path: Path, monkeypatch, open_thoughts: int) -> None:
+    monkeypatch.setenv("MNEME_HOME", str(_cortex_home(tmp_path, open_thoughts)))
+    payload = {"hook_event_name": "pre_llm_call", "extra": {"user_message": "What is due this week?", "platform": "test"}}
+    proc = subprocess.run([sys.executable, str(HOOK_SCRIPT)], input=json.dumps(payload), text=True,
+                          capture_output=True, timeout=10, check=True)
+    context = json.loads(proc.stdout)["context"]
+    assert "mneme ask" in context and "--json" in context and len(context) <= 260
+    assert context.startswith("Use memory silently when relevant.")  # so a quoted copy is stripped as a leak
+    assert context.lower().endswith("do not quote this reminder.")
+    if open_thoughts:
+        assert f"{open_thoughts} open thought{'s' if open_thoughts > 1 else ''}: mneme thoughts --json." in context
+    else:
+        assert "open thought" not in context
+
+
+def test_hook_survives_a_broken_cortex_config(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "cortex"
+    home.mkdir()
+    (home / "brain.json").write_text(json.dumps({"db": str(tmp_path / "missing.sqlite")}), encoding="utf-8")
+    monkeypatch.setenv("MNEME_HOME", str(home))
+    payload = {"hook_event_name": "pre_llm_call", "extra": {"user_message": "hello", "platform": "test"}}
+    proc = subprocess.run([sys.executable, str(HOOK_SCRIPT)], input=json.dumps(payload), text=True,
+                          capture_output=True, timeout=10, check=True)
+    context = json.loads(proc.stdout)["context"]
+    assert "mneme ask" in context and "open thought" not in context
+    assert not (tmp_path / "missing.sqlite").exists()  # read-only: the hook never creates a database

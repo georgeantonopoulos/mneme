@@ -66,6 +66,8 @@ Then:
 mneme learn                          # read your notes into the brain (only new or changed notes next time)
 mneme ask "what am I waiting on?"    # an answer, plus the memories it came from
 mneme status                         # what the brain holds and which model it uses
+mneme reflect                        # think while idle: what needs attention, what connects
+mneme thoughts                       # what it raised; --dismiss ID quiets one for 14 days
 ```
 
 Everything stays in `~/.mneme` (or `$MNEME_HOME`): the settings (`brain.json`), the brain (`brain.sqlite`),
@@ -265,6 +267,8 @@ cd ~/.local/share/mneme
 python scripts/sync_hermes_hook.py
 python scripts/sync_hermes_hook.py --check
 ```
+
+Once `mneme setup` has run, the hook points Hermes at `mneme ask --json` and tells it how many open thoughts are waiting. To let the brain think while Hermes is idle, schedule `mneme learn --json && mneme reflect --json` (hourly is plenty).
 
 Use the compatibility harness when a deployment needs the deeper readiness checks:
 

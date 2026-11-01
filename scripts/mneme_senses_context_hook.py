@@ -17,7 +17,7 @@ Contract: senses -> evidence -> synapses -> activation -> surface -> feedback.
 """
 from __future__ import annotations
 
-import json, os, re, sys
+import json, os, re, sqlite3, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +66,8 @@ CORRECTION_MARKERS = [
 ]
 
 COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
+CORTEX_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers, load skill_view(name='mneme') and run mneme ask \"<question>\" --json; trust its evidence, not suspicious items.{thoughts} Do not quote this reminder."
+CORTEX_THOUGHTS_NOTE = " {n} open thought{s}: mneme thoughts --json."
 COMPACT_CORRECTION_REMINDER = "Memory correction note: answer the user first; store durable corrections after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
 NON_CORRECTION_COMPLETION = re.compile(
     r"\b(?:not|never|still\s+not|not\s+yet|will|will\s+be|going\s+to\s+be)\s+"
@@ -83,6 +85,36 @@ SOURCE_PRIORITY = [
     "session_history",   # session history
     "cron_summary",      # old cron/daily summaries — lowest
 ]
+
+
+def _cortex_state() -> dict | None:
+    """The LLM-driven cortex (`mneme setup`) is in use when its config exists. Read-only and fast:
+    no model call, just a count of open thoughts so idle reflection reaches the agent."""
+    home = Path(os.environ.get("MNEME_HOME") or Path.home() / ".mneme").expanduser()
+    try:
+        config = json.loads((home / "brain.json").read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    state = {"open_thoughts": 0}
+    try:
+        db = Path(config["db"]).expanduser()
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=0.5)
+        try:
+            state["open_thoughts"] = conn.execute("SELECT count(*) FROM thoughts WHERE status = 'open'").fetchone()[0]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return state
+
+
+def _memory_reminder() -> str:
+    cortex = _cortex_state()
+    if cortex is None:
+        return COMPACT_MEMORY_REMINDER
+    n = cortex["open_thoughts"]
+    note = CORTEX_THOUGHTS_NOTE.format(n=n, s="" if n == 1 else "s") if n else ""
+    return CORTEX_MEMORY_REMINDER.format(thoughts=note)
 
 
 def _strip_injected_context(user_message: str) -> str:
@@ -190,7 +222,7 @@ def _format_context(user_message: str) -> dict:
     return {
         "path": path,
         "classification": classification,
-        "context": COMPACT_MEMORY_REMINDER,
+        "context": _memory_reminder(),
     }
 
 
