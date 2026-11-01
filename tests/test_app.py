@@ -309,3 +309,18 @@ def test_setup_carries_over_an_earlier_install(tmp_path: Path, capsys, monkeypat
     assert _run(capsys, "learn", "--home", str(home), "--json")[1]["new"] == 0  # nothing re-added on the next run
     assert _run(capsys, "setup", "--home", str(tmp_path / "h2"), "--mind", "command", "--command", "true", "--skip-test",
                 "--yes", "--no-graph", "--json")[1]["memories"] == 4
+
+
+def test_adding_a_notes_folder_does_not_relearn_the_first(tmp_path: Path, capsys, monkeypatch):
+    for parent in ("a", "b"):
+        (tmp_path / parent / "notes").mkdir(parents=True)
+        (tmp_path / parent / "notes" / "Plan.md").write_text(f"# Plan\n\nPlan from {parent}\n", encoding="utf-8")
+    home = tmp_path / "home"
+    first = str(tmp_path / "a" / "notes")
+    assert _run(capsys, "setup", "--home", str(home), "--notes", first, "--mind", "command", "--command", "true",
+                "--skip-test", "--yes", "--json")[0] == 0
+    monkeypatch.setattr(app, "build_mind", lambda config, home: AnsweringMind())
+    assert _run(capsys, "learn", "--home", str(home), "--json")[1]["new"] == 1
+    assert _run(capsys, "setup", "--home", str(home), "--notes", first, "--notes", str(tmp_path / "b" / "notes"), "--mind", "command",
+                "--command", "true", "--skip-test", "--yes", "--json")[0] == 0
+    assert _run(capsys, "learn", "--home", str(home), "--json")[1]["new"] == 1  # only the new folder's note

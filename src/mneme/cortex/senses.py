@@ -178,7 +178,8 @@ def _ics_value(raw: str) -> dt.datetime:
 
 
 def read_ics(path: Path) -> Iterator[Episode]:
-    text = path.read_text(encoding="utf-8").replace("\r\n ", "")
+    # Unfold continuation lines (RFC 5545: a line break then a space or tab); read_text already turned CRLF into \n.
+    text = re.sub(r"\n[ \t]", "", path.read_text(encoding="utf-8"))
     for block in text.split("BEGIN:VEVENT")[1:]:
         fields: dict[str, str] = {}
         for line in block.splitlines():
@@ -285,7 +286,8 @@ def read_sources(root: Path) -> Iterable[Episode]:
 
 
 def _read_sources(root: Path) -> Iterable[Episode]:
-    if not (root / "vault").is_dir() and not (root / "sources").is_dir():
+    structured = (root / "vault").is_dir() or any((root / "sources" / kind).is_dir() for kind in ("email", "calendar", "chat", "tasks"))
+    if not structured:  # an ordinary notes folder, even one that happens to hold a folder called "sources"
         yield from read_vault(root)
         return
     if (root / "vault").is_dir():

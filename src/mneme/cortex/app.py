@@ -305,6 +305,8 @@ def cmd_setup(args, ui: UI) -> int:
     config = {"version": 1, "notes": notes, "db": str(home / "brain.sqlite"), "mind": block}
     if graph_db:
         config["graph_db"] = graph_db
+    if existing.get("namespaces"):
+        config["namespaces"] = existing["namespaces"]  # memories already learned keep their ids
     path = save(home, config)
     if args.json:
         print(json.dumps({"ok": True, "config": str(path), "memories": total, "mind": describe_mind(block), "test_seconds": tested}))
@@ -365,12 +367,17 @@ def _configure_mind(preset: str, args, ui: UI, interactive: bool, home: Path) ->
     return preset_mind(preset, model=model, url=url, api_key_env=key_env, command=command, home=home)
 
 
-def _namespaces(roots: list[str]) -> list[tuple[str, str]]:
-    """One stable prefix per notes folder, so two folders holding the same file name stay separate memories.
-    The folder's name is used, made unique with a hash of its path when two folders share a name."""
-    names = [Path(r).expanduser().name or "notes" for r in roots]
-    return [(r, name if names.count(name) == 1 else f"{name}-{hashlib.sha256(str(Path(r).expanduser().resolve()).encode()).hexdigest()[:6]}")
-            for r, name in zip(roots, names)]
+def _namespaces(config: dict) -> list[tuple[str, str]]:
+    """One prefix per notes folder, so two folders holding the same file name stay separate memories. A folder
+    keeps the prefix it was first given (saved in the config), so adding or removing another folder never
+    renames the memories already learned. A new folder gets its name, plus a hash of its path if that is taken."""
+    assigned = config.setdefault("namespaces", {})
+    for root in config["notes"]:
+        if root not in assigned:
+            name = Path(root).expanduser().name or "notes"
+            taken = set(assigned.values())
+            assigned[root] = name if name not in taken else f"{name}-{hashlib.sha256(str(Path(root).expanduser().resolve()).encode()).hexdigest()[:6]}"
+    return [(root, assigned[root]) for root in config["notes"]]
 
 
 def _namespaced(episodes, ns: str):
@@ -429,7 +436,9 @@ def cmd_learn(args, ui: UI) -> int:
     started = time.time()
     if not args.json:
         ui.banner("mneme learn", ", ".join(Path(p).name for p in config["notes"]))
-    episodes = itertools.chain.from_iterable(_namespaced(read_sources(Path(root)), ns) for root, ns in _namespaces(config["notes"]))
+    roots = _namespaces(config)
+    save(home, config)  # keep each folder's prefix stable from now on
+    episodes = itertools.chain.from_iterable(_namespaced(read_sources(Path(root)), ns) for root, ns in roots)
     if config.get("graph_db"):
         episodes = itertools.chain(episodes, read_graph_db(Path(config["graph_db"])))
     added = brain.ingest(episodes, incremental=True)

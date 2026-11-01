@@ -433,3 +433,24 @@ def test_note_dates_from_frontmatter_or_the_file(tmp_path: Path):
     assert known["Quoted"].startswith("2026-10-31")  # quotes no longer break the whole vault
     assert known["Timed"] == "2026-10-31T08:15:00+00:00"  # a frontmatter time is kept
     assert known["Plain"].startswith("2026-11-01T08:00:00") and known["Odd"] == known["Plain"]  # the file's real time, not noon
+
+
+def test_folded_calendar_lines_are_unfolded(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_bytes(b"BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1@x\r\nSUMMARY:Gym\r\nDTSTART:20260701T090000Z\r\n"
+                    b"DESCRIPTION:Meet at the entrance.\r\n The entry code is 4417.\r\n\tBring a towel.\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+    (event,) = read_ics(ics)
+    # RFC 5545: unfolding removes the line break and exactly one space or tab.
+    assert "Meet at the entrance.The entry code is 4417.Bring a towel." in event.text
+
+
+def test_a_notes_folder_with_a_sources_subfolder_is_still_a_notes_folder(tmp_path: Path):
+    from mneme.cortex.senses import read_sources
+
+    notes = tmp_path / "notes"
+    (notes / "sources").mkdir(parents=True)
+    (notes / "Ideas.md").write_text("# Ideas\n\nA\n", encoding="utf-8")
+    (notes / "sources" / "Reference.md").write_text("# Reference\n\nB\n", encoding="utf-8")
+    assert {e.title for e in read_sources(notes)} == {"Ideas", "Reference"}
