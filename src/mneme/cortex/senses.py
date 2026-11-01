@@ -181,6 +181,9 @@ def read_ics(path: Path) -> Iterator[Episode]:
     # Unfold continuation lines (RFC 5545: a line break then a space or tab); read_text already turned CRLF into \n.
     text = re.sub(r"\n[ \t]", "", path.read_text(encoding="utf-8"))
     for block in text.split("BEGIN:VEVENT")[1:]:
+        block = block.split("END:VEVENT")[0]
+        # Components nested in an event (VALARM reminders) carry their own SUMMARY or DESCRIPTION: drop them.
+        block = re.sub(r"^BEGIN:([A-Z-]+)$.*?^END:\1$", "", block, flags=re.M | re.S)
         fields: dict[str, str] = {}
         for line in block.splitlines():
             if ":" not in line:
@@ -189,6 +192,8 @@ def read_ics(path: Path) -> Iterator[Episode]:
             fields[key] = line if key in ("DTSTART", "DTEND", "CREATED", "DTSTAMP") else line.split(":", 1)[1]
         unescape = lambda s: s.replace("\\,", ",").replace("\\;", ";").replace("\\n", "\n")  # noqa: E731
         uid = fields.get("UID", "").split("@")[0]
+        # An edited occurrence of a recurring event shares its UID; RECURRENCE-ID tells the occurrences apart.
+        ident = uid + (f"@{fields['RECURRENCE-ID'].strip()}" if fields.get("RECURRENCE-ID") else "")
         start = _ics_value(fields["DTSTART"])
         all_day = "VALUE=DATE" in fields["DTSTART"]
         when = start.strftime("%A %d %B %Y") + ("" if all_day else start.strftime(", %H:%M"))
@@ -200,7 +205,7 @@ def read_ics(path: Path) -> Iterator[Episode]:
         if fields.get("DESCRIPTION"):
             body += f"\n{unescape(fields['DESCRIPTION'])}"
         created = _ics_value(fields.get("CREATED") or fields.get("DTSTAMP") or fields["DTSTART"])
-        yield Episode(id=f"event:{uid}", source="event", doc=f"event:{uid}", refs=[f"event:{uid}"], title=summary, text=body,
+        yield Episode(id=f"event:{ident}", source="event", doc=f"event:{uid}", refs=[f"event:{ident}"], title=summary, text=body,
                       known_at=_iso(created), event_time=_iso(start), meta={"status": status})
 
 

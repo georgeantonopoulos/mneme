@@ -454,3 +454,22 @@ def test_a_notes_folder_with_a_sources_subfolder_is_still_a_notes_folder(tmp_pat
     (notes / "Ideas.md").write_text("# Ideas\n\nA\n", encoding="utf-8")
     (notes / "sources" / "Reference.md").write_text("# Reference\n\nB\n", encoding="utf-8")
     assert {e.title for e in read_sources(notes)} == {"Ideas", "Reference"}
+
+
+def test_calendar_occurrences_and_alarms(tmp_path: Path):
+    from mneme.cortex.senses import read_ics
+
+    ics = tmp_path / "cal.ics"
+    ics.write_text("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:standup@x\nSUMMARY:Standup\nDTSTART:20260701T090000Z\n"
+                   "RRULE:FREQ=WEEKLY\nDESCRIPTION:The meeting code is 4417.\nBEGIN:VALARM\nACTION:DISPLAY\n"
+                   "DESCRIPTION:Reminder\nEND:VALARM\nEND:VEVENT\n"
+                   "BEGIN:VEVENT\nUID:standup@x\nRECURRENCE-ID:20260708T090000Z\nSUMMARY:Standup (moved)\n"
+                   "DTSTART:20260708T100000Z\nEND:VEVENT\nEND:VCALENDAR\n", encoding="utf-8")
+    events = list(read_ics(ics))
+    assert len({e.id for e in events}) == 2  # the moved occurrence is its own memory
+    assert "The meeting code is 4417." in events[0].text and "Reminder" not in events[0].text
+
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    for _ in range(3):
+        brain.ingest(read_ics(ics), incremental=True)
+    assert brain.conn.execute("SELECT count(*) FROM neurons").fetchone()[0] == 2  # re-reading adds nothing
