@@ -18,8 +18,9 @@
   aliases, validated and killed relationships, and what the email and calendar senses saw all become memories.
   Pass `--graph-db PATH` to name one, or `--no-graph` to skip it. Nothing earlier is changed or removed.
 - `mneme reflect` and `mneme thoughts` (with `--dismiss`): idle reflection from the command line, with `--json`.
-- Hermes: the `mneme` and `mneme-agent-brain` skills describe the cortex, and the pre-LLM hook points at
-  `mneme ask --json` once the cortex is set up, with a count of open thoughts.
+- Hermes: the `mneme` and `mneme-agent-brain` skills describe the cortex. The pre-LLM hook makes loading the
+  `mneme` skill mandatory on every turn, points at `mneme ask --json` once the cortex is set up, and adds a count
+  of open thoughts.
 - The installer opens the setup wizard when run in a terminal. `--no-setup` skips it, for agents.
 
 ### Changed

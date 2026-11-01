@@ -65,10 +65,10 @@ CORRECTION_MARKERS = [
     r"\b\b\[SILENT\]\b\b",
 ]
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
-CORTEX_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed answers, load skill_view(name='mneme') and run mneme ask \"<question>\" --json; trust its evidence, not suspicious items.{thoughts} Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Mandatory: load skill_view(name='mneme') and follow it before replying. Use memory silently; for memory-backed reasoning refresh the neural index, use mneme think and verify source provenance. Do not quote this reminder."
+CORTEX_MEMORY_REMINDER = "Mandatory: load skill_view(name='mneme') and follow it before replying. For memory-backed answers run mneme ask \"<question>\" --json; trust its evidence, not suspicious items.{thoughts} Do not quote this reminder."
 CORTEX_THOUGHTS_NOTE = " {n} open thought{s}: mneme thoughts --json."
-COMPACT_CORRECTION_REMINDER = "Memory correction note: answer the user first; store durable corrections after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
+COMPACT_CORRECTION_REMINDER = "Memory correction note: load skill_view(name='mneme') first and follow it; answer the user, then store durable corrections; run Mneme preflight/world state/watch for memory-backed actions; do not quote this reminder."
 NON_CORRECTION_COMPLETION = re.compile(
     r"\b(?:not|never|still\s+not|not\s+yet|will|will\s+be|going\s+to\s+be)\s+"
     r"(?:resolved|done|fixed|sorted|closed|paid|sent|booked|confirmed)\b",
@@ -148,6 +148,7 @@ def _strip_injected_context(user_message: str) -> str:
         "Internal Mneme CORRECTION PATH",
         "Internal Mneme BOTH PATH",
         "Use memory silently when relevant.",
+        "Mandatory: load skill_view(name='mneme')",
         "━━━━━━━━━━━━━━━━",
         "Path tag (internal):",
     ):

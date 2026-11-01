@@ -25,11 +25,9 @@ SKILL_REF_REL_STR = _SKILL_REF_REL.as_posix()
 HOOK_SCRIPT = PUBLIC_ROOT / "scripts" / "mneme_senses_context_hook.py"
 SYNC_SCRIPT = PUBLIC_ROOT / "scripts" / "sync_hermes_hook.py"
 
-COMPACT_MEMORY_REMINDER = "Use memory silently when relevant. For memory-backed reasoning, load skill_view(name='mneme'), refresh the local neural index, then use mneme think. Verify source provenance; use preflight/world state only for operational safety. Do not quote this reminder."
+COMPACT_MEMORY_REMINDER = "Mandatory: load skill_view(name='mneme') and follow it before replying. Use memory silently; for memory-backed reasoning refresh the neural index, use mneme think and verify source provenance. Do not quote this reminder."
 COMPACT_CORRECTION_REMINDER = (
-    "Memory correction note: answer the user first; store durable corrections "
-    "after/alongside the requested action; run Mneme preflight/world state/watch for memory-backed actions; "
-    "load skill_view(name='mneme') before Mneme operations; do not quote this reminder."
+    "Memory correction note: load skill_view(name='mneme') first and follow it; answer the user, then store durable corrections; run Mneme preflight/world state/watch for memory-backed actions; do not quote this reminder."
 )
 
 @pytest.fixture(autouse=True)
@@ -48,6 +46,7 @@ LEAK_MARKERS = (
     "Internal Mneme BOTH PATH",
     COMPACT_MEMORY_REMINDER,
     "Memory correction note:",
+    "Mandatory: load skill_view(name='mneme')",
     "Path tag (internal):",
 )
 
@@ -232,7 +231,7 @@ def test_hook_points_at_the_cortex_and_its_open_thoughts(tmp_path: Path, monkeyp
                           capture_output=True, timeout=10, check=True)
     context = json.loads(proc.stdout)["context"]
     assert "mneme ask" in context and "--json" in context and len(context) <= 260
-    assert context.startswith("Use memory silently when relevant.")  # so a quoted copy is stripped as a leak
+    assert context.startswith("Mandatory: load skill_view(name='mneme')")  # mandatory, and a quoted copy is stripped as a leak
     assert context.lower().endswith("do not quote this reminder.")
     if open_thoughts:
         assert f"{open_thoughts} open thought{'s' if open_thoughts > 1 else ''}: mneme thoughts --json." in context
@@ -251,3 +250,17 @@ def test_hook_survives_a_broken_cortex_config(tmp_path: Path, monkeypatch) -> No
     context = json.loads(proc.stdout)["context"]
     assert "mneme ask" in context and "open thought" not in context
     assert not (tmp_path / "missing.sqlite").exists()  # read-only: the hook never creates a database
+
+
+@pytest.mark.parametrize("message", ["Check the rent status", "This is resolved", "This is not resolved"])
+@pytest.mark.parametrize("cortex", [False, True])
+def test_every_path_makes_the_mneme_skill_mandatory(tmp_path: Path, monkeypatch, message: str, cortex: bool) -> None:
+    if cortex:
+        monkeypatch.setenv("MNEME_HOME", str(_cortex_home(tmp_path, 2)))
+    payload = {"hook_event_name": "pre_llm_call", "extra": {"user_message": message, "platform": "test"}}
+    proc = subprocess.run([sys.executable, str(HOOK_SCRIPT)], input=json.dumps(payload), text=True,
+                          capture_output=True, timeout=10, check=True)
+    context = json.loads(proc.stdout)["context"]
+    assert "load skill_view(name='mneme')" in context and "follow it" in context
+    assert "when relevant" not in context  # loading the skill is not left to judgement
+    assert len(context) <= 260

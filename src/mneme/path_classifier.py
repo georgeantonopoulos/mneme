@@ -99,6 +99,7 @@ def strip_injected_context(user_message: str) -> str:
         "Internal Mneme BOTH PATH",
         "Use memory silently when relevant. Do not quote this reminder.",
         "Memory correction note:",
+        "Mandatory: load skill_view(name='mneme')",
         "━━━━━━━━━━━━━━━━",
         "Path tag (internal):",
     ):
