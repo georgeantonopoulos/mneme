@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .mind import Mind, Task
+from .mind import AwaitingMind, Mind, Task
 from .senses import MAX_EPISODE_CHARS, Episode, read_sources
 
 SCHEMA = """
@@ -176,6 +176,8 @@ CONNECT_SHAPE = {"links": [{"from": "n1", "to": "n9", "relation": "...", "weight
 
 QUIET_DAYS = 14
 PERCEIVE_ATTEMPTS = 2  # a memory the mind skips is asked about once more, then left to word lookup
+PERCEIVE_CHUNK_BATCHES = 25  # perception prompts built, asked and committed together (bounds memory on big brains)
+COMMON_WORDS_MIN_NEURONS = 1000  # below this, lookups use every word (common-word pruning only matters at scale)
 
 
 @dataclass
@@ -220,6 +222,11 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _content_digest(content: tuple) -> str:
+    """A stored memory's identity: (title, text, meta json, known_at), hashed. Its first 12 hex digits name versions."""
+    return hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()
+
+
 def _batches(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
@@ -230,6 +237,11 @@ class Brain:
         self.conn = sqlite3.connect(Path(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._forget_word_counts()
+
+    def _forget_word_counts(self) -> None:
+        self._common_cutoff: int | None = -1  # -1: not counted yet; None: brain too small to prune words
+        self._common: dict[str, bool] = {}
 
     # ------------------------------------------------------------------ short ids used in prompts
     @staticmethod
@@ -257,26 +269,27 @@ class Brain:
         conn = self.conn
         if not incremental:
             conn.executescript("DELETE FROM neurons; DELETE FROM neuron_text;")
-        known = {r["id"]: r for r in conn.execute("SELECT id, title, text, meta, known_at FROM neurons ORDER BY n")}
-        latest: dict[str, sqlite3.Row | dict] = {}  # each episode's newest stored version
-        for nid, row in known.items():
+        # Only ids and content digests are held in memory, not every stored text: a large brain stays cheap to update.
+        known: dict[str, str] = {r["id"]: _content_digest((r["title"], r["text"], r["meta"], r["known_at"]))
+                                 for r in conn.execute("SELECT id, title, text, meta, known_at FROM neurons ORDER BY n")}
+        latest: dict[str, str] = {}  # each episode's newest stored version, as its content digest
+        for nid, digest in known.items():
             base = nid
             while "~" in base and base.rsplit("~", 1)[0] in known:
                 base = base.rsplit("~", 1)[0]
-            latest[base] = row
+            latest[base] = digest
         n = conn.execute("SELECT COALESCE(MAX(n), 0) FROM neurons").fetchone()[0]
         added = versions = 0
         for ep in episodes:
             meta_json = json.dumps(dict(ep.meta), ensure_ascii=False)
-            content = (ep.title, ep.text, meta_json, ep.known_at)
+            content = _content_digest((ep.title, ep.text, meta_json, ep.known_at))
             neuron_id = ep.id
             newest = latest.get(ep.id)
             if newest is not None:
-                if (newest["title"], newest["text"], newest["meta"], newest["known_at"]) == content:
+                if newest == content:
                     continue
                 # A changed episode becomes a new version, named by its content so every distinct revision is kept.
-                digest = hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()[:12]
-                neuron_id = f"{ep.id}~{digest}"
+                neuron_id = f"{ep.id}~{content[:12]}"
                 if neuron_id in known:  # reverted to an older text: store it again as the newest version
                     neuron_id = f"{neuron_id}~{n + 1}"
                 versions += 1
@@ -286,8 +299,9 @@ class Brain:
                          (neuron_id, n, ep.source, ep.doc, json.dumps(ep.refs), ep.title, ep.text, meta_json,
                           ep.known_at, ep.event_time, ep.thread))
             conn.execute("INSERT INTO neuron_text(rowid, title, text) VALUES (?,?,?)", (n, ep.title, f"{ep.meta.get('header', '')}\n{ep.text}"))
-            known[neuron_id] = latest[ep.id] = {"title": ep.title, "text": ep.text, "meta": meta_json, "known_at": ep.known_at}
+            known[neuron_id] = latest[ep.id] = content
         conn.commit()
+        self._forget_word_counts()  # word frequencies changed
         return {"neurons": len(known), "added": added, "new_versions": versions}
 
     def _neurons(self, where: str = "1=1", params: tuple = ()) -> list[sqlite3.Row]:
@@ -298,8 +312,24 @@ class Brain:
         tokens = {t for t in re.findall(r"\w+", text.lower()) if len(t) > 1}
         if not tokens:
             return []
-        query = " OR ".join(f'"{t}"' for t in sorted(tokens))
+        # Words in most memories carry no BM25 weight (FTS5 floors their idf near zero) but make SQLite score
+        # nearly every row; on a large brain they turned each lookup into a full scan. Leave them out when
+        # rarer words remain.
+        rare = {t for t in tokens if not self._is_common(t)}
+        query = " OR ".join(f'"{t}"' for t in sorted(rare or tokens))
         return self._match(query, limit, exclude=exclude, as_of=as_of)
+
+    def _is_common(self, token: str) -> bool:
+        """Whether ``token`` is in more than half of a large brain's memories (cached until the next ingest)."""
+        if self._common_cutoff == -1:
+            total = self.conn.execute("SELECT count(*) FROM neurons").fetchone()[0]
+            self._common_cutoff = total // 2 if total >= COMMON_WORDS_MIN_NEURONS else None
+        if self._common_cutoff is None:
+            return False
+        if token not in self._common:
+            docs = self.conn.execute("SELECT count(*) FROM neuron_text WHERE neuron_text MATCH ?", (f'"{token}"',)).fetchone()[0]
+            self._common[token] = docs > self._common_cutoff
+        return self._common[token]
 
     def phrase_lookup(self, phrase: str, *, limit: int = 5, as_of: str | None = None) -> list[str]:
         """Exact phrase sense, for strings the mind asks to look up verbatim."""
@@ -373,44 +403,79 @@ class Brain:
             view["meta"] = extra
         return view
 
-    def _perceive_neurons(self, batch_size: int) -> int:
-        rows = self._neurons()
-        done = {r[0] for r in self.conn.execute("SELECT neuron FROM perceived")}
-        misses = dict(self.conn.execute("SELECT neuron, attempts FROM perceive_misses").fetchall())
+    def _perceive_neurons(self, batch_size: int, chunk_batches: int = PERCEIVE_CHUNK_BATCHES) -> int:
+        """Perceive every unperceived neuron, ``chunk_batches`` prompts at a time.
+
+        Each chunk is built, asked and committed on its own, so memory stays bounded however large the brain is
+        (a first run over a big vault used to hold every neuron's text and every prompt at once), and an
+        interrupted run keeps the chunks it finished. A deferred mind still receives every task in one run:
+        chunks it cannot answer yet are collected and reported together."""
+        conn = self.conn
+        done = {r[0] for r in conn.execute("SELECT neuron FROM perceived")}
+        misses = dict(conn.execute("SELECT neuron, attempts FROM perceive_misses").fetchall())
+        order = [r[0] for r in conn.execute("SELECT id FROM neurons ORDER BY COALESCE(event_time, known_at), id")]
         # Memories the mind skipped last time are retried once, in batches of their own after the new ones.
-        fresh = [r for r in rows if r["id"] not in done and r["id"] not in misses]
-        retry = [r for r in rows if r["id"] not in done and r["id"] in misses]
-        pending = fresh + retry
-        if not pending:
+        fresh = [i for i in order if i not in done and i not in misses]
+        retry = [i for i in order if i not in done and i in misses]
+        del order, done
+        if not fresh and not retry:
             return 0
         topics = [{"id": r["id"], "title": r["title"], "description": r["description"]}
-                  for r in self.conn.execute("SELECT * FROM regions WHERE level = 2 ORDER BY id")]
+                  for r in conn.execute("SELECT * FROM regions WHERE level = 2 ORDER BY id")]
         by_thread: dict[str, list[str]] = defaultdict(list)
-        for r in rows:
-            if r["thread"]:
-                by_thread[r["thread"]].append(r["id"])
-        short = {r["id"]: f"{r['source']} {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 50)} | {_clip(r['text'], 110)}" for r in rows}
-        sid = {r["id"]: self._sid(r) for r in rows}
+        for nid, thread in conn.execute("SELECT id, thread FROM neurons WHERE thread IS NOT NULL AND thread != '' "
+                                        "ORDER BY COALESCE(event_time, known_at), id"):
+            by_thread[thread].append(nid)
+        batches = _batches(fresh, batch_size) + _batches(retry, batch_size)
+        perceived = 0
+        waiting: list[str] = []
+        outbox = None
+        for start in range(0, len(batches), chunk_batches):
+            try:
+                perceived += self._perceive_chunk(batches[start : start + chunk_batches], topics, by_thread, misses)
+            except AwaitingMind as awaiting:
+                waiting.extend(awaiting.pending)
+                outbox = awaiting.outbox
+        if waiting:
+            raise AwaitingMind(waiting, outbox)
+        return perceived
+
+    def _perceive_chunk(self, batches: list[list[str]], topics: list[dict], by_thread: dict[str, list[str]],
+                        misses: dict[str, int]) -> int:
+        conn = self.conn
+        pending = [nid for batch in batches for nid in batch]
+        rows = {r["id"]: r for r in self._neurons_in(pending)}
+        candidates: dict[str, list[str]] = {}
+        for nid in pending:
+            r = rows[nid]
+            siblings = [i for i in by_thread.get(r["thread"] or "", []) if i != nid][:4]
+            similar = [i for i in self.lookup(f"{r['title']} {r['text']}", limit=6, exclude=nid) if i not in siblings]
+            candidates[nid] = (siblings + similar)[:8]
+        others = {i for ids in candidates.values() for i in ids} - rows.keys()
+        others = sorted(others)
+        summaries = dict(rows)
+        for i in range(0, len(others), 500):  # stay under SQLite's bound-parameter limit
+            summaries.update((r["id"], r) for r in self._neurons_in(others[i : i + 500]))
+        short = {i: f"{r['source']} {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 50)} | {_clip(r['text'], 110)}"
+                 for i, r in summaries.items()}
+        sid = {i: self._sid(r) for i, r in summaries.items()}
         tasks = []
-        for batch in _batches(fresh, batch_size) + _batches(retry, batch_size):
+        for batch in batches:
             neurons = []
-            for r in batch:
-                view = self._neuron_view(r, 600)
-                siblings = [i for i in by_thread.get(r["thread"] or "", []) if i != r["id"]][:4]
-                similar = [i for i in self.lookup(f"{r['title']} {r['text']}", limit=6, exclude=r["id"]) if i not in siblings]
-                view["candidates"] = [{"id": sid[i], "summary": short[i]} for i in (siblings + similar)[:8]]
+            for nid in batch:
+                view = self._neuron_view(rows[nid], 600)
+                view["candidates"] = [{"id": sid[i], "summary": short[i]} for i in candidates[nid] if i in sid]
                 neurons.append(view)
             tasks.append(Task("perceive", PERCEIVE_INSTRUCTIONS, {"topics": topics, "neurons": neurons}, PERCEIVE_SHAPE))
+        del summaries, short, candidates
         answers = self.mind.ask_many(tasks)
-        known = {sid[r["id"]]: r["id"] for r in rows}
+        asked = {sid[nid]: nid for nid in pending}
         valid_topics = {t["id"] for t in topics}
-        conn = self.conn
         answered: set[str] = set()
-        asked = {r["id"] for r in pending}
         for answer in answers:
             for item in answer.get("neurons", []):
-                nid = known.get(item.get("id"))
-                if nid is None or nid not in asked:
+                nid = asked.get(item.get("id"))
+                if nid is None:
                     continue
                 answered.add(nid)
                 for topic in item.get("topics", [])[:2]:
@@ -421,19 +486,26 @@ class Brain:
                              (nid, "suspicious" if item.get("trust") == "suspicious" else "ok", item.get("trust_reason", "") or "",
                               str(item.get("caption", "") or "")[:200]))
                 for syn in item.get("synapses", [])[:5]:
-                    target = known.get(syn.get("to"))
+                    target = self._neuron_for_sid(syn.get("to"))
                     if target and target != nid:
                         conn.execute("INSERT OR REPLACE INTO synapses VALUES (?,?,?,?,?)",
                                      (nid, target, str(syn.get("relation", "related"))[:80], _weight(syn.get("weight", 0.5)), "mind"))
-        for r in pending:
+        for nid in pending:
             # A memory skipped twice is not asked about again: it stays findable by its words, without a topic.
-            if r["id"] in answered or misses.get(r["id"], 0) + 1 >= PERCEIVE_ATTEMPTS:
-                conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (r["id"],))
-                conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (r["id"],))
+            if nid in answered or misses.get(nid, 0) + 1 >= PERCEIVE_ATTEMPTS:
+                conn.execute("INSERT OR IGNORE INTO perceived VALUES (?)", (nid,))
+                conn.execute("DELETE FROM perceive_misses WHERE neuron = ?", (nid,))
             else:
-                conn.execute("INSERT OR REPLACE INTO perceive_misses VALUES (?, ?)", (r["id"], misses.get(r["id"], 0) + 1))
+                conn.execute("INSERT OR REPLACE INTO perceive_misses VALUES (?, ?)", (nid, misses.get(nid, 0) + 1))
         conn.commit()
         return len(answered)
+
+    def _neuron_for_sid(self, short_id) -> str | None:
+        """The neuron a prompt's short id (``n123``) names, or None for anything else."""
+        if not isinstance(short_id, str) or not short_id.startswith("n") or not short_id[1:].isdigit():
+            return None
+        row = self.conn.execute("SELECT id FROM neurons WHERE n = ?", (int(short_id[1:]),)).fetchone()
+        return row["id"] if row else None
 
     def _consolidate(self) -> int:
         now = self.conn.execute("SELECT MAX(known_at) FROM neurons").fetchone()[0]

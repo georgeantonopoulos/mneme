@@ -8,6 +8,7 @@ import pytest
 
 from mneme.cortex import AwaitingMind, Brain, FileMind, FunctionMind, Task
 from mneme.cortex.mind import parse_json_reply
+from mneme.cortex.senses import read_sources
 
 
 def _vault(root: Path) -> Path:
@@ -473,3 +474,64 @@ def test_calendar_occurrences_and_alarms(tmp_path: Path):
     for _ in range(3):
         brain.ingest(read_ics(ics), incremental=True)
     assert brain.conn.execute("SELECT count(*) FROM neurons").fetchone()[0] == 2  # re-reading adds nothing
+
+
+class FlakyMind(ScriptedMind):
+    """Fails on the n-th perception call, like a mind that drops mid-run."""
+
+    def __init__(self, fail_on: int):
+        super().__init__()
+        self.fail_on, self.calls = fail_on, 0
+
+    def ask_many(self, tasks):
+        if tasks and tasks[0].kind == "perceive":
+            self.calls += 1
+            if self.calls == self.fail_on:
+                raise RuntimeError("mind went away")
+        return super().ask_many(tasks)
+
+
+def test_perception_runs_in_chunks_and_keeps_finished_ones(tmp_path: Path):
+    mind = FlakyMind(fail_on=2)
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain._form_regions(800)
+    with pytest.raises(RuntimeError):
+        brain._perceive_neurons(batch_size=1, chunk_batches=2)  # 4 neurons -> 2 chunks of 2 prompts
+    assert brain.conn.execute("SELECT count(*) FROM perceived").fetchone()[0] == 2  # the first chunk was kept
+    assert brain._perceive_neurons(batch_size=1, chunk_batches=2) == 2  # the rerun only asks about the rest
+    assert brain.conn.execute("SELECT count(*) FROM perceived").fetchone()[0] == 4
+    assert brain.conn.execute("SELECT count(*) FROM synapses").fetchone()[0] > 0  # links across chunks still form
+
+
+def test_a_deferred_mind_sees_every_chunk_in_one_run(tmp_path: Path):
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    brain.ingest_sources(_vault(tmp_path))
+    brain._form_regions(800)
+    brain.mind = FileMind(tmp_path / "mind")
+    with pytest.raises(AwaitingMind) as waiting:
+        brain._perceive_neurons(batch_size=1, chunk_batches=2)
+    assert len(waiting.value.pending) == 4  # all four prompts are queued, not just the first chunk's
+    assert len(list(brain.mind.outbox.glob("*.json"))) == 4
+
+
+def test_unchanged_memories_are_not_stored_again(tmp_path: Path):
+    root = _vault(tmp_path)
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    first = brain.ingest_sources(root)
+    again = brain.ingest(read_sources(root), incremental=True)
+    assert again == {"neurons": first["neurons"], "added": 0, "new_versions": 0}
+
+
+def test_lookups_on_a_large_brain_skip_words_in_most_memories(tmp_path: Path, monkeypatch):
+    import mneme.cortex.brain as brain_module
+
+    monkeypatch.setattr(brain_module, "COMMON_WORDS_MIN_NEURONS", 4)
+    root = _vault(tmp_path)
+    for name in ("Kayak", "Tent", "Stove"):
+        (root / "vault" / "Projects" / f"{name}.md").write_text(f"# {name}\n\nrenewal paperwork for the {name.lower()}\n", encoding="utf-8")
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    brain.ingest_sources(root)
+    assert brain._is_common("renewal") and not brain._is_common("kayak")
+    assert brain.lookup("kayak renewal", limit=1) == brain.lookup("kayak", limit=1)  # the common word adds nothing
+    assert brain.lookup("renewal")  # a query of only common words still finds something

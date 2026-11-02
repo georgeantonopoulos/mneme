@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `mneme learn` on a large brain no longer exhausts memory or stalls for hours. On a brain of about 130,000
+  memories, the first perception pass used to hold every memory's text and every prompt at once (2 GB+ and
+  climbing), and each candidate lookup scored nearly every memory (about 1.4 s each, so days for one pass).
+  - Perception now runs in chunks of 25 prompts. Each chunk is built, asked and committed on its own, so memory
+    stays flat (under 50 MB in the same test) and an interrupted run keeps every finished chunk. A deferred
+    (task-file) mind still receives every prompt in one run.
+  - Candidate lookups on brains of 1,000+ memories leave out words found in more than half of all memories.
+    BM25 already gives those words almost no weight, so results are unchanged; each lookup is about 50x faster.
+  - `ingest` compares stored memories by content hash instead of keeping every stored text in memory
+    (325 MB down to 64 MB on the same brain).
+
 ## [1.1.0] — 2026-11-01
 
 ### Added
