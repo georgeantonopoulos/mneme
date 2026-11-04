@@ -363,12 +363,16 @@ class Brain:
         return [r["id"] for r in rows]
 
     # ------------------------------------------------------------------ perception (LLM)
-    def perceive(self, *, batch_size: int = 20, map_sample: int = 800) -> dict:
+    def perceive(self, *, batch_size: int = 20, map_sample: int = 800, newest_first: bool = False,
+                 since: str | None = None) -> dict:
         """Run the three perception phases on whatever is new. Resumable: with a deferred mind, rerun after
         answers arrive. The region map is formed once; later runs perceive only unperceived neurons and
-        rewrite only the gists of regions that gained members (reorganising the map is left to sleep)."""
+        rewrite only the gists of regions that gained members (reorganising the map is left to sleep).
+
+        ``newest_first`` perceives the most recent memories first; ``since`` (``YYYY-MM``, or any ISO prefix)
+        perceives only memories dated from then on. Older ones stay unperceived for a later run."""
         stats = {"regions": self._form_regions(map_sample)}
-        stats["perceived"] = self._perceive_neurons(batch_size)
+        stats["perceived"] = self._perceive_neurons(batch_size, newest_first=newest_first, since=since)
         stats["gists"] = self._consolidate()
         return stats
 
@@ -417,7 +421,8 @@ class Brain:
             view["meta"] = extra
         return view
 
-    def _perceive_neurons(self, batch_size: int, chunk_batches: int = PERCEIVE_CHUNK_BATCHES) -> int:
+    def _perceive_neurons(self, batch_size: int, chunk_batches: int = PERCEIVE_CHUNK_BATCHES, *,
+                          newest_first: bool = False, since: str | None = None) -> int:
         """Perceive every unperceived neuron, ``chunk_batches`` prompts at a time.
 
         Each chunk is built, asked and committed on its own, so memory stays bounded however large the brain is
@@ -427,7 +432,12 @@ class Brain:
         conn = self.conn
         done = {r[0] for r in conn.execute("SELECT neuron FROM perceived")}
         misses = dict(conn.execute("SELECT neuron, attempts FROM perceive_misses").fetchall())
-        order = [r[0] for r in conn.execute("SELECT id FROM neurons ORDER BY COALESCE(event_time, known_at), id")]
+        # Stored times are ISO-8601 text, so comparing with a "YYYY-MM" prefix keeps that month and later.
+        where = "WHERE COALESCE(event_time, known_at) >= ? " if since else ""
+        direction = "DESC" if newest_first else "ASC"
+        order = [r[0] for r in conn.execute(f"SELECT id FROM neurons {where}"
+                                            f"ORDER BY COALESCE(event_time, known_at) {direction}, id {direction}",
+                                            (since,) if since else ())]
         # Memories the mind skipped last time are retried once, in batches of their own after the new ones.
         fresh = [i for i in order if i not in done and i not in misses]
         retry = [i for i in order if i not in done and i in misses]

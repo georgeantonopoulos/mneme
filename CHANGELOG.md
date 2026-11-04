@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `mneme learn --newest-first` perceives the most recent memories first instead of the oldest, so a run that
+  stops early (a token budget, Ctrl-C) has spent its effort on what is current.
+- `mneme learn --since YYYY-MM` perceives only memories dated in that month or later. Older memories are still
+  stored and found by word lookup; they are perceived by a later run without `--since`. Memories already
+  perceived are skipped and skipped memories are retried as before, under either option.
+
 ### Fixed
 
 - `mneme learn` on a large brain no longer exhausts memory or stalls for hours. On a brain of about 130,000

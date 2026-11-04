@@ -558,3 +558,34 @@ def test_perception_looks_up_candidates_with_a_few_rare_words(tmp_path: Path):
     perceived = [t for t in brain.mind.seen if t.kind == "perceive"]
     candidates = {n["title"]: n["candidates"] for t in perceived for n in t.payload["neurons"]}
     assert all(len(c) >= 1 for c in candidates.values())  # every note still finds its partner
+
+
+def test_newest_first_perceives_the_most_recent_memory_first(tmp_path: Path):
+    mind = ScriptedMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain._form_regions(800)
+    assert brain._perceive_neurons(batch_size=1, chunk_batches=1, newest_first=True) == 4
+    dates = [t.payload["neurons"][0]["date"] for t in mind.seen if t.kind == "perceive"]
+    assert dates[0] == "2026-07-01" and dates == sorted(dates, reverse=True)
+    assert brain._perceive_neurons(batch_size=1, newest_first=True) == 0  # perceived memories are still skipped
+
+
+def test_since_leaves_older_memories_for_a_later_run(tmp_path: Path):
+    mind = ScriptedMind()
+    brain = Brain(tmp_path / "c.sqlite", mind)
+    brain.ingest_sources(_vault(tmp_path))
+    brain._form_regions(800)
+    assert brain._perceive_neurons(batch_size=20, since="2026-06") == 1
+    asked = [n["date"] for t in mind.seen if t.kind == "perceive" for n in t.payload["neurons"]]
+    assert asked == ["2026-07-01"]
+    assert brain._perceive_neurons(batch_size=20) == 3  # the May memories are perceived once the filter is lifted
+
+
+def test_learn_flags_parse():
+    from mneme.cortex.app import parser
+
+    args = parser().parse_args(["learn", "--newest-first", "--since", "2026-09"])
+    assert args.newest_first and args.since == "2026-09"
+    with pytest.raises(SystemExit):
+        parser().parse_args(["learn", "--since", "September"])
