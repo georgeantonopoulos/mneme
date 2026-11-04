@@ -12,6 +12,10 @@
     (task-file) mind still receives every prompt in one run.
   - Candidate lookups on brains of 1,000+ memories leave out words found in more than half of all memories.
     BM25 already gives those words almost no weight, so results are unchanged; each lookup is about 50x faster.
+  - Perception's candidate lookup asks with at most 6 of each memory's rarest words (preferring words at least
+    one other memory shares) instead of every word in the note. Dropping common words alone still left 20-40
+    word queries taking 1-1.6 s each on a 130k-memory brain; 6-word queries take under 0.1 s. `mneme ask` and
+    other lookups are unchanged.
   - `ingest` compares stored memories by content hash instead of keeping every stored text in memory
     (325 MB down to 64 MB on the same brain).
 

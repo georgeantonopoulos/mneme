@@ -535,3 +535,26 @@ def test_lookups_on_a_large_brain_skip_words_in_most_memories(tmp_path: Path, mo
     assert brain._is_common("renewal") and not brain._is_common("kayak")
     assert brain.lookup("kayak renewal", limit=1) == brain.lookup("kayak", limit=1)  # the common word adds nothing
     assert brain.lookup("renewal")  # a query of only common words still finds something
+
+
+def test_perception_looks_up_candidates_with_a_few_rare_words(tmp_path: Path):
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    filler = [f"word{i}" for i in range(40)]  # every note shares these, so they are the least distinctive
+    root = tmp_path / "notes"
+    root.mkdir()
+    for n in range(60):
+        pair = f"pairmark{n // 2}"  # each note shares one rare word with exactly one other
+        own = " ".join(f"solo{n}x{k}" for k in range(10))  # words no other note has
+        (root / f"n{n}.md").write_text(f"# Note {n}\n\n{' '.join(filler)} {pair} {own}\n", encoding="utf-8")
+    brain.ingest(read_sources(root))
+    queries: list[str] = []
+    match = brain._match
+    brain._match = lambda query, limit, **kw: queries.append(query) or match(query, limit, **kw)
+    brain._form_regions(800)
+    brain._perceive_neurons(batch_size=20)
+    assert brain.conn.execute("SELECT count(*) FROM perceived").fetchone()[0] == 60
+    assert len(queries) == 60 and all(q.count(" OR ") <= 5 for q in queries)  # at most 6 words per lookup
+    assert all("pairmark" in q for q in queries)  # the word that finds a neighbour beats the ones only one note has
+    perceived = [t for t in brain.mind.seen if t.kind == "perceive"]
+    candidates = {n["title"]: n["candidates"] for t in perceived for n in t.payload["neurons"]}
+    assert all(len(c) >= 1 for c in candidates.values())  # every note still finds its partner

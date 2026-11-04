@@ -178,6 +178,7 @@ QUIET_DAYS = 14
 PERCEIVE_ATTEMPTS = 2  # a memory the mind skips is asked about once more, then left to word lookup
 PERCEIVE_CHUNK_BATCHES = 25  # perception prompts built, asked and committed together (bounds memory on big brains)
 COMMON_WORDS_MIN_NEURONS = 1000  # below this, lookups use every word (common-word pruning only matters at scale)
+SIMILAR_LOOKUP_WORDS = 6  # perception's candidate lookup asks with at most this many of a memory's rarest words
 
 
 @dataclass
@@ -241,7 +242,7 @@ class Brain:
 
     def _forget_word_counts(self) -> None:
         self._common_cutoff: int | None = -1  # -1: not counted yet; None: brain too small to prune words
-        self._common: dict[str, bool] = {}
+        self._docs: dict[str, int] = {}  # word -> number of memories containing it
 
     # ------------------------------------------------------------------ short ids used in prompts
     @staticmethod
@@ -307,8 +308,13 @@ class Brain:
     def _neurons(self, where: str = "1=1", params: tuple = ()) -> list[sqlite3.Row]:
         return self.conn.execute(f"SELECT * FROM neurons WHERE {where} ORDER BY COALESCE(event_time, known_at), id", params).fetchall()
 
-    def lookup(self, text: str, *, limit: int = 6, exclude: str | None = None, as_of: str | None = None) -> list[str]:
-        """Full-text sense: neuron ids whose text best matches ``text`` (BM25 over all its words)."""
+    def lookup(self, text: str, *, limit: int = 6, exclude: str | None = None, as_of: str | None = None,
+               max_words: int | None = None) -> list[str]:
+        """Full-text sense: neuron ids whose text best matches ``text`` (BM25 over all its words).
+
+        ``max_words`` keeps only that many of the rarest words. An OR query's cost grows with every word in it
+        (a whole note's 20-40 words took over a second on a 130k-memory brain, a handful under a tenth), and the
+        rarest words are the ones that carry a note's BM25 match anyway."""
         tokens = {t for t in re.findall(r"\w+", text.lower()) if len(t) > 1}
         if not tokens:
             return []
@@ -316,7 +322,11 @@ class Brain:
         # nearly every row; on a large brain they turned each lookup into a full scan. Leave them out when
         # rarer words remain.
         rare = {t for t in tokens if not self._is_common(t)}
-        query = " OR ".join(f'"{t}"' for t in sorted(rare or tokens))
+        words = rare or tokens
+        if max_words is not None and len(words) > max_words:
+            # Rarest first, but a word only one memory has cannot point to another, so those go last.
+            words = sorted(words, key=lambda t: (self._doc_count(t) < 2, self._doc_count(t), t))[:max_words]
+        query = " OR ".join(f'"{t}"' for t in sorted(words))
         return self._match(query, limit, exclude=exclude, as_of=as_of)
 
     def _is_common(self, token: str) -> bool:
@@ -326,10 +336,14 @@ class Brain:
             self._common_cutoff = total // 2 if total >= COMMON_WORDS_MIN_NEURONS else None
         if self._common_cutoff is None:
             return False
-        if token not in self._common:
-            docs = self.conn.execute("SELECT count(*) FROM neuron_text WHERE neuron_text MATCH ?", (f'"{token}"',)).fetchone()[0]
-            self._common[token] = docs > self._common_cutoff
-        return self._common[token]
+        return self._doc_count(token) > self._common_cutoff
+
+    def _doc_count(self, token: str) -> int:
+        """How many memories contain ``token`` (cached until the next ingest)."""
+        if token not in self._docs:
+            self._docs[token] = self.conn.execute("SELECT count(*) FROM neuron_text WHERE neuron_text MATCH ?",
+                                                  (f'"{token}"',)).fetchone()[0]
+        return self._docs[token]
 
     def phrase_lookup(self, phrase: str, *, limit: int = 5, as_of: str | None = None) -> list[str]:
         """Exact phrase sense, for strings the mind asks to look up verbatim."""
@@ -449,7 +463,8 @@ class Brain:
         for nid in pending:
             r = rows[nid]
             siblings = [i for i in by_thread.get(r["thread"] or "", []) if i != nid][:4]
-            similar = [i for i in self.lookup(f"{r['title']} {r['text']}", limit=6, exclude=nid) if i not in siblings]
+            similar = [i for i in self.lookup(f"{r['title']} {r['text']}", limit=6, exclude=nid,
+                                                 max_words=SIMILAR_LOOKUP_WORDS) if i not in siblings]
             candidates[nid] = (siblings + similar)[:8]
         others = {i for ids in candidates.values() for i in ids} - rows.keys()
         others = sorted(others)
