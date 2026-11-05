@@ -176,6 +176,7 @@ CONNECT_SHAPE = {"links": [{"from": "n1", "to": "n9", "relation": "...", "weight
 
 QUIET_DAYS = 14
 PERCEIVE_ATTEMPTS = 2  # a memory the mind skips is asked about once more, then left to word lookup
+IN_QUERY_IDS = 500  # ids bound per "id IN (...)" query; SQLite builds may cap bound parameters at 999
 PERCEIVE_CHUNK_BATCHES = 25  # perception prompts built, asked and committed together (bounds memory on big brains)
 COMMON_WORDS_MIN_NEURONS = 1000  # below this, lookups use every word (common-word pruning only matters at scale)
 
@@ -316,8 +317,13 @@ class Brain:
         # nearly every row; on a large brain they turned each lookup into a full scan. Leave them out when
         # rarer words remain.
         rare = {t for t in tokens if not self._is_common(t)}
-        query = " OR ".join(f'"{t}"' for t in sorted(rare or tokens))
-        return self._match(query, limit, exclude=exclude, as_of=as_of)
+        words = rare or tokens
+        found = self._match(" OR ".join(f'"{t}"' for t in sorted(words)), limit, exclude=exclude, as_of=as_of)
+        if not found and as_of is not None and len(words) < len(tokens):
+            # Word frequencies are brain-wide, so the words left out may be the only ones an older memory shares
+            # with the text; a time-scoped lookup that found nothing asks again with every word.
+            found = self._match(" OR ".join(f'"{t}"' for t in sorted(tokens)), limit, exclude=exclude, as_of=as_of)
+        return found
 
     def _is_common(self, token: str) -> bool:
         """Whether ``token`` is in more than half of a large brain's memories (cached until the next ingest)."""
@@ -390,10 +396,14 @@ class Brain:
 
     def _neurons_in(self, ids, as_of: str | None = None) -> list[sqlite3.Row]:
         ids = list(ids)
-        if not ids:
-            return []
-        where = f"id IN ({','.join('?' * len(ids))})" + (" AND known_at <= ?" if as_of else "")
-        return self._neurons(where, (*ids, as_of) if as_of else tuple(ids))
+        rows: list[sqlite3.Row] = []
+        for i in range(0, len(ids), IN_QUERY_IDS):  # stay under SQLite's bound-parameter limit
+            group = ids[i : i + IN_QUERY_IDS]
+            where = f"id IN ({','.join('?' * len(group))})" + (" AND known_at <= ?" if as_of else "")
+            rows += self._neurons(where, (*group, as_of) if as_of else tuple(group))
+        if len(ids) > IN_QUERY_IDS:  # keep the single-query order across groups
+            rows.sort(key=lambda r: (r["event_time"] or r["known_at"], r["id"]))
+        return rows
 
     def _neuron_view(self, row: sqlite3.Row, limit: int) -> dict:
         meta = json.loads(row["meta"])
@@ -452,10 +462,8 @@ class Brain:
             similar = [i for i in self.lookup(f"{r['title']} {r['text']}", limit=6, exclude=nid) if i not in siblings]
             candidates[nid] = (siblings + similar)[:8]
         others = {i for ids in candidates.values() for i in ids} - rows.keys()
-        others = sorted(others)
         summaries = dict(rows)
-        for i in range(0, len(others), 500):  # stay under SQLite's bound-parameter limit
-            summaries.update((r["id"], r) for r in self._neurons_in(others[i : i + 500]))
+        summaries.update((r["id"], r) for r in self._neurons_in(sorted(others)))
         short = {i: f"{r['source']} {_date(r['event_time'] or r['known_at'])} | {_clip(r['title'], 50)} | {_clip(r['text'], 110)}"
                  for i, r in summaries.items()}
         sid = {i: self._sid(r) for i, r in summaries.items()}

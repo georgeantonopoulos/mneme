@@ -535,3 +535,37 @@ def test_lookups_on_a_large_brain_skip_words_in_most_memories(tmp_path: Path, mo
     assert brain._is_common("renewal") and not brain._is_common("kayak")
     assert brain.lookup("kayak renewal", limit=1) == brain.lookup("kayak", limit=1)  # the common word adds nothing
     assert brain.lookup("renewal")  # a query of only common words still finds something
+
+
+def test_a_time_scoped_lookup_still_finds_an_older_memory_through_a_common_word(tmp_path: Path, monkeypatch):
+    import mneme.cortex.brain as brain_module
+    from mneme.cortex.senses import Episode
+
+    monkeypatch.setattr(brain_module, "COMMON_WORDS_MIN_NEURONS", 4)
+
+    def note(name, text, when):
+        return Episode(id=f"note:{name}.md#0", source="note", doc=f"{name}.md", refs=[f"note:{name}.md"], title=name,
+                       text=text, known_at=when)
+
+    old = note("Old", "renewal paperwork", "2026-01-01T00:00:00+00:00")
+    newer = [note(f"N{i}", "renewal" + (" kayak" if i == 0 else ""), "2026-06-01T00:00:00+00:00") for i in range(5)]
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    brain.ingest([old, *newer])
+    assert brain._is_common("renewal")  # brain-wide, though only one memory existed by February
+    assert brain.lookup("kayak renewal", as_of="2026-02-01T00:00:00+00:00") == ["note:Old.md#0"]
+
+
+def test_large_id_lookups_stay_under_the_bound_parameter_limit(tmp_path: Path, monkeypatch):
+    import mneme.cortex.brain as brain_module
+
+    monkeypatch.setattr(brain_module, "IN_QUERY_IDS", 3)
+    brain = Brain(tmp_path / "c.sqlite", ScriptedMind())
+    brain.ingest_sources(_vault(tmp_path))
+    ids = [r["id"] for r in brain._neurons()]
+    bound: list[int] = []
+    neurons = brain._neurons
+    monkeypatch.setattr(brain, "_neurons", lambda where="1=1", params=(): bound.append(len(params)) or neurons(where, params))
+    assert [r["id"] for r in brain._neurons_in(reversed(ids))] == ids  # one ordered result across groups
+    assert bound == [3, 1]
+    brain._form_regions(800)
+    assert brain._perceive_neurons(batch_size=1, chunk_batches=4) == 4  # one chunk of 4 pending ids
