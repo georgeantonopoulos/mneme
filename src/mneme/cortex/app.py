@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import datetime as dt
+import functools
 import hashlib
 import itertools
 import json
@@ -428,6 +429,16 @@ def _settled(brain: Brain, key: str) -> None:
     brain.conn.commit()
 
 
+def _month(value: str) -> str:
+    """``--since``: a ``YYYY-MM`` month, compared as a prefix of the stored ISO times."""
+    try:
+        month = dt.datetime.strptime(value, "%Y-%m")
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM, got {value!r}") from None
+    # strptime also takes "2026-9"; the stored times compare as text, so the month must be zero-padded.
+    return f"{month.year:04d}-{month.month:02d}"
+
+
 def cmd_learn(args, ui: UI) -> int:
     opened = _open(args, ui)
     if isinstance(opened, int):
@@ -444,7 +455,9 @@ def cmd_learn(args, ui: UI) -> int:
     added = brain.ingest(episodes, incremental=True)
     if not args.json:
         ui.ok(f"{added['neurons']} memories ({added['added']} new, {added['new_versions']} changed)")
-    stats, code = _think(ui, args, config, brain.perceive, hint=" Progress is saved; run `mneme learn` again.")
+    perceive = functools.partial(brain.perceive, newest_first=getattr(args, "newest_first", False),
+                                 since=getattr(args, "since", None))
+    stats, code = _think(ui, args, config, perceive, hint=" Progress is saved; run `mneme learn` again.")
     if code is not None:
         return code
     seconds = time.time() - started
@@ -690,7 +703,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--graph-db", help="Also learn from an earlier Mneme graph database (found automatically from `mneme init`)")
     p.add_argument("--no-graph", action="store_true", help="Do not learn from an earlier Mneme graph database")
 
-    sub.add_parser("learn", parents=[common], help="Read new and changed notes into the brain")
+    p = sub.add_parser("learn", parents=[common], help="Read new and changed notes into the brain")
+    p.add_argument("--newest-first", action="store_true",
+                   help="Perceive the most recent memories first (default: oldest first)")
+    p.add_argument("--since", type=_month, metavar="YYYY-MM",
+                   help="Perceive only memories dated in this month or later; older ones wait for a later run")
 
     p = sub.add_parser("ask", parents=[common], help="Recall what you know, with the evidence")
     p.add_argument("question", nargs="*")

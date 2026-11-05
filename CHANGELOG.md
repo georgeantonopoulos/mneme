@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `mneme learn --newest-first` perceives the most recent memories first instead of the oldest, so a run that
+  stops early (a token budget, Ctrl-C) has spent its effort on what is current.
+- `mneme learn --since YYYY-MM` perceives only memories dated in that month or later. Older memories are still
+  stored and found by word lookup; they are perceived by a later run without `--since`. Memories already
+  perceived are skipped and skipped memories are retried as before, under either option.
+
+### Fixed
+
+- `mneme learn` on a large brain no longer exhausts memory or stalls for hours. On a brain of about 130,000
+  memories, the first perception pass used to hold every memory's text and every prompt at once (2 GB+ and
+  climbing), and each candidate lookup scored nearly every memory (about 1.4 s each, so days for one pass).
+  - Perception now runs in chunks of 25 prompts. Each chunk is built, asked and committed on its own, so memory
+    stays flat (under 50 MB in the same test) and an interrupted run keeps every finished chunk. A deferred
+    (task-file) mind still receives every prompt in one run.
+  - Candidate lookups on brains of 1,000+ memories leave out words found in more than half of all memories.
+    BM25 already gives those words almost no weight, so results are unchanged; each lookup is about 50x faster.
+  - Perception's candidate lookup asks with at most 6 of each memory's rarest words (preferring words at least
+    one other memory shares) instead of every word in the note. Dropping common words alone still left 20-40
+    word queries taking 1-1.6 s each on a 130k-memory brain; 6-word queries take under 0.1 s. `mneme ask` and
+    other lookups are unchanged.
+  - `ingest` compares stored memories by content hash instead of keeping every stored text in memory
+    (325 MB down to 64 MB on the same brain).
+
 ## [1.1.0] — 2026-11-01
 
 ### Added
