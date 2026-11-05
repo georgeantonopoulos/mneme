@@ -624,3 +624,8 @@ def test_large_id_lookups_stay_under_the_bound_parameter_limit(tmp_path: Path, m
     brain._form_regions(800)
     assert brain._perceive_neurons(batch_size=1, chunk_batches=4) == 4  # one chunk of 4 pending ids
 
+
+def test_since_months_are_zero_padded():
+    from mneme.cortex.app import parser
+
+    assert parser().parse_args(["learn", "--since", "2026-9"]).since == "2026-09"

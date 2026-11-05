@@ -432,10 +432,11 @@ def _settled(brain: Brain, key: str) -> None:
 def _month(value: str) -> str:
     """``--since``: a ``YYYY-MM`` month, compared as a prefix of the stored ISO times."""
     try:
-        dt.datetime.strptime(value, "%Y-%m")
+        month = dt.datetime.strptime(value, "%Y-%m")
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM, got {value!r}") from None
-    return value
+    # strptime also takes "2026-9"; the stored times compare as text, so the month must be zero-padded.
+    return f"{month.year:04d}-{month.month:02d}"
 
 
 def cmd_learn(args, ui: UI) -> int:
